@@ -37,7 +37,7 @@ type CoordinatorLease struct {
 }
 
 type CoordinatorMachine struct {
-	ID         string            `json:"id"`
+	ID         CoordinatorID     `json:"id"`
 	Provider   string            `json:"provider"`
 	CloudID    string            `json:"cloudID"`
 	Name       string            `json:"name"`
@@ -45,6 +45,22 @@ type CoordinatorMachine struct {
 	ServerType string            `json:"serverType"`
 	Host       string            `json:"host"`
 	Labels     map[string]string `json:"labels"`
+}
+
+type CoordinatorID string
+
+func (id *CoordinatorID) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		*id = CoordinatorID(s)
+		return nil
+	}
+	var n int64
+	if err := json.Unmarshal(data, &n); err == nil {
+		*id = CoordinatorID(fmt.Sprint(n))
+		return nil
+	}
+	return fmt.Errorf("invalid coordinator id: %s", string(data))
 }
 
 func newCoordinatorClient(cfg Config) (*CoordinatorClient, bool, error) {
