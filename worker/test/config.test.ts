@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { leaseConfig, serverTypeCandidatesForClass, serverTypeForClass } from "../src/config";
 
 describe("machine class config", () => {
@@ -9,7 +10,7 @@ describe("machine class config", () => {
       "ccx53",
       "ccx43",
       "cpx62",
-      "cx53"
+      "cx53",
     ]);
   });
 

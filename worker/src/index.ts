@@ -15,7 +15,7 @@ export default {
     }
     const id = env.FLEET.idFromName("default");
     return env.FLEET.get(id).fetch(request);
-  }
+  },
 };
 
 export function isAuthorized(request: Request, env: Pick<Env, "CRABBOX_SHARED_TOKEN">): boolean {

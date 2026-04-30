@@ -8,21 +8,21 @@
   "routes": [
     {
       "pattern": "crabbox.clawd.bot/*",
-      "zone_name": "clawd.bot"
-    }
+      "zone_name": "clawd.bot",
+    },
   ],
   "durable_objects": {
     "bindings": [
       {
         "name": "FLEET",
-        "class_name": "FleetDurableObject"
-      }
-    ]
+        "class_name": "FleetDurableObject",
+      },
+    ],
   },
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["FleetDurableObject"]
-    }
-  ]
+      "new_sqlite_classes": ["FleetDurableObject"],
+    },
+  ],
 }

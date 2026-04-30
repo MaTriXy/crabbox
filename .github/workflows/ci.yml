@@ -70,6 +70,14 @@ jobs:
         run: npm ci
         working-directory: worker
 
+      - name: Format
+        run: npm run format:check
+        working-directory: worker
+
+      - name: Lint
+        run: npm run lint
+        working-directory: worker
+
       - name: Typecheck
         run: npm run check
         working-directory: worker

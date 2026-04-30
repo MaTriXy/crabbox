@@ -97,6 +97,8 @@ Local checks:
 
 ```sh
 npm ci --prefix worker
+npm run format:check --prefix worker
+npm run lint --prefix worker
 npm run check --prefix worker
 npm test --prefix worker
 npm run build --prefix worker
@@ -178,6 +180,8 @@ go vet ./...
 go test -race ./...
 go build -trimpath -o bin/crabbox ./cmd/crabbox
 npm ci --prefix worker
+npm run format:check --prefix worker
+npm run lint --prefix worker
 npm run check --prefix worker
 npm test --prefix worker
 npm run build --prefix worker

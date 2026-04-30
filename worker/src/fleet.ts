@@ -1,6 +1,6 @@
 import { leaseConfig } from "./config";
-import { errorMessage, json, pathParts, readJson, requestOwner } from "./http";
 import { HetznerClient } from "./hetzner";
+import { errorMessage, json, pathParts, readJson, requestOwner } from "./http";
 import type { Env, LeaseRecord, LeaseRequest } from "./types";
 
 const fleetID = "default";
@@ -8,7 +8,7 @@ const fleetID = "default";
 export class FleetDurableObject implements DurableObject {
   constructor(
     private readonly state: DurableObjectState,
-    private readonly env: Env
+    private readonly env: Env,
   ) {}
 
   async fetch(request: Request): Promise<Response> {
@@ -65,7 +65,7 @@ export class FleetDurableObject implements DurableObject {
       state: "active",
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
-      expiresAt: new Date(now.getTime() + config.ttlSeconds * 1000).toISOString()
+      expiresAt: new Date(now.getTime() + config.ttlSeconds * 1000).toISOString(),
     };
     await this.putLease(record);
     await this.scheduleAlarm();
@@ -118,17 +118,19 @@ export class FleetDurableObject implements DurableObject {
     const leases = await this.state.storage.list<LeaseRecord>({ prefix: "lease:" });
     const now = Date.now();
     const client = new HetznerClient(this.env);
-    for (const lease of leases.values()) {
-      if (lease.state !== "active" || Date.parse(lease.expiresAt) > now) {
-        continue;
-      }
-      if (!lease.keep) {
-        await client.deleteServer(lease.serverID).catch(() => undefined);
-      }
-      lease.state = "expired";
-      lease.updatedAt = new Date().toISOString();
-      await this.putLease(lease);
-    }
+    const expired = [...leases.values()].filter(
+      (lease) => lease.state === "active" && Date.parse(lease.expiresAt) <= now,
+    );
+    await Promise.all(
+      expired.map(async (lease) => {
+        if (!lease.keep) {
+          await client.deleteServer(lease.serverID).catch(() => undefined);
+        }
+        lease.state = "expired";
+        lease.updatedAt = new Date().toISOString();
+        await this.putLease(lease);
+      }),
+    );
   }
 
   private async scheduleAlarm(): Promise<void> {

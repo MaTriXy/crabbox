@@ -35,7 +35,7 @@ export function leaseConfig(input: LeaseRequest): LeaseConfig {
     workRoot: input.workRoot ?? "/work/crabbox",
     ttlSeconds,
     keep: input.keep ?? false,
-    sshPublicKey
+    sshPublicKey,
   };
 }
 

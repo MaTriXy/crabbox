@@ -7,7 +7,7 @@ export function json(data: unknown, init: ResponseInit = {}): Response {
 export function text(message: string, status = 200): Response {
   return new Response(message, {
     status,
-    headers: { "content-type": "text/plain; charset=utf-8" }
+    headers: { "content-type": "text/plain; charset=utf-8" },
   });
 }
 

@@ -31,7 +31,7 @@ export class HetznerClient {
   async listCrabboxServers(): Promise<HetznerServer[]> {
     const query = new URLSearchParams({
       label_selector: "crabbox=true",
-      per_page: "100"
+      per_page: "100",
     });
     const response = await this.request<HetznerListServersResponse>("GET", `/servers?${query}`);
     return response.servers;
@@ -40,7 +40,7 @@ export class HetznerClient {
   async ensureSSHKey(name: string, publicKey: string): Promise<HetznerSSHKey> {
     const byName = await this.request<HetznerListSSHKeysResponse>(
       "GET",
-      `/ssh_keys?${new URLSearchParams({ name })}`
+      `/ssh_keys?${new URLSearchParams({ name })}`,
     );
     for (const key of byName.ssh_keys) {
       if (key.name === name) {
@@ -53,7 +53,7 @@ export class HetznerClient {
 
     const all = await this.request<HetznerListSSHKeysResponse>(
       "GET",
-      `/ssh_keys?${new URLSearchParams({ per_page: "100" })}`
+      `/ssh_keys?${new URLSearchParams({ per_page: "100" })}`,
     );
     for (const key of all.ssh_keys) {
       if (key.public_key.trim() === publicKey.trim()) {
@@ -66,8 +66,8 @@ export class HetznerClient {
       public_key: publicKey,
       labels: {
         crabbox: "true",
-        created_by: "crabbox"
-      }
+        created_by: "crabbox",
+      },
     });
     return created.ssh_key;
   }
@@ -75,17 +75,18 @@ export class HetznerClient {
   async createServerWithFallback(
     config: LeaseConfig,
     leaseID: string,
-    owner: string
+    owner: string,
   ): Promise<{ server: HetznerServer; serverType: string }> {
     const key = await this.ensureSSHKey(config.providerKey, config.sshPublicKey);
     const resolvedConfig = { ...config, providerKey: key.name };
     const candidates = prependUnique(
       resolvedConfig.serverType,
-      serverTypeCandidatesForClass(resolvedConfig.class)
+      serverTypeCandidatesForClass(resolvedConfig.class),
     );
     const failures: string[] = [];
     for (const serverType of candidates) {
       try {
+        // oxlint-disable-next-line eslint/no-await-in-loop -- server-type fallback must stay sequential.
         const server = await this.createServer({ ...resolvedConfig, serverType }, leaseID, owner);
         return { server, serverType };
       } catch (error) {
@@ -106,10 +107,12 @@ export class HetznerClient {
   async waitForServerIP(id: number): Promise<HetznerServer> {
     const deadline = Date.now() + 60_000;
     while (Date.now() < deadline) {
+      // oxlint-disable-next-line eslint/no-await-in-loop -- polling must wait between Hetzner API reads.
       const server = await this.getServer(id);
       if (server.public_net.ipv4.ip) {
         return server;
       }
+      // oxlint-disable-next-line eslint/no-await-in-loop -- this delay is the polling interval.
       await sleep(2_000);
     }
     throw new Error(`timed out waiting for server IP: ${id}`);
@@ -126,14 +129,14 @@ export class HetznerClient {
       status: server.status,
       serverType: server.server_type.name,
       host: server.public_net.ipv4.ip,
-      labels: server.labels
+      labels: server.labels,
     };
   }
 
   private async createServer(
     config: LeaseConfig,
     leaseID: string,
-    owner: string
+    owner: string,
   ): Promise<HetznerServer> {
     const name = `crabbox-${leaseID}`.replaceAll("_", "-");
     const labels = {
@@ -145,7 +148,7 @@ export class HetznerClient {
       state: "leased",
       keep: String(config.keep),
       owner: sanitizeLabel(owner),
-      created_by: "crabbox"
+      created_by: "crabbox",
     };
     const response = await this.request<HetznerServerResponse>("POST", "/servers", {
       name,
@@ -158,8 +161,8 @@ export class HetznerClient {
       start_after_create: true,
       public_net: {
         enable_ipv4: true,
-        enable_ipv6: false
-      }
+        enable_ipv6: false,
+      },
     });
     return response.server.public_net.ipv4.ip
       ? response.server
@@ -171,15 +174,17 @@ export class HetznerClient {
       method,
       headers: {
         authorization: `Bearer ${this.token}`,
-        "content-type": "application/json"
-      }
+        "content-type": "application/json",
+      },
     };
     if (body !== undefined) {
       init.body = JSON.stringify(body);
     }
     const response = await fetch(`https://api.hetzner.cloud/v1${path}`, init);
     if (!response.ok) {
-      throw new Error(`hetzner ${method} ${path}: http ${response.status}: ${await safeBody(response)}`);
+      throw new Error(
+        `hetzner ${method} ${path}: http ${response.status}: ${await safeBody(response)}`,
+      );
     }
     if (response.status === 204) {
       return undefined as T;
