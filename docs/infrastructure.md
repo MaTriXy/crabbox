@@ -138,9 +138,17 @@ Current direct-CLI status:
 
 ## AWS EC2 Spot
 
-Use AWS as the first non-Hetzner burst backend. The CLI direct provider is selected with `CRABBOX_PROVIDER=aws` or `--provider aws`; the Cloudflare coordinator remains Hetzner-only for now.
+Use AWS as the first non-Hetzner burst backend. The Cloudflare coordinator brokers AWS EC2 Spot by default; the CLI direct provider remains available with `--provider aws` when no broker is configured.
 
-Required env is whatever the AWS SDK can resolve, such as:
+Brokered AWS credentials live as Worker secrets:
+
+```text
+AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY
+AWS_SESSION_TOKEN optional
+```
+
+Direct fallback env is whatever the AWS SDK can resolve, such as:
 
 ```text
 AWS_PROFILE
@@ -160,7 +168,7 @@ CRABBOX_AWS_INSTANCE_PROFILE     optional IAM instance profile name
 CRABBOX_AWS_ROOT_GB              default 400
 ```
 
-The direct provider imports the local SSH public key as an EC2 key pair when needed, creates or reuses a `crabbox-runners` security group when no security group is supplied, launches one-time Spot instances, tags instances and volumes with Crabbox lease metadata, and terminates non-kept instances after the command.
+The AWS provider imports the local SSH public key as an EC2 key pair when needed, creates or reuses a `crabbox-runners` security group when no security group is supplied, launches one-time Spot instances, tags instances and volumes with Crabbox lease metadata, and terminates non-kept instances after the command.
 
 ## Machine Classes
 
@@ -190,7 +198,7 @@ classes:
     memory: 192gb
 ```
 
-Current AWS direct defaults:
+Current AWS defaults:
 
 ```yaml
 classes:

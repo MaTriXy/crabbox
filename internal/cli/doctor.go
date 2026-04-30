@@ -25,20 +25,31 @@ func (a App) doctor(ctx context.Context, args []string) error {
 		fmt.Fprintf(a.Stdout, "ok      %-8s %s\n", tool, path)
 	}
 
-	cfg := defaultConfig()
+	cfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
 	cfg.Provider = *provider
 	if os.Getenv("CRABBOX_SERVER_TYPE") == "" {
 		cfg.ServerType = serverTypeForProviderClass(cfg.Provider, cfg.Class)
 	}
-	if coord, ok, err := newCoordinatorClient(cfg); err != nil {
+	useCoordinator := false
+	if coord, coordinatorConfigured, err := newCoordinatorClient(cfg); err != nil {
 		fmt.Fprintf(a.Stdout, "failed  coord    %v\n", err)
 		ok = false
-	} else if ok {
+	} else if coordinatorConfigured {
 		if err := coord.Health(ctx); err != nil {
 			fmt.Fprintf(a.Stdout, "failed  coord    %v\n", err)
 			ok = false
 		} else {
 			fmt.Fprintf(a.Stdout, "ok      coord    %s\n", cfg.Coordinator)
+			useCoordinator = true
+			if machines, err := coord.Pool(ctx, cfg); err != nil {
+				fmt.Fprintf(a.Stdout, "failed  broker   %v\n", err)
+				ok = false
+			} else {
+				fmt.Fprintf(a.Stdout, "ok      broker   provider=%s machines=%d default_type=%s\n", cfg.Provider, len(machines), cfg.ServerType)
+			}
 		}
 	}
 
@@ -50,6 +61,13 @@ func (a App) doctor(ctx context.Context, args []string) error {
 		ok = false
 	} else {
 		fmt.Fprintf(a.Stdout, "ok      ssh-key  %s\n", cfg.SSHKey)
+	}
+
+	if useCoordinator {
+		if !ok {
+			return exit(1, "doctor found problems")
+		}
+		return nil
 	}
 
 	switch cfg.Provider {

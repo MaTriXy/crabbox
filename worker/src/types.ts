@@ -1,15 +1,31 @@
 export interface Env {
   FLEET: DurableObjectNamespace;
   HETZNER_TOKEN: string;
+  AWS_ACCESS_KEY_ID?: string;
+  AWS_SECRET_ACCESS_KEY?: string;
+  AWS_SESSION_TOKEN?: string;
+  CRABBOX_AWS_REGION?: string;
+  CRABBOX_AWS_AMI?: string;
+  CRABBOX_AWS_SECURITY_GROUP_ID?: string;
+  CRABBOX_AWS_SUBNET_ID?: string;
+  CRABBOX_AWS_INSTANCE_PROFILE?: string;
+  CRABBOX_AWS_ROOT_GB?: string;
   CRABBOX_SHARED_TOKEN?: string;
 }
 
 export interface LeaseRequest {
+  provider?: Provider;
   profile?: string;
   class?: string;
   serverType?: string;
   location?: string;
   image?: string;
+  awsRegion?: string;
+  awsAMI?: string;
+  awsSGID?: string;
+  awsSubnetID?: string;
+  awsProfile?: string;
+  awsRootGB?: number;
   sshUser?: string;
   sshPort?: string;
   providerKey?: string;
@@ -19,8 +35,13 @@ export interface LeaseRequest {
   sshPublicKey?: string;
 }
 
+export type Provider = "hetzner" | "aws";
+
 export interface LeaseRecord {
   id: string;
+  provider: Provider;
+  cloudID: string;
+  region?: string;
   owner: string;
   profile: string;
   class: string;
@@ -61,7 +82,20 @@ export interface HetznerSSHKey {
 }
 
 export interface MachineView {
+  id: string;
+  provider: Provider;
+  cloudID: string;
+  name: string;
+  status: string;
+  serverType: string;
+  host: string;
+  labels: Record<string, string>;
+}
+
+export interface ProviderMachine {
+  provider: Provider;
   id: number;
+  cloudID: string;
   name: string;
   status: string;
   serverType: string;

@@ -33,6 +33,8 @@ func (a App) Run(ctx context.Context, args []string) error {
 		return nil
 	case "doctor":
 		return a.doctor(ctx, args[1:])
+	case "config":
+		return a.config(ctx, args[1:])
 	case "pool":
 		return a.pool(ctx, args[1:])
 	case "machine":
@@ -53,6 +55,8 @@ func (a App) usage() {
 
 Usage:
   crabbox --version
+  crabbox config show
+  crabbox config set-broker --url <url> --token-stdin [--provider aws|hetzner]
   crabbox doctor
   crabbox warmup [--provider hetzner|aws] [--profile openclaw-check] [--class beast] [--keep]
   crabbox run [--provider hetzner|aws] [--profile openclaw-check] [--class beast] [--ttl 90m] [--keep] -- <command...>
@@ -63,8 +67,7 @@ Usage:
 Environment:
   HCLOUD_TOKEN or HETZNER_TOKEN
   CRABBOX_PROVIDER, hetzner or aws
-  CRABBOX_COORDINATOR, optional Cloudflare coordinator URL
-  CRABBOX_COORDINATOR_TOKEN, optional coordinator bearer token
+  CRABBOX_CONFIG, optional config path
   CRABBOX_AWS_REGION, default eu-west-1
   CRABBOX_SSH_KEY, default ~/.ssh/id_ed25519
   CRABBOX_DEFAULT_CLASS, default beast`)

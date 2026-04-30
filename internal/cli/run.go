@@ -20,12 +20,17 @@ func (a App) warmup(ctx context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return exit(2, "%v", err)
 	}
-	cfg := defaultConfig()
+	cfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
 	cfg.Provider = *provider
 	cfg.Profile = *profile
 	cfg.Class = *class
-	cfg.ServerType = *serverType
-	if cfg.ServerType == "" {
+	if flagWasSet(fs, "type") {
+		cfg.ServerType = *serverType
+	}
+	if cfg.ServerType == "" || ((flagWasSet(fs, "provider") || flagWasSet(fs, "class")) && !flagWasSet(fs, "type")) {
 		cfg.ServerType = serverTypeForProviderClass(cfg.Provider, *class)
 	}
 	cfg.TTL = *ttl
@@ -72,12 +77,17 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 		return exit(2, "usage: crabbox run [flags] -- <command...>")
 	}
 
-	cfg := defaultConfig()
+	cfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
 	cfg.Provider = *provider
 	cfg.Profile = *profile
 	cfg.Class = *class
-	cfg.ServerType = *serverType
-	if cfg.ServerType == "" {
+	if flagWasSet(fs, "type") {
+		cfg.ServerType = *serverType
+	}
+	if cfg.ServerType == "" || ((flagWasSet(fs, "provider") || flagWasSet(fs, "class")) && !flagWasSet(fs, "type")) {
 		cfg.ServerType = serverTypeForProviderClass(cfg.Provider, *class)
 	}
 	cfg.TTL = *ttl
@@ -85,7 +95,6 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 	var server Server
 	var target SSHTarget
 	var leaseID string
-	var err error
 	acquired := false
 	coord, useCoordinator, err := newCoordinatorClient(cfg)
 	if err != nil {
@@ -334,7 +343,10 @@ func (a App) stop(ctx context.Context, args []string) error {
 	if fs.NArg() != 1 {
 		return exit(2, "usage: crabbox stop <lease-or-server-id>")
 	}
-	cfg := defaultConfig()
+	cfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
 	cfg.Provider = *provider
 	if coord, ok, err := newCoordinatorClient(cfg); err != nil {
 		return err
@@ -343,7 +355,7 @@ func (a App) stop(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(a.Stderr, "released lease=%s server=%d\n", lease.ID, lease.ServerID)
+		fmt.Fprintf(a.Stderr, "released lease=%s server=%s\n", lease.ID, leaseDisplayID(lease))
 		return nil
 	}
 	server, _, leaseID, err := a.findLease(ctx, cfg, fs.Arg(0))
@@ -352,6 +364,13 @@ func (a App) stop(ctx context.Context, args []string) error {
 	}
 	fmt.Fprintf(a.Stderr, "deleting lease=%s server=%s name=%s\n", leaseID, server.DisplayID(), server.Name)
 	return deleteServer(ctx, cfg, server)
+}
+
+func leaseDisplayID(lease CoordinatorLease) string {
+	if lease.CloudID != "" {
+		return lease.CloudID
+	}
+	return fmt.Sprint(lease.ServerID)
 }
 
 func deleteServer(ctx context.Context, cfg Config, server Server) error {

@@ -2,7 +2,7 @@
 
 Crabbox is an open source remote testbox runner for OpenClaw maintainers. It gives a Blacksmith Testboxes-style local loop on owned cloud capacity: provision or reuse a warm Linux box, sync the current dirty checkout, run a command remotely, stream output, and clean up.
 
-The current implementation is a Go CLI plus a Cloudflare Worker/Durable Object coordinator. The CLI can use the coordinator for Hetzner, or direct provider calls for Hetzner and AWS EC2 Spot.
+The current implementation is a Go CLI plus a Cloudflare Worker/Durable Object coordinator. The CLI uses the coordinator for brokered Hetzner or AWS EC2 Spot leases, with direct provider calls kept as a debug fallback.
 
 ## Status
 
@@ -36,9 +36,8 @@ Prerequisites:
 
 - Go 1.26+
 - `git`, `ssh`, `rsync`, and `curl`
-- Hetzner token in `HCLOUD_TOKEN` or `HETZNER_TOKEN`, or AWS credentials discoverable by the AWS SDK
 - SSH key at `~/.ssh/id_ed25519`, or set `CRABBOX_SSH_KEY`
-- deployed coordinator env in `CRABBOX_COORDINATOR` and `CRABBOX_COORDINATOR_TOKEN`
+- broker config in `~/.config/crabbox/config.json` or `~/Library/Application Support/crabbox/config.json` on macOS
 
 Build:
 
@@ -46,17 +45,26 @@ Build:
 go build -o bin/crabbox ./cmd/crabbox
 ```
 
-Check local prerequisites and Hetzner access:
+Configure the deployed broker:
+
+```sh
+printf '%s' "$CRABBOX_COORDINATOR_TOKEN" | \
+  bin/crabbox config set-broker \
+    --url https://crabbox-coordinator.steipete.workers.dev \
+    --provider aws \
+    --token-stdin
+```
+
+Check local prerequisites and broker access:
 
 ```sh
 bin/crabbox doctor
 ```
 
-Use the deployed coordinator:
+Inspect broker config:
 
 ```sh
-export CRABBOX_COORDINATOR=https://crabbox-coordinator.steipete.workers.dev
-bin/crabbox pool list
+bin/crabbox config show
 ```
 
 Warm a reusable OpenClaw testbox:
@@ -65,11 +73,9 @@ Warm a reusable OpenClaw testbox:
 bin/crabbox warmup --profile openclaw-check --class beast --keep
 ```
 
-Use AWS EC2 Spot directly:
+Use AWS EC2 Spot through the broker:
 
 ```sh
-export CRABBOX_PROVIDER=aws
-export CRABBOX_AWS_REGION=eu-west-1
 bin/crabbox warmup --class beast --keep
 ```
 
@@ -142,6 +148,8 @@ Required Worker secrets:
 
 ```text
 HETZNER_TOKEN
+AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY
 CRABBOX_SHARED_TOKEN
 ```
 
@@ -171,15 +179,38 @@ For true Blacksmith Testboxes parity, raise the Hetzner dedicated-core quota and
 
 ## Configuration
 
-Environment variables:
+Config file:
+
+```json
+{
+  "broker": {
+    "url": "https://crabbox-coordinator.steipete.workers.dev",
+    "provider": "aws",
+    "token": "..."
+  },
+  "class": "beast",
+  "aws": {
+    "region": "eu-west-1",
+    "rootGB": 400
+  },
+  "ssh": {
+    "key": "~/.ssh/id_ed25519",
+    "user": "crabbox",
+    "port": "2222"
+  }
+}
+```
+
+Environment variables remain supported for automation and direct-provider debug:
 
 ```text
 HCLOUD_TOKEN or HETZNER_TOKEN     Hetzner Cloud API token
-AWS_PROFILE/AWS_*                AWS SDK credentials for CRABBOX_PROVIDER=aws
+AWS_PROFILE/AWS_*                AWS SDK credentials for direct --provider aws fallback
 CRABBOX_PROFILE                  default openclaw-check
 CRABBOX_PROVIDER                 default hetzner
-CRABBOX_COORDINATOR              optional coordinator URL
-CRABBOX_COORDINATOR_TOKEN        optional coordinator bearer token
+CRABBOX_CONFIG                   optional config file override
+CRABBOX_COORDINATOR              optional broker URL override
+CRABBOX_COORDINATOR_TOKEN        optional broker bearer token override
 CRABBOX_DEFAULT_CLASS            default beast
 CRABBOX_SERVER_TYPE              provider-specific override
 CRABBOX_HETZNER_LOCATION         default fsn1

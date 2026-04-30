@@ -1,6 +1,6 @@
 import { cloudInit } from "./bootstrap";
 import { serverTypeCandidatesForClass, type LeaseConfig } from "./config";
-import type { Env, HetznerSSHKey, HetznerServer, MachineView } from "./types";
+import type { Env, HetznerSSHKey, HetznerServer, ProviderMachine } from "./types";
 
 interface HetznerListServersResponse {
   servers: HetznerServer[];
@@ -122,9 +122,11 @@ export class HetznerClient {
     await this.request<void>("DELETE", `/servers/${id}`);
   }
 
-  toMachine(server: HetznerServer): MachineView {
+  toMachine(server: HetznerServer): ProviderMachine {
     return {
+      provider: "hetzner",
       id: server.id,
+      cloudID: String(server.id),
       name: server.name,
       status: server.status,
       serverType: server.server_type.name,

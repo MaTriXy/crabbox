@@ -20,10 +20,12 @@ type CoordinatorClient struct {
 
 type CoordinatorLease struct {
 	ID         string `json:"id"`
+	Provider   string `json:"provider"`
 	Profile    string `json:"profile"`
 	Class      string `json:"class"`
 	ServerType string `json:"serverType"`
 	ServerID   int64  `json:"serverID"`
+	CloudID    string `json:"cloudID"`
 	ServerName string `json:"serverName"`
 	Host       string `json:"host"`
 	SSHUser    string `json:"sshUser"`
@@ -35,7 +37,9 @@ type CoordinatorLease struct {
 }
 
 type CoordinatorMachine struct {
-	ID         int64             `json:"id"`
+	ID         string            `json:"id"`
+	Provider   string            `json:"provider"`
+	CloudID    string            `json:"cloudID"`
 	Name       string            `json:"name"`
 	Status     string            `json:"status"`
 	ServerType string            `json:"serverType"`
@@ -44,9 +48,6 @@ type CoordinatorMachine struct {
 }
 
 func newCoordinatorClient(cfg Config) (*CoordinatorClient, bool, error) {
-	if cfg.Provider != "hetzner" {
-		return nil, false, nil
-	}
 	if cfg.Coordinator == "" {
 		return nil, false, nil
 	}
@@ -71,10 +72,17 @@ func (c *CoordinatorClient) CreateLease(ctx context.Context, cfg Config, publicK
 	}
 	err := c.do(ctx, http.MethodPost, "/v1/leases", map[string]any{
 		"profile":      cfg.Profile,
+		"provider":     cfg.Provider,
 		"class":        cfg.Class,
 		"serverType":   cfg.ServerType,
 		"location":     cfg.Location,
 		"image":        cfg.Image,
+		"awsRegion":    cfg.AWSRegion,
+		"awsAMI":       cfg.AWSAMI,
+		"awsSGID":      cfg.AWSSGID,
+		"awsSubnetID":  cfg.AWSSubnetID,
+		"awsProfile":   cfg.AWSProfile,
+		"awsRootGB":    cfg.AWSRootGB,
 		"sshUser":      cfg.SSHUser,
 		"sshPort":      cfg.SSHPort,
 		"providerKey":  cfg.ProviderKey,
@@ -102,11 +110,15 @@ func (c *CoordinatorClient) ReleaseLease(ctx context.Context, id string, deleteS
 	return res.Lease, err
 }
 
-func (c *CoordinatorClient) Pool(ctx context.Context) ([]CoordinatorMachine, error) {
+func (c *CoordinatorClient) Pool(ctx context.Context, cfg Config) ([]CoordinatorMachine, error) {
 	var res struct {
 		Machines []CoordinatorMachine `json:"machines"`
 	}
-	err := c.do(ctx, http.MethodGet, "/v1/pool", nil, &res)
+	path := "/v1/pool"
+	if cfg.Provider != "" {
+		path += "?provider=" + url.QueryEscape(cfg.Provider)
+	}
+	err := c.do(ctx, http.MethodGet, path, nil, &res)
 	return res.Machines, err
 }
 
@@ -159,13 +171,18 @@ func (c *CoordinatorClient) do(ctx context.Context, method, path string, body an
 
 func leaseToServerTarget(lease CoordinatorLease, cfg Config) (Server, SSHTarget, string) {
 	server := Server{
-		ID:     lease.ServerID,
-		Name:   lease.ServerName,
-		Status: lease.State,
+		Provider: lease.Provider,
+		CloudID:  lease.CloudID,
+		ID:       lease.ServerID,
+		Name:     lease.ServerName,
+		Status:   lease.State,
 		Labels: map[string]string{
 			"lease": lease.ID,
 			"keep":  fmt.Sprint(lease.Keep),
 		},
+	}
+	if server.Provider == "" {
+		server.Provider = cfg.Provider
 	}
 	server.PublicNet.IPv4.IP = lease.Host
 	server.ServerType.Name = lease.ServerType

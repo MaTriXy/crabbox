@@ -19,9 +19,9 @@ developer laptop
 Cloudflare Worker
   Durable Object lease state
     |
-    | Hetzner API
+    | Hetzner API or AWS EC2 Spot API
     v
-Hetzner machines
+cloud machines
 
 developer laptop
   |
@@ -35,7 +35,7 @@ leased machine
 1. CLI loads config and authenticates to Cloudflare Access.
 2. CLI sends `POST /v1/leases` with profile, TTL, repo metadata, and desired machine class.
 3. Coordinator validates identity and policy.
-4. Durable Object chooses an idle machine or asks the Hetzner provider to create one.
+4. Durable Object chooses a provider from config and creates a Hetzner server or AWS EC2 Spot instance.
 5. Coordinator returns lease ID, machine address, SSH user, workdir, and expiry.
 6. CLI rsyncs files to the machine.
 7. CLI runs the command over SSH and streams stdout/stderr.
@@ -92,6 +92,7 @@ Owned backends:
 
 - `hetzner-static`: pre-created warm machines.
 - `hetzner-ephemeral`: created per lease or overflow.
+- `aws-spot`: one-time EC2 Spot instances for burst capacity.
 - `ssh-static`: manually managed machines reachable by SSH.
 
 Brokered backends, later:
@@ -99,7 +100,7 @@ Brokered backends, later:
 - `blacksmith`: wrap Blacksmith as a brokered backend, not owned capacity.
 - `runson` or GitHub runner-based systems if needed.
 
-MVP should implement `hetzner-ephemeral` and leave interfaces ready for `hetzner-static`.
+The MVP implements `hetzner-ephemeral` and `aws-spot`, and leaves interfaces ready for `hetzner-static`.
 
 ## Machine Bootstrap
 
@@ -123,12 +124,13 @@ Prefer snapshots/images once bootstrap is proven. Cloud-init is acceptable for f
 Config precedence:
 
 ```text
-flags > env > repo-local crabbox.yaml > user config > shared fleet config > defaults
+flags > env > repo-local crabbox.json/.crabbox.json > user config > defaults
 ```
 
-Shared fleet config is desired state only. It can define:
+User config is JSON and can define:
 
 - coordinator URL.
+- coordinator bearer token.
 - profiles.
 - machine classes.
 - backend defaults.
@@ -139,9 +141,10 @@ Shared fleet config is desired state only. It can define:
 It must not store:
 
 - live leases.
-- API tokens.
 - SSH private keys.
 - provider secrets.
+
+Provider secrets live in the broker environment, such as Cloudflare Worker secrets for AWS and Hetzner.
 
 ## Failure Model
 
@@ -160,4 +163,3 @@ Therefore:
 - Provider resources need labels for orphan cleanup.
 - Release should be safe to call multiple times.
 - Machine delete should tolerate already-deleted resources.
-

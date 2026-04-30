@@ -36,7 +36,9 @@ Primary output goes to stdout. Progress, diagnostics, and errors go to stderr. J
 ```text
 crabbox login
 crabbox doctor
-crabbox config show
+crabbox config show [--json]
+crabbox config path
+crabbox config set-broker --url <url> --token-stdin [--provider hetzner|aws]
 crabbox profiles list
 crabbox pool list
 crabbox warmup [--provider hetzner|aws] [--profile <name>] [--ttl <duration>]
@@ -61,7 +63,7 @@ crabbox run --profile openclaw-check -- pnpm check:changed
 AWS EC2 Spot run:
 
 ```sh
-crabbox run --provider aws --class beast -- pnpm check:changed
+crabbox run --class beast -- pnpm check:changed
 ```
 
 Warm a box, then reuse it:
@@ -84,7 +86,8 @@ Debug config:
 
 ```sh
 crabbox doctor
-crabbox config show --plain
+crabbox config show
+crabbox config show --json
 ```
 
 ## `run`
@@ -141,7 +144,47 @@ If the remote command exits with a code, `crabbox run` should return that code u
 
 ## Config Files
 
-Repo-local `crabbox.yaml`:
+The implemented config format is JSON. The default path is:
+
+```text
+macOS: ~/.config/crabbox/config.json through XDG, or ~/Library/Application Support/crabbox/config.json
+Linux: ~/.config/crabbox/config.json
+repo:  crabbox.json or .crabbox.json
+```
+
+User config:
+
+```json
+{
+  "broker": {
+    "url": "https://crabbox-coordinator.steipete.workers.dev",
+    "provider": "aws",
+    "token": "..."
+  },
+  "profile": "openclaw-check",
+  "class": "beast",
+  "aws": {
+    "region": "eu-west-1",
+    "rootGB": 400
+  },
+  "ssh": {
+    "key": "~/.ssh/id_ed25519",
+    "user": "crabbox",
+    "port": "2222"
+  }
+}
+```
+
+Set broker auth without putting the token in shell history:
+
+```sh
+printf '%s' "$TOKEN" | crabbox config set-broker \
+  --url https://crabbox-coordinator.steipete.workers.dev \
+  --provider aws \
+  --token-stdin
+```
+
+Planned fleet config remains YAML:
 
 ```yaml
 version: 1
@@ -159,37 +202,25 @@ env:
     - NODE_OPTIONS
 ```
 
-User config:
-
-```yaml
-identity:
-  github: steipete
-  sshKey: ~/.ssh/id_ed25519
-defaults:
-  coordinator: https://crabbox.openclaw.ai
-```
-
 ## Environment Variables
 
 ```text
 CRABBOX_COORDINATOR
+CRABBOX_COORDINATOR_TOKEN
+CRABBOX_PROVIDER
 CRABBOX_PROFILE
 CRABBOX_CONFIG
-CRABBOX_FLEET_CONFIG
 CRABBOX_SSH_KEY
-CRABBOX_NO_COLOR
-CRABBOX_LOG
 ```
 
 Provider/deploy variables live outside normal CLI operation:
 
 ```text
-CRABBOX_COORDINATOR
-CRABBOX_COORDINATOR_TOKEN
 CRABBOX_CLOUDFLARE_API_TOKEN
 CRABBOX_CLOUDFLARE_ACCOUNT_ID
 CRABBOX_CLOUDFLARE_ZONE_ID
 HCLOUD_TOKEN
+AWS_PROFILE/AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY
 GITHUB_TOKEN
 ```
 
