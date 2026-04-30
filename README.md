@@ -76,6 +76,12 @@ Stop a kept server:
 bin/crabbox stop cbx_...
 ```
 
+Print the CLI version:
+
+```sh
+bin/crabbox --version
+```
+
 ## Machine Classes
 
 `beast` is the default. It tries the biggest useful Hetzner machines first, then falls back if the account hits quota or capacity limits:
@@ -179,6 +185,7 @@ gofmt -w $(git ls-files '*.go')
 go vet ./...
 go test -race ./...
 go build -trimpath -o bin/crabbox ./cmd/crabbox
+goreleaser release --snapshot --clean --skip=publish
 npm ci --prefix worker
 npm run format:check --prefix worker
 npm run lint --prefix worker
@@ -188,6 +195,10 @@ npm run build --prefix worker
 ```
 
 CI runs the same checks on pushes and pull requests.
+
+## Releases
+
+Tagged pushes matching `v*` publish Go CLI archives through GoReleaser. Manual reruns can use the `release` workflow with a tag input.
 
 ## Docs
 

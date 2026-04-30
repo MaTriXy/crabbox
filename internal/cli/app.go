@@ -28,6 +28,9 @@ func (a App) Run(ctx context.Context, args []string) error {
 	case "-h", "--help", "help":
 		a.usage()
 		return nil
+	case "-v", "--version", "version":
+		fmt.Fprintln(a.Stdout, version)
+		return nil
 	case "doctor":
 		return a.doctor(ctx, args[1:])
 	case "pool":
@@ -49,6 +52,7 @@ func (a App) usage() {
 	fmt.Fprintln(a.Stdout, `crabbox leases remote Hetzner boxes, syncs a worktree, runs commands, and cleans up.
 
 Usage:
+  crabbox --version
   crabbox doctor
   crabbox warmup [--profile openclaw-check] [--class beast] [--keep]
   crabbox run [--profile openclaw-check] [--class beast] [--ttl 90m] [--keep] -- <command...>

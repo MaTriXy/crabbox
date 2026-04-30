@@ -1,9 +1,22 @@
 package cli
 
 import (
+	"bytes"
+	"context"
 	"strings"
 	"testing"
 )
+
+func TestVersion(t *testing.T) {
+	var out bytes.Buffer
+	app := App{Stdout: &out, Stderr: &bytes.Buffer{}}
+	if err := app.Run(context.Background(), []string{"--version"}); err != nil {
+		t.Fatalf("Run(--version) error: %v", err)
+	}
+	if got := strings.TrimSpace(out.String()); got != version {
+		t.Fatalf("Run(--version)=%q want %q", got, version)
+	}
+}
 
 func TestRemoteCommandQuotesWorkdirEnvAndArgs(t *testing.T) {
 	got := remoteCommand("/work/crabbox/cbx_1/openclaw", map[string]string{"NODE_OPTIONS": "--max-old-space-size=8192"}, []string{"pnpm", "check:changed"})
