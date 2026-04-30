@@ -4,6 +4,55 @@ Crabbox is an open source remote testbox runner for OpenClaw maintainers. It giv
 
 The current implementation is a Go CLI plus a Cloudflare Worker/Durable Object coordinator. The CLI uses the coordinator for brokered Hetzner or AWS EC2 Spot leases, with direct provider calls kept as a debug fallback.
 
+## How It Works
+
+Crabbox has a small control plane and a simple data plane:
+
+```text
+developer laptop
+  crabbox CLI
+    |
+    | HTTPS JSON API, bearer auth
+    v
+Cloudflare Worker
+  Fleet Durable Object
+    |
+    | provider API
+    v
+Hetzner server or AWS EC2 Spot instance
+
+developer laptop
+  |
+  | rsync + SSH
+  v
+leased runner
+```
+
+The **CLI** is the user-facing tool. It loads config from `~/.config/crabbox/config.json` or the macOS user config path, reads the local SSH public key, asks the broker for a lease, waits for SSH, rsyncs the current checkout, runs the requested command, streams output, and releases the lease unless `--keep` is set.
+
+The **broker** is the Cloudflare Worker at `crabbox-coordinator.steipete.workers.dev`. It authenticates requests with `CRABBOX_SHARED_TOKEN`, routes all fleet operations through a single Durable Object, and owns cloud-provider credentials. Local machines do not need AWS or Hetzner API keys for the normal path.
+
+The **Fleet Durable Object** is the serialized scheduler and lease store. It creates lease IDs, records owner/profile/class/provider metadata, tracks expiry, and has an alarm that expires stale leases. Release and expiry both call the provider delete path for non-kept machines.
+
+The **provider layer** provisions capacity:
+
+- Hetzner: imports or reuses the SSH key, creates a server, applies Crabbox labels, and falls back across configured server types when quota or capacity rejects a request.
+- AWS: signs EC2 Query API calls inside the Worker, imports or reuses the SSH key pair, creates or reuses the `crabbox-runners` security group, launches one-time Spot instances, tags instances/volumes/Spot requests, and falls back across C7a instance sizes.
+
+The **runner** is just an Ubuntu machine bootstrapped by cloud-init. Bootstrap creates the `crabbox` user, enables SSH on port `2222`, installs Node 22, pnpm, Docker, Git, rsync, build tools, and prepares `/work/crabbox` plus shared package caches. It does not need broker credentials.
+
+The normal lifecycle is:
+
+1. `crabbox run --class standard -- <command>` loads local config.
+2. CLI sends `POST /v1/leases` with provider, class, TTL, SSH public key, and bootstrap options.
+3. Worker creates a Hetzner server or AWS Spot instance and stores the lease.
+4. CLI waits for `crabbox-ready` over SSH.
+5. CLI rsyncs the dirty local checkout into `/work/crabbox/<lease>/<repo>`.
+6. CLI runs the command over SSH and returns the remote exit code.
+7. CLI releases the lease; the broker terminates the machine unless it was kept.
+
+Direct provider mode still exists for debugging. If no broker is configured, `--provider aws` uses the local AWS SDK credential chain and `--provider hetzner` uses `HCLOUD_TOKEN` or `HETZNER_TOKEN`. The brokered path is the default operational model.
+
 ## Status
 
 Working today:
