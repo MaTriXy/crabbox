@@ -27,6 +27,9 @@ func (a App) doctor(ctx context.Context, args []string) error {
 
 	cfg := defaultConfig()
 	cfg.Provider = *provider
+	if os.Getenv("CRABBOX_SERVER_TYPE") == "" {
+		cfg.ServerType = serverTypeForProviderClass(cfg.Provider, cfg.Class)
+	}
 	if coord, ok, err := newCoordinatorClient(cfg); err != nil {
 		fmt.Fprintf(a.Stdout, "failed  coord    %v\n", err)
 		ok = false
