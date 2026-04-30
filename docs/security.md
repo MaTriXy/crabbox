@@ -17,14 +17,14 @@ Cloudflare Access protects the coordinator.
 
 MVP:
 
-- One-time PIN Access is acceptable for early testing.
+- One-time PIN Access remains available for early fallback.
+- GitHub Access IdP is configured for the `openclaw` org.
 - Coordinator validates `Cf-Access-Jwt-Assertion`.
 - Coordinator maps Access identity to lease owner.
 
 Target:
 
-- GitHub IdP.
-- Require membership in GitHub org `openclaw`.
+- Keep GitHub org membership as the normal access path.
 - Optional team allowlist for admin commands.
 
 ## Authorization
@@ -69,8 +69,17 @@ MVP SSH posture:
 - Dedicated `crabbox` user.
 - No password login.
 - No root login.
+- SSH listens on port 2222 in the verified direct-CLI path because port 22 was not reachable during Hetzner testing.
 - Work happens under `/work/crabbox`.
 - Machines are disposable or cleanable.
+
+MVP hardening before first shared use:
+
+- Generate or register an SSH key per lease when possible.
+- Keep long-lived maintainer keys out of machine images.
+- Restrict Hetzner firewalls to known callers when practical.
+- Redact command diagnostics before printing.
+- Treat profiles that forward secrets as higher risk; prefer ephemeral machines for those profiles.
 
 Later hardening:
 
@@ -91,6 +100,8 @@ Required:
 - Durable Object alarm cleanup.
 - Provider label sweep for orphan machines.
 - Boot-time cleanup of stale `/work/crabbox/*` dirs.
+
+Direct-CLI cleanup currently uses Hetzner labels and local lease metadata. Shared coordinator cleanup remains required before this is exposed beyond trusted local maintainers.
 
 Release must be idempotent. Delete must tolerate already-deleted provider resources.
 
@@ -130,4 +141,3 @@ provider.error
 ```
 
 The audit trail is for debugging and cleanup, not compliance.
-

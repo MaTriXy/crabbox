@@ -30,8 +30,11 @@ Known setup:
 
 - Access org: `openclaw-crabbox.cloudflareaccess.com`.
 - Access enabled.
-- Current IdP: one-time PIN.
-- Desired IdP: GitHub restricted to org `openclaw`.
+- Current IdPs: one-time PIN and GitHub.
+- GitHub IdP name: `GitHub OpenClaw`.
+- GitHub IdP restriction: org `openclaw`.
+- Fallback Access app: `Crabbox Coordinator` on `crabbox.clawd.bot`.
+- Fallback Access policy readback verifies the GitHub org include rule for `openclaw`.
 
 Required env:
 
@@ -48,6 +51,8 @@ CRABBOX_GITHUB_ALLOWED_ORG
 GitHub IdP needs a GitHub OAuth app:
 
 ```text
+GitHub org: openclaw
+App name: Crabbox Access
 Homepage URL: https://crabbox.openclaw.ai
 Callback URL: https://openclaw-crabbox.cloudflareaccess.com/cdn-cgi/access/callback
 ```
@@ -58,6 +63,17 @@ Store resulting values outside the repo:
 CRABBOX_GITHUB_OAUTH_CLIENT_ID
 CRABBOX_GITHUB_OAUTH_CLIENT_SECRET
 ```
+
+Current local status:
+
+- Core Cloudflare, Hetzner, and GitHub tokens are present in local `~/.profile`.
+- The Crabbox Cloudflare token is mirrored to MacBook Pro `~/.profile`.
+- GitHub OAuth client ID and secret are present in local and MacBook Pro `~/.profile`.
+- Cloudflare Access GitHub IdP is created.
+- Cloudflare Access fallback app is created for `crabbox.clawd.bot`.
+- `CRABBOX_COORDINATOR`, `CRABBOX_PROFILE`, `CRABBOX_CONFIG`, `CRABBOX_FLEET_CONFIG`, `CRABBOX_SSH_KEY`, `CRABBOX_NO_COLOR`, and `CRABBOX_LOG` are optional CLI defaults and are not required to build the MVP.
+
+The Cloudflare token `crabbox-deploy` is scoped to `Steipete@gmail.com's Account` and the `clawd.bot` zone. It verifies access to Workers scripts, Access applications, Access identity providers, Access keys, DNS records, and zone Worker routes from both the local machine and MacBook Pro.
 
 ## DNS Decision
 
@@ -92,9 +108,10 @@ MVP defaults:
 ```yaml
 provider: hetzner-main
 location: fsn1
-serverType: ccx33
+serverType: ccx63
 image: ubuntu-24.04
 sshUser: crabbox
+sshPort: 2222
 workdir: /work/crabbox
 ```
 
@@ -109,6 +126,15 @@ owner=<github-login-or-email>
 ttl=<timestamp>
 ```
 
+Current direct-CLI status:
+
+- `crabbox warmup --profile openclaw-check --class beast --keep` provisions through the Hetzner API without requiring `hcloud`.
+- The `beast` class tries `ccx63`, `ccx53`, `ccx43`, `cpx62`, then `cx53`.
+- Dedicated-core types currently fail on the available account quota, so the verified runner used `cpx62`.
+- Cloud-init installs Node 22, pnpm via corepack, Docker, Git, rsync, and a readiness probe.
+- SSH listens on port 2222 because port 22 was not reachable in verification.
+- The verified kept lease was `cbx_f782c469c9ce` on server `128694755`, `cpx62`, `188.245.91.84`.
+
 ## Machine Classes
 
 Fleet config should define machine classes instead of hardcoding Hetzner types:
@@ -117,19 +143,24 @@ Fleet config should define machine classes instead of hardcoding Hetzner types:
 classes:
   standard:
     provider: hetzner-main
-    serverType: ccx23
-    cpu: 4
-    memory: 8gb
-  fast:
-    provider: hetzner-main
-    serverType: ccx33
+    serverTypes: [ccx33, cpx62, cx53]
     cpu: 8
     memory: 32gb
-  large:
+  fast:
     provider: hetzner-main
-    serverType: ccx43
+    serverTypes: [ccx43, cpx62, cx53]
     cpu: 16
     memory: 64gb
+  large:
+    provider: hetzner-main
+    serverTypes: [ccx53, ccx43, cpx62, cx53]
+    cpu: 32
+    memory: 128gb
+  beast:
+    provider: hetzner-main
+    serverTypes: [ccx63, ccx53, ccx43, cpx62, cx53]
+    cpu: 48
+    memory: 192gb
 ```
 
 Profiles choose a default class, and commands can override with `--class`.
@@ -188,10 +219,27 @@ Deployment should:
 2. Create/update Durable Object bindings.
 3. Set Worker secrets.
 4. Deploy Worker.
-5. Configure route/custom domain.
-6. Verify `/v1/health`.
+5. Verify `/v1/health` on `workers.dev`.
+6. Configure route/custom domain on `crabbox.clawd.bot`.
+7. Verify `/v1/health` on the fallback domain.
 
-## Local And Mac Studio
+Use `npx wrangler` from the Worker package unless `wrangler` is installed globally. Do not assume `hcloud` is installed; the implementation can use the Hetzner API directly from Go.
 
-The same required env should exist on both the local machine and Mac Studio. Do not commit these values.
+## Verified OpenClaw Run
 
+Warm-run command from `/Users/steipete/Projects/openclaw`:
+
+```sh
+CI=1 /usr/bin/time -p /Users/steipete/Projects/crabbox/bin/crabbox run --id cbx_f782c469c9ce -- pnpm test:changed:max
+```
+
+Result:
+
+- 61 Vitest shards completed successfully.
+- End-to-end wall time: 93.17 seconds.
+- Runner class: requested `beast`, actual fallback `cpx62`.
+- Sync path: rsync overlay plus remote Git hydrate for shallow checkout merge-base support.
+
+## Local, MacBook Pro, And Mac Studio
+
+The same required env should exist on the local machine, MacBook Pro, and Mac Studio. Do not commit these values.

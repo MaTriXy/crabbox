@@ -14,10 +14,18 @@ The MVP should optimize for a useful maintainer workflow, not generalized cloud 
 
 ## Product Shape
 
-Primary command:
+Primary one-shot command:
 
 ```sh
 crabbox run --profile openclaw-check -- pnpm check:changed
+```
+
+Primary agent loop:
+
+```sh
+crabbox warmup --profile openclaw-check
+crabbox run --id cbx_123 -- pnpm check:changed
+crabbox stop cbx_123
 ```
 
 Expected user experience:
@@ -28,8 +36,22 @@ Expected user experience:
 - Local env allowlist only.
 - Shared pool for trusted maintainers.
 - Warm machines for fast repeated checks.
+- `warmup` is first-class, because the Blacksmith Testbox value comes from hydrating a box before the agent needs test feedback.
+- One-shot `run --profile ...` is convenience sugar over acquire, sync, run, and release.
 - TTL cleanup for abandoned leases.
 - Explicit `stop`/`release` for manual cleanup.
+
+## Product Boundary
+
+Crabbox MVP is an OpenClaw-specific replacement for the useful local-agent loop of Blacksmith Testboxes, not a drop-in replacement for all Blacksmith runner behavior.
+
+Blacksmith Testboxes run commands inside a real GitHub Actions job, including GitHub Actions secrets, OIDC tokens, service containers, and their runner image. Crabbox MVP instead runs commands over SSH on owned Hetzner capacity. This is acceptable for trusted OpenClaw maintainers, but it means the MVP must be explicit about:
+
+- secrets being forwarded from local env only by allowlist;
+- no GitHub Actions OIDC or repository secret access in MVP;
+- no untrusted multi-tenant execution;
+- weaker isolation until per-lease users or disposable machines are implemented;
+- caching being local warm-machine state rather than Blacksmith colocated cache or sticky disks.
 
 ## Repositories
 
@@ -75,6 +97,7 @@ Build in this order:
    - MVP transport: public SSH to Hetzner, key-only, locked-down `crabbox` user.
    - CLI receives machine address and SSH username from the coordinator.
    - CLI owns rsync, command execution, streaming output, and exit code propagation.
+   - Prefer per-lease generated SSH keys over a long-lived shared maintainer key.
    - Later transport: Cloudflare Tunnel/Access SSH or SSH CA.
 
 6. Sync
@@ -82,6 +105,8 @@ Build in this order:
    - Preserve local dirty tree, including uncommitted changes.
    - Exclude heavy local folders by profile: `node_modules`, `.turbo`, `.git/lfs`, caches.
    - Sync to `/work/crabbox/<lease-id>/<repo-name>`.
+   - Remote workdir must remain a valid Git checkout when commands depend on changed-file detection.
+   - Preferred sync model: warm-clone/fetch the repo at the requested base ref, then rsync the local working tree overlay with deletes.
    - Record sync metadata for debugging.
 
 7. Hetzner backend
@@ -97,13 +122,15 @@ Build in this order:
    - Default TTL: 90 minutes.
    - Default machine class configurable, likely `ccx33` first.
    - Env allowlist: `OPENCLAW_*`, `NODE_OPTIONS`, common model/provider keys only when explicitly configured locally.
+   - Persistent warm-machine caches for pnpm and Docker are allowed, but must be separated from synced source state and documented as best-effort speedups.
 
 9. Access/auth
    - Primary org: GitHub `openclaw`.
    - Cloudflare Access org: `openclaw-crabbox.cloudflareaccess.com`.
-   - MVP can use Cloudflare OTP Access first.
-   - GitHub IdP comes next with OAuth app callback:
-     `https://openclaw-crabbox.cloudflareaccess.com/cdn-cgi/access/callback`.
+   - Cloudflare OTP remains available for early fallback.
+   - GitHub OAuth app exists under the `openclaw` org as `Crabbox Access`.
+   - GitHub IdP exists in Cloudflare Access as `GitHub OpenClaw`.
+   - Fallback Access app exists for `crabbox.clawd.bot`.
 
 10. Usability pass
     - `crabbox doctor`.
@@ -143,25 +170,36 @@ And proves:
 
 ## Known Current Infra Facts
 
+- Direct CLI execution is implemented and verified. It can create/reuse a Hetzner server, bootstrap it, sync a local checkout with rsync, hydrate shallow Git history enough for changed-test detection, run commands over SSH, stream output, and release/delete leases.
+- The Cloudflare coordinator and Durable Object lease store remain the intended shared-control-plane path, but are not on the verified execution path yet.
 - Intended primary domain: `crabbox.openclaw.ai`.
 - Current Cloudflare-manageable fallback domain: `crabbox.clawd.bot`.
 - `openclaw.ai` is currently not visible as a Cloudflare zone in the available account; DNS is on Namecheap nameservers.
-- Cloudflare account ID and Crabbox Cloudflare token are available in local and Mac Studio `~/.profile`.
+- Cloudflare account ID and Crabbox Cloudflare token are available in local and MacBook Pro `~/.profile`.
+- The current Crabbox Cloudflare token is `crabbox-deploy`, scoped to `Steipete@gmail.com's Account` and the `clawd.bot` zone.
+- The current Crabbox Cloudflare token verifies Workers scripts, Access apps, Access IdPs, Access keys, DNS records, and zone Worker routes.
 - Cloudflare Access is enabled.
-- Current Access IdP is OTP only.
+- Current Access IdPs are OTP and GitHub.
+- GitHub OAuth app `Crabbox Access` exists under the `openclaw` org.
+- GitHub OAuth client ID and secret are present in local and MacBook Pro `~/.profile`.
+- Cloudflare Access GitHub IdP `GitHub OpenClaw` exists.
+- Cloudflare Access app `Crabbox Coordinator` exists for `crabbox.clawd.bot`.
 - Hetzner token is available in local and Mac Studio `~/.profile`.
+- The Hetzner account currently hits a dedicated-core quota/resource limit for `ccx63`, `ccx53`, and `ccx43`. The `beast` class falls back to `cpx62` until quota is raised.
+- Public SSH on port 22 was not usable from the tested network path; cloud-init opens SSH on port 2222 and the CLI uses that by default.
+- OpenClaw verification on the fallback `cpx62` runner passed `CI=1 pnpm test:changed:max`, completing 61 Vitest shards in 93.17 seconds end-to-end for a warm run, including rsync scan and remote Git hydration.
 - GitHub org slug is `openclaw`.
+- `wrangler` and `hcloud` are not assumed to be globally installed; use `npx wrangler` and direct Hetzner API or document install steps.
 
 ## Next Implementation Milestones
 
-1. Add Go module and CLI skeleton.
-2. Add config schema and parser.
-3. Add Worker API skeleton with local tests.
-4. Add Durable Object lease store.
-5. Add Hetzner provider implementation.
-6. Add SSH/rsync runner.
-7. Wire `crabbox run`.
-8. Deploy Worker to Cloudflare fallback domain.
-9. Provision first warm Hetzner machine.
-10. Run OpenClaw `pnpm check:changed` through Crabbox.
-
+1. Raise Hetzner dedicated-core quota so `beast` can use `ccx63` instead of falling back to `cpx62`.
+2. Add Cloudflare Worker API skeleton with local tests.
+3. Add Durable Object lease store.
+4. Move direct Hetzner lease lifecycle behind the coordinator for shared pool use.
+5. Bind the Worker behind the existing Cloudflare Access fallback app.
+6. Configure the fallback route/custom domain on `crabbox.clawd.bot`.
+7. Add `crabbox login` and Access token handling.
+8. Add one-shot `run --profile` cleanup semantics for ephemeral servers.
+9. Add heartbeat support for long-running commands.
+10. Re-run OpenClaw `pnpm test:changed:max` on `ccx63` and compare against Blacksmith Testboxes.
