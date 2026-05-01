@@ -2,13 +2,25 @@
 
 ## 0.3.0 - Unreleased
 
+Crabbox 0.3.0 adds the first trusted-operator image lifecycle for AWS runners: operators can bake a known-good lease into an AMI, wait for it to become available, and promote it as the default image for future brokered AWS leases.
+
 ### Added
 
-- Added trusted-operator `crabbox image create` and `crabbox image promote` commands for baking AWS leases into AMIs and promoting a broker default image.
+- Added `crabbox image create --id <cbx_id> --name <ami-name> [--wait]` for trusted operators to create AWS AMIs from active brokered AWS leases.
+- Added `crabbox image promote <ami-id>` for trusted operators to promote an available AMI as the coordinator default for future brokered AWS leases.
+- Added JSON output and wait polling for image creation, including `--wait-timeout` and `--no-reboot` controls.
+- Added coordinator image routes for admin-token callers: `POST /v1/images`, `GET /v1/images/{ami-id}`, and `POST /v1/images/{ami-id}/promote`.
+- Added AWS provider support for `CreateImage` and `DescribeImages`, with Crabbox-owned AMI tags.
+- Added `docs/commands/image.md` and linked the image command from the CLI docs, command index, docs site, and source map.
+
+### Changed
+
+- Brokered AWS lease creation now uses the promoted AWS image when no explicit `awsAMI` or `CRABBOX_AWS_AMI` override is supplied.
+- Image route validation now rejects noncanonical lease IDs, invalid AMI IDs, invalid AMI names, non-AWS leases, and promotion attempts before an image reaches `available`.
 
 ### Fixed
 
-- Added responsive padding to the generated docs-site frontpage body content.
+- Fixed responsive padding on the generated docs-site frontpage body content.
 
 ## 0.2.0 - 2026-05-01
 
