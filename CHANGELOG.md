@@ -1,6 +1,8 @@
 # Changelog
 
-## 0.2.0 - Unreleased
+## 0.2.0 - 2026-05-01
+
+Crabbox 0.2.0 hardens the brokered runner path after real AWS and Blacksmith Testbox use: browser login is safer, AWS SSH ingress is no longer world-open by default, SSH readiness waits for the Crabbox bootstrap marker, and fallback SSH ports are configurable instead of being hidden port-22 magic.
 
 ### Added
 
