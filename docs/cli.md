@@ -153,35 +153,34 @@ If the remote command exits with a code, `crabbox run` returns that code unless 
 
 ## Config Files
 
-The implemented config format is JSON. The default path is:
+The implemented config format is YAML. The default path is:
 
 ```text
-macOS: ~/.config/crabbox/config.json through XDG, or ~/Library/Application Support/crabbox/config.json
-Linux: ~/.config/crabbox/config.json
-repo:  crabbox.json or .crabbox.json
+macOS: ~/.config/crabbox/config.yaml through XDG, or ~/Library/Application Support/crabbox/config.yaml
+Linux: ~/.config/crabbox/config.yaml
+repo:  crabbox.yaml or .crabbox.yaml
 ```
 
 User config:
 
-```json
-{
-  "broker": {
-    "url": "https://crabbox-coordinator.steipete.workers.dev",
-    "provider": "aws",
-    "token": "..."
-  },
-  "profile": "project-check",
-  "class": "beast",
-  "aws": {
-    "region": "eu-west-1",
-    "rootGB": 400
-  },
-  "ssh": {
-    "key": "~/.ssh/id_ed25519",
-    "user": "crabbox",
-    "port": "2222"
-  }
-}
+```yaml
+broker:
+  url: https://crabbox-coordinator.steipete.workers.dev
+  provider: aws
+  token: ...
+profile: project-check
+class: beast
+capacity:
+  market: spot
+  strategy: most-available
+  fallback: on-demand-after-120s
+aws:
+  region: eu-west-1
+  rootGB: 400
+ssh:
+  key: ~/.ssh/id_ed25519
+  user: crabbox
+  port: "2222"
 ```
 
 Set broker auth without putting the token in shell history:
@@ -193,24 +192,28 @@ printf '%s' "$TOKEN" | crabbox config set-broker \
   --token-stdin
 ```
 
-Repo-local config is JSON and should hold project-specific choices:
+Repo-local config is YAML and should hold project-specific choices:
 
-```json
-{
-  "profile": "project-check",
-  "class": "beast",
-  "sync": {
-    "delete": true,
-    "checksum": false,
-    "gitSeed": true,
-    "fingerprint": true,
-    "baseRef": "main",
-    "exclude": ["node_modules", ".turbo", "dist"]
-  },
-  "env": {
-    "allow": ["CI", "NODE_OPTIONS", "PROJECT_*"]
-  }
-}
+```yaml
+profile: project-check
+class: beast
+actions:
+  workflow: .github/workflows/crabbox.yml
+sync:
+  delete: true
+  checksum: false
+  gitSeed: true
+  fingerprint: true
+  baseRef: main
+  exclude:
+    - node_modules
+    - .turbo
+    - dist
+env:
+  allow:
+    - CI
+    - NODE_OPTIONS
+    - PROJECT_*
 ```
 
 ## Environment Variables

@@ -12,7 +12,7 @@ func (a App) initProject(_ context.Context, args []string) error {
 	force := fs.Bool("force", false, "overwrite generated files")
 	workflow := fs.String("workflow", ".github/workflows/crabbox.yml", "workflow path")
 	skill := fs.String("skill", ".agents/skills/crabbox/SKILL.md", "agent skill path")
-	config := fs.String("config", ".crabbox.json", "repo config path")
+	config := fs.String("config", ".crabbox.yaml", "repo config path")
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
@@ -48,32 +48,31 @@ func writeInitFile(path, content string, force bool) error {
 }
 
 func projectConfigTemplate(repoName string) string {
-	return fmt.Sprintf(`{
-  "profile": "%s-check",
-  "class": "beast",
-  "sync": {
-    "delete": true,
-    "checksum": false,
-    "gitSeed": true,
-    "fingerprint": true,
-    "exclude": [
-      ".cache",
-      ".turbo",
-      "dist",
-      "node_modules"
-    ]
-  },
-  "env": {
-    "allow": [
-      "CI",
-      "NODE_OPTIONS"
-    ]
-  },
-  "ssh": {
-    "user": "crabbox",
-    "port": "2222"
-  }
-}
+	return fmt.Sprintf(`profile: %s-check
+class: beast
+capacity:
+  market: spot
+  strategy: most-available
+  fallback: on-demand-after-120s
+actions:
+  workflow: .github/workflows/crabbox.yml
+sync:
+  delete: true
+  checksum: false
+  gitSeed: true
+  fingerprint: true
+  exclude:
+    - .cache
+    - .turbo
+    - dist
+    - node_modules
+env:
+  allow:
+    - CI
+    - NODE_OPTIONS
+ssh:
+  user: crabbox
+  port: "2222"
 `, repoName)
 }
 

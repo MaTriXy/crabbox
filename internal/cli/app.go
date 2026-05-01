@@ -131,6 +131,8 @@ Environment:
   CRABBOX_ORG                  Usage org override
   CRABBOX_CONFIG               Optional config path
   CRABBOX_AWS_REGION           Default eu-west-1
+  CRABBOX_CAPACITY_MARKET      spot or on-demand
+  CRABBOX_CAPACITY_REGIONS     Comma-separated AWS Spot placement candidates
   HCLOUD_TOKEN/HETZNER_TOKEN   Direct Hetzner mode
 
 Aliases:

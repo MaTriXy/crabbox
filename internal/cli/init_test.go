@@ -27,7 +27,7 @@ func TestInitProjectWritesExpectedFiles(t *testing.T) {
 		t.Fatalf("init error: %v", err)
 	}
 	for _, path := range []string{
-		".crabbox.json",
+		".crabbox.yaml",
 		".github/workflows/crabbox.yml",
 		".agents/skills/crabbox/SKILL.md",
 	} {

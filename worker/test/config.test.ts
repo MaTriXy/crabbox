@@ -28,7 +28,13 @@ describe("machine class config", () => {
     expect(serverTypeForProviderClass("aws", "beast")).toBe("c7a.48xlarge");
     expect(awsInstanceTypeCandidatesForClass("beast")).toEqual([
       "c7a.48xlarge",
+      "c7i.48xlarge",
+      "m7a.48xlarge",
+      "m7i.48xlarge",
+      "r7a.48xlarge",
       "c7a.32xlarge",
+      "c7i.32xlarge",
+      "m7a.32xlarge",
       "c7a.24xlarge",
       "c7a.16xlarge",
     ]);
@@ -45,6 +51,8 @@ describe("lease config", () => {
     expect(config.provider).toBe("hetzner");
     expect(config.profile).toBe("default");
     expect(config.sshPort).toBe("2222");
+    expect(config.capacityMarket).toBe("spot");
+    expect(config.capacityStrategy).toBe("most-available");
     expect(config.ttlSeconds).toBe(86_400);
   });
 

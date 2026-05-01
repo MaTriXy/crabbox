@@ -96,6 +96,6 @@ Usage reports include lease count, active lease count, elapsed runtime, estimate
 
 ## Blacksmith Parity Boundary
 
-Blacksmith Testboxes run inside a real GitHub Actions job with Actions secrets, OIDC, and service containers. Crabbox currently runs commands over SSH on owned cloud capacity. That is useful for maintainer verification and agent loops, but it is not full Actions parity.
+Blacksmith Testboxes run inside a real GitHub Actions job with Actions secrets, OIDC, and service containers. Crabbox should use the same boundary for Actions-backed lanes: dispatch or host a real GitHub Actions job and attach to the hydrated runner, not parse workflow YAML into a local pseudo-runner.
 
-The current bridge is `crabbox init`: generate repo-local workflow and agent instructions so warmup can hydrate the same dependencies the real CI uses. A future backend can register ephemeral self-hosted runners or dispatch Actions-backed testboxes for full secrets/OIDC parity.
+The current bridge is `crabbox init`: generate repo-local workflow and agent instructions so warmup can hydrate the same dependencies the real CI uses. The Actions-backed backend should register ephemeral self-hosted runners or dispatch a configured workflow for full secrets/OIDC parity.

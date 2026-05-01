@@ -17,19 +17,26 @@ show [--json]
 set-broker --url <url> --token-stdin [--provider hetzner|aws]
 ```
 
-User config lives under the OS user config directory. Repo-local `crabbox.json` or `.crabbox.json` can override user defaults for a checkout. Keep project-specific sync and env policy in repo config, not in the Crabbox binary:
+User config lives under the OS user config directory. Repo-local `crabbox.yaml` or `.crabbox.yaml` can override user defaults for a checkout. Keep project-specific sync, env, capacity, and Actions policy in repo config, not in the Crabbox binary:
 
-```json
-{
-  "profile": "project-check",
-  "sync": {
-    "checksum": false,
-    "gitSeed": true,
-    "fingerprint": true,
-    "exclude": ["node_modules", "dist"]
-  },
-  "env": {
-    "allow": ["CI", "NODE_OPTIONS", "PROJECT_*"]
-  }
-}
+```yaml
+profile: project-check
+capacity:
+  market: spot
+  strategy: most-available
+  fallback: on-demand-after-120s
+actions:
+  workflow: .github/workflows/crabbox.yml
+sync:
+  checksum: false
+  gitSeed: true
+  fingerprint: true
+  exclude:
+    - node_modules
+    - dist
+env:
+  allow:
+    - CI
+    - NODE_OPTIONS
+    - PROJECT_*
 ```

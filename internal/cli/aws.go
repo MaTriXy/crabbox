@@ -32,6 +32,46 @@ func newAWSClient(ctx context.Context, cfg Config) (*AWSClient, error) {
 	return &AWSClient{ec2: ec2.NewFromConfig(awsCfg)}, nil
 }
 
+func (c *AWSClient) SpotPlacementScores(ctx context.Context, cfg Config) ([]types.SpotPlacementScore, error) {
+	regions := cfg.Capacity.Regions
+	if len(regions) == 0 && cfg.AWSRegion != "" {
+		regions = []string{cfg.AWSRegion}
+	}
+	if len(regions) == 0 {
+		return nil, nil
+	}
+	candidates := awsInstanceTypeCandidatesForClass(cfg.Class)
+	if cfg.ServerType != "" {
+		candidates = appendUniqueStrings([]string{cfg.ServerType}, candidates...)
+	}
+	target := int32(1)
+	out, err := c.ec2.GetSpotPlacementScores(ctx, &ec2.GetSpotPlacementScoresInput{
+		InstanceTypes:          candidates,
+		RegionNames:            regions,
+		TargetCapacity:         aws.Int32(target),
+		TargetCapacityUnitType: types.TargetCapacityUnitTypeUnits,
+	})
+	if err != nil {
+		return nil, err
+	}
+	scores := append([]types.SpotPlacementScore(nil), out.SpotPlacementScores...)
+	sort.Slice(scores, func(i, j int) bool {
+		left := int32(0)
+		right := int32(0)
+		if scores[i].Score != nil {
+			left = *scores[i].Score
+		}
+		if scores[j].Score != nil {
+			right = *scores[j].Score
+		}
+		if left == right {
+			return aws.ToString(scores[i].Region) < aws.ToString(scores[j].Region)
+		}
+		return left > right
+	})
+	return scores, nil
+}
+
 func (c *AWSClient) ListCrabboxServers(ctx context.Context) ([]Server, error) {
 	out, err := c.ec2.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
 		Filters: []types.Filter{
@@ -101,14 +141,15 @@ func (c *AWSClient) CreateServerWithFallback(ctx context.Context, cfg Config, pu
 	if cfg.ServerType != "" && cfg.ServerType != candidates[0] {
 		candidates = append([]string{cfg.ServerType}, candidates...)
 	}
+	useSpot := cfg.Capacity.Market != "on-demand"
 	var errs []error
 	for i, instanceType := range candidates {
 		next := cfg
 		next.ServerType = instanceType
 		if i > 0 && logf != nil {
-			logf("fallback provisioning type=%s after spot capacity/quota rejection\n", instanceType)
+			logf("fallback provisioning type=%s after capacity/quota rejection\n", instanceType)
 		}
-		server, err := c.createServer(ctx, next, publicKey, leaseID, keep, imageID, securityGroupID)
+		server, err := c.createServer(ctx, next, publicKey, leaseID, keep, imageID, securityGroupID, useSpot)
 		if err == nil {
 			return server, next, nil
 		}
@@ -117,10 +158,27 @@ func (c *AWSClient) CreateServerWithFallback(ctx context.Context, cfg Config, pu
 			return Server{}, next, joinErrors(errs)
 		}
 	}
+	if useSpot && strings.HasPrefix(cfg.Capacity.Fallback, "on-demand") {
+		for _, instanceType := range candidates {
+			next := cfg
+			next.ServerType = instanceType
+			if logf != nil {
+				logf("fallback provisioning type=%s market=on-demand after spot rejection\n", instanceType)
+			}
+			server, err := c.createServer(ctx, next, publicKey, leaseID, keep, imageID, securityGroupID, false)
+			if err == nil {
+				return server, next, nil
+			}
+			errs = append(errs, fmt.Errorf("on-demand %s: %w", instanceType, err))
+			if !isRetryableAWSProvisioningError(err) {
+				return Server{}, next, joinErrors(errs)
+			}
+		}
+	}
 	return Server{}, cfg, joinErrors(errs)
 }
 
-func (c *AWSClient) createServer(ctx context.Context, cfg Config, publicKey, leaseID string, keep bool, imageID, securityGroupID string) (Server, error) {
+func (c *AWSClient) createServer(ctx context.Context, cfg Config, publicKey, leaseID string, keep bool, imageID, securityGroupID string, spot bool) (Server, error) {
 	_ = publicKey
 	name := strings.ReplaceAll("crabbox-"+leaseID, "_", "-")
 	now := time.Now().UTC()
@@ -134,6 +192,7 @@ func (c *AWSClient) createServer(ctx context.Context, cfg Config, publicKey, lea
 		"provider_key": cfg.ProviderKey,
 		"provider":     "aws",
 		"server_type":  cfg.ServerType,
+		"market":       mapMarket(spot),
 		"state":        "leased",
 		"created_at":   now.Format(time.RFC3339),
 		"expires_at":   now.Add(cfg.TTL).Format(time.RFC3339),
@@ -157,15 +216,8 @@ func (c *AWSClient) createServer(ctx context.Context, cfg Config, publicKey, lea
 				},
 			},
 		},
-		ClientToken: aws.String(leaseID),
-		ImageId:     aws.String(imageID),
-		InstanceMarketOptions: &types.InstanceMarketOptionsRequest{
-			MarketType: types.MarketTypeSpot,
-			SpotOptions: &types.SpotMarketOptions{
-				InstanceInterruptionBehavior: types.InstanceInterruptionBehaviorTerminate,
-				SpotInstanceType:             types.SpotInstanceTypeOneTime,
-			},
-		},
+		ClientToken:      aws.String(leaseID),
+		ImageId:          aws.String(imageID),
 		InstanceType:     types.InstanceType(cfg.ServerType),
 		KeyName:          aws.String(cfg.ProviderKey),
 		MaxCount:         aws.Int32(one),
@@ -177,6 +229,15 @@ func (c *AWSClient) createServer(ctx context.Context, cfg Config, publicKey, lea
 			{ResourceType: types.ResourceTypeSpotInstancesRequest, Tags: awsTagsWithName(labels, name)},
 		},
 		UserData: aws.String(userData),
+	}
+	if spot {
+		input.InstanceMarketOptions = &types.InstanceMarketOptionsRequest{
+			MarketType: types.MarketTypeSpot,
+			SpotOptions: &types.SpotMarketOptions{
+				InstanceInterruptionBehavior: types.InstanceInterruptionBehaviorTerminate,
+				SpotInstanceType:             types.SpotInstanceTypeOneTime,
+			},
+		}
 	}
 	if cfg.AWSProfile != "" {
 		input.IamInstanceProfile = &types.IamInstanceProfileSpecification{Name: aws.String(cfg.AWSProfile)}
@@ -201,6 +262,13 @@ func (c *AWSClient) createServer(ctx context.Context, cfg Config, publicKey, lea
 		return Server{}, exit(5, "aws returned no instances")
 	}
 	return awsInstanceToServer(out.Instances[0]), nil
+}
+
+func mapMarket(spot bool) string {
+	if spot {
+		return "spot"
+	}
+	return "on-demand"
 }
 
 func (c *AWSClient) waitForServerIP(ctx context.Context, id string) (Server, error) {
@@ -387,6 +455,10 @@ func awsInstanceToServer(instance types.Instance) Server {
 	server.PublicNet.IPv4.IP = aws.ToString(instance.PublicIpAddress)
 	server.ServerType.Name = string(instance.InstanceType)
 	return server
+}
+
+func awsString(value *string) string {
+	return aws.ToString(value)
 }
 
 func awsTags(labels map[string]string) []types.Tag {

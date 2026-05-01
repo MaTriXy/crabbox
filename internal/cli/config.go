@@ -1,13 +1,14 @@
 package cli
 
 import (
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
@@ -33,6 +34,8 @@ type Config struct {
 	TTL         time.Duration
 	Sync        SyncConfig
 	EnvAllow    []string
+	Capacity    CapacityConfig
+	Actions     ActionsConfig
 }
 
 type SyncConfig struct {
@@ -42,6 +45,20 @@ type SyncConfig struct {
 	GitSeed     bool
 	Fingerprint bool
 	BaseRef     string
+}
+
+type CapacityConfig struct {
+	Market            string
+	Strategy          string
+	Fallback          string
+	Regions           []string
+	AvailabilityZones []string
+}
+
+type ActionsConfig struct {
+	Workflow string
+	Job      string
+	Ref      string
 }
 
 func defaultConfig() Config {
@@ -97,64 +114,85 @@ func baseConfig() Config {
 			Fingerprint: true,
 		},
 		EnvAllow: []string{"CI", "NODE_OPTIONS"},
+		Capacity: CapacityConfig{
+			Market:   "spot",
+			Strategy: "most-available",
+			Fallback: "on-demand-after-120s",
+		},
 	}
 }
 
 type fileConfig struct {
-	Profile          string             `json:"profile,omitempty"`
-	Provider         string             `json:"provider,omitempty"`
-	Class            string             `json:"class,omitempty"`
-	ServerType       string             `json:"serverType,omitempty"`
-	Coordinator      string             `json:"coordinator,omitempty"`
-	CoordinatorToken string             `json:"coordinatorToken,omitempty"`
-	Broker           *fileBrokerConfig  `json:"broker,omitempty"`
-	Hetzner          *fileHetznerConfig `json:"hetzner,omitempty"`
-	AWS              *fileAWSConfig     `json:"aws,omitempty"`
-	SSH              *fileSSHConfig     `json:"ssh,omitempty"`
-	Sync             *fileSyncConfig    `json:"sync,omitempty"`
-	Env              *fileEnvConfig     `json:"env,omitempty"`
-	WorkRoot         string             `json:"workRoot,omitempty"`
+	Profile          string              `yaml:"profile,omitempty"`
+	Provider         string              `yaml:"provider,omitempty"`
+	Class            string              `yaml:"class,omitempty"`
+	ServerType       string              `yaml:"serverType,omitempty"`
+	Coordinator      string              `yaml:"coordinator,omitempty"`
+	CoordinatorToken string              `yaml:"coordinatorToken,omitempty"`
+	Broker           *fileBrokerConfig   `yaml:"broker,omitempty"`
+	Hetzner          *fileHetznerConfig  `yaml:"hetzner,omitempty"`
+	AWS              *fileAWSConfig      `yaml:"aws,omitempty"`
+	SSH              *fileSSHConfig      `yaml:"ssh,omitempty"`
+	Sync             *fileSyncConfig     `yaml:"sync,omitempty"`
+	Env              *fileEnvConfig      `yaml:"env,omitempty"`
+	Capacity         *fileCapacityConfig `yaml:"capacity,omitempty"`
+	Actions          *fileActionsConfig  `yaml:"actions,omitempty"`
+	WorkRoot         string              `yaml:"workRoot,omitempty"`
 }
 
 type fileBrokerConfig struct {
-	URL      string `json:"url,omitempty"`
-	Token    string `json:"token,omitempty"`
-	Provider string `json:"provider,omitempty"`
+	URL      string `yaml:"url,omitempty"`
+	Token    string `yaml:"token,omitempty"`
+	Provider string `yaml:"provider,omitempty"`
 }
 
 type fileHetznerConfig struct {
-	Location string `json:"location,omitempty"`
-	Image    string `json:"image,omitempty"`
-	SSHKey   string `json:"sshKey,omitempty"`
+	Location string `yaml:"location,omitempty"`
+	Image    string `yaml:"image,omitempty"`
+	SSHKey   string `yaml:"sshKey,omitempty"`
 }
 
 type fileAWSConfig struct {
-	Region          string `json:"region,omitempty"`
-	AMI             string `json:"ami,omitempty"`
-	SecurityGroupID string `json:"securityGroupId,omitempty"`
-	SubnetID        string `json:"subnetId,omitempty"`
-	InstanceProfile string `json:"instanceProfile,omitempty"`
-	RootGB          int32  `json:"rootGB,omitempty"`
+	Region          string `yaml:"region,omitempty"`
+	AMI             string `yaml:"ami,omitempty"`
+	SecurityGroupID string `yaml:"securityGroupId,omitempty"`
+	SubnetID        string `yaml:"subnetId,omitempty"`
+	InstanceProfile string `yaml:"instanceProfile,omitempty"`
+	RootGB          int32  `yaml:"rootGB,omitempty"`
 }
 
 type fileSSHConfig struct {
-	User string `json:"user,omitempty"`
-	Key  string `json:"key,omitempty"`
-	Port string `json:"port,omitempty"`
+	User string `yaml:"user,omitempty"`
+	Key  string `yaml:"key,omitempty"`
+	Port string `yaml:"port,omitempty"`
 }
 
 type fileSyncConfig struct {
-	Exclude     []string `json:"exclude,omitempty"`
-	Excludes    []string `json:"excludes,omitempty"`
-	Delete      *bool    `json:"delete,omitempty"`
-	Checksum    *bool    `json:"checksum,omitempty"`
-	GitSeed     *bool    `json:"gitSeed,omitempty"`
-	Fingerprint *bool    `json:"fingerprint,omitempty"`
-	BaseRef     string   `json:"baseRef,omitempty"`
+	Exclude     []string `yaml:"exclude,omitempty"`
+	Excludes    []string `yaml:"excludes,omitempty"`
+	Delete      *bool    `yaml:"delete,omitempty"`
+	Checksum    *bool    `yaml:"checksum,omitempty"`
+	GitSeed     *bool    `yaml:"gitSeed,omitempty"`
+	Fingerprint *bool    `yaml:"fingerprint,omitempty"`
+	BaseRef     string   `yaml:"baseRef,omitempty"`
 }
 
 type fileEnvConfig struct {
-	Allow []string `json:"allow,omitempty"`
+	Allow []string `yaml:"allow,omitempty"`
+}
+
+type fileCapacityConfig struct {
+	Market            string   `yaml:"market,omitempty"`
+	Strategy          string   `yaml:"strategy,omitempty"`
+	Fallback          string   `yaml:"fallback,omitempty"`
+	Regions           []string `yaml:"regions,omitempty"`
+	AvailabilityZones []string `yaml:"availabilityZones,omitempty"`
+}
+
+type fileActionsConfig struct {
+	Workflow string `yaml:"workflow,omitempty"`
+	Job      string `yaml:"job,omitempty"`
+	Ref      string `yaml:"ref,omitempty"`
 }
 
 func configPaths() []string {
@@ -165,7 +203,7 @@ func configPaths() []string {
 	if userPath := userConfigPath(); userPath != "" {
 		paths = append(paths, userPath)
 	}
-	for _, path := range []string{"crabbox.json", ".crabbox.json"} {
+	for _, path := range []string{"crabbox.yaml", ".crabbox.yaml"} {
 		if _, err := os.Stat(path); err == nil {
 			paths = append(paths, path)
 		}
@@ -178,7 +216,7 @@ func userConfigPath() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(dir, "crabbox", "config.json")
+	return filepath.Join(dir, "crabbox", "config.yaml")
 }
 
 func readFileConfig(path string) (fileConfig, error) {
@@ -193,7 +231,7 @@ func readFileConfig(path string) (fileConfig, error) {
 	if len(data) == 0 {
 		return cfg, nil
 	}
-	if err := json.Unmarshal(data, &cfg); err != nil {
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return cfg, exit(2, "parse config %s: %v", path, err)
 	}
 	return cfg, nil
@@ -207,11 +245,10 @@ func writeUserFileConfig(cfg fileConfig) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return "", exit(2, "create config directory: %v", err)
 	}
-	data, err := json.MarshalIndent(cfg, "", "  ")
+	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		return "", err
 	}
-	data = append(data, '\n')
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return "", exit(2, "write config %s: %v", path, err)
 	}
@@ -324,6 +361,34 @@ func applyFileConfig(cfg *Config, file fileConfig) {
 	if file.Env != nil && len(file.Env.Allow) > 0 {
 		cfg.EnvAllow = appendUniqueStrings(nil, file.Env.Allow...)
 	}
+	if file.Capacity != nil {
+		if file.Capacity.Market != "" {
+			cfg.Capacity.Market = file.Capacity.Market
+		}
+		if file.Capacity.Strategy != "" {
+			cfg.Capacity.Strategy = file.Capacity.Strategy
+		}
+		if file.Capacity.Fallback != "" {
+			cfg.Capacity.Fallback = file.Capacity.Fallback
+		}
+		if len(file.Capacity.Regions) > 0 {
+			cfg.Capacity.Regions = appendUniqueStrings(nil, file.Capacity.Regions...)
+		}
+		if len(file.Capacity.AvailabilityZones) > 0 {
+			cfg.Capacity.AvailabilityZones = appendUniqueStrings(nil, file.Capacity.AvailabilityZones...)
+		}
+	}
+	if file.Actions != nil {
+		if file.Actions.Workflow != "" {
+			cfg.Actions.Workflow = file.Actions.Workflow
+		}
+		if file.Actions.Job != "" {
+			cfg.Actions.Job = file.Actions.Job
+		}
+		if file.Actions.Ref != "" {
+			cfg.Actions.Ref = file.Actions.Ref
+		}
+	}
 }
 
 func applyEnv(cfg *Config) {
@@ -346,6 +411,18 @@ func applyEnv(cfg *Config) {
 	cfg.SSHPort = getenv("CRABBOX_SSH_PORT", cfg.SSHPort)
 	cfg.ProviderKey = getenv("CRABBOX_HETZNER_SSH_KEY", cfg.ProviderKey)
 	cfg.WorkRoot = getenv("CRABBOX_WORK_ROOT", cfg.WorkRoot)
+	cfg.Capacity.Market = getenv("CRABBOX_CAPACITY_MARKET", cfg.Capacity.Market)
+	cfg.Capacity.Strategy = getenv("CRABBOX_CAPACITY_STRATEGY", cfg.Capacity.Strategy)
+	cfg.Capacity.Fallback = getenv("CRABBOX_CAPACITY_FALLBACK", cfg.Capacity.Fallback)
+	cfg.Actions.Workflow = getenv("CRABBOX_ACTIONS_WORKFLOW", cfg.Actions.Workflow)
+	cfg.Actions.Job = getenv("CRABBOX_ACTIONS_JOB", cfg.Actions.Job)
+	cfg.Actions.Ref = getenv("CRABBOX_ACTIONS_REF", cfg.Actions.Ref)
+	if regions := os.Getenv("CRABBOX_CAPACITY_REGIONS"); regions != "" {
+		cfg.Capacity.Regions = splitCommaList(regions)
+	}
+	if zones := os.Getenv("CRABBOX_CAPACITY_AVAILABILITY_ZONES"); zones != "" {
+		cfg.Capacity.AvailabilityZones = splitCommaList(zones)
+	}
 	if value, ok := getenvBool("CRABBOX_SYNC_CHECKSUM"); ok {
 		cfg.Sync.Checksum = value
 	}
@@ -409,13 +486,13 @@ func serverTypeCandidatesForClass(class string) []string {
 func awsInstanceTypeCandidatesForClass(class string) []string {
 	switch class {
 	case "standard":
-		return []string{"c7a.8xlarge", "c7a.4xlarge"}
+		return []string{"c7a.8xlarge", "c7i.8xlarge", "m7a.8xlarge", "m7i.8xlarge", "c7a.4xlarge"}
 	case "fast":
-		return []string{"c7a.16xlarge", "c7a.12xlarge", "c7a.8xlarge"}
+		return []string{"c7a.16xlarge", "c7i.16xlarge", "m7a.16xlarge", "m7i.16xlarge", "c7a.12xlarge", "c7a.8xlarge"}
 	case "large":
-		return []string{"c7a.24xlarge", "c7a.16xlarge", "c7a.12xlarge"}
+		return []string{"c7a.24xlarge", "c7i.24xlarge", "m7a.24xlarge", "m7i.24xlarge", "r7a.24xlarge", "c7a.16xlarge", "c7a.12xlarge"}
 	case "beast":
-		return []string{"c7a.48xlarge", "c7a.32xlarge", "c7a.24xlarge", "c7a.16xlarge"}
+		return []string{"c7a.48xlarge", "c7i.48xlarge", "m7a.48xlarge", "m7i.48xlarge", "r7a.48xlarge", "c7a.32xlarge", "c7i.32xlarge", "m7a.32xlarge", "c7a.24xlarge", "c7a.16xlarge"}
 	default:
 		return []string{class}
 	}

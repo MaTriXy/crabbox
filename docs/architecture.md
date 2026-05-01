@@ -124,10 +124,10 @@ Prefer snapshots/images once bootstrap is proven. Cloud-init is acceptable for f
 Config precedence:
 
 ```text
-flags > env > repo-local crabbox.json/.crabbox.json > user config > defaults
+flags > env > repo-local crabbox.yaml/.crabbox.yaml > user config > defaults
 ```
 
-User config is JSON and can define:
+User config is YAML and can define:
 
 - coordinator URL.
 - coordinator bearer token.
@@ -136,6 +136,8 @@ User config is JSON and can define:
 - backend defaults.
 - sync excludes.
 - env allowlists.
+- capacity market/strategy/fallback.
+- Actions workflow/job/ref hints.
 - trusted projects.
 - sync behavior such as checksum mode, Git seeding, and fingerprint skipping.
 

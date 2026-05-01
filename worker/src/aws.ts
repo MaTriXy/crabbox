@@ -84,6 +84,27 @@ export class EC2SpotClient {
         }
       }
     }
+    if (config.capacityMarket === "spot" && config.capacityFallback.startsWith("on-demand")) {
+      for (const serverType of candidates) {
+        try {
+          // oxlint-disable-next-line eslint/no-await-in-loop -- on-demand fallback must stay sequential.
+          const server = await this.createServer(
+            { ...config, capacityMarket: "on-demand", serverType },
+            leaseID,
+            owner,
+            imageID,
+            securityGroupID,
+          );
+          return { server, serverType };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          failures.push(`on-demand ${serverType}: ${message}`);
+          if (!isRetryableAWSProvisioningError(message)) {
+            break;
+          }
+        }
+      }
+    }
     throw new Error(failures.join("; "));
   }
 
@@ -184,6 +205,7 @@ export class EC2SpotClient {
       provider_key: config.providerKey,
       provider: "aws",
       server_type: config.serverType,
+      market: config.capacityMarket,
       state: "leased",
       created_at: now.toISOString(),
       expires_at: new Date(now.getTime() + config.ttlSeconds * 1000).toISOString(),
@@ -204,13 +226,15 @@ export class EC2SpotClient {
       "BlockDeviceMapping.1.Ebs.Encrypted": "true",
       "BlockDeviceMapping.1.Ebs.VolumeSize": String(Math.max(1, rootGB)),
       "BlockDeviceMapping.1.Ebs.VolumeType": "gp3",
-      "InstanceMarketOptions.MarketType": "spot",
-      "InstanceMarketOptions.SpotOptions.InstanceInterruptionBehavior": "terminate",
-      "InstanceMarketOptions.SpotOptions.SpotInstanceType": "one-time",
       "TagSpecification.1.ResourceType": "instance",
       "TagSpecification.2.ResourceType": "volume",
       "TagSpecification.3.ResourceType": "spot-instances-request",
     };
+    if (config.capacityMarket !== "on-demand") {
+      params["InstanceMarketOptions.MarketType"] = "spot";
+      params["InstanceMarketOptions.SpotOptions.InstanceInterruptionBehavior"] = "terminate";
+      params["InstanceMarketOptions.SpotOptions.SpotInstanceType"] = "one-time";
+    }
     if (instanceProfile) {
       params["IamInstanceProfile.Name"] = instanceProfile;
     }

@@ -476,6 +476,7 @@ func (a App) acquire(ctx context.Context, cfg Config, keep bool) (Server, SSHTar
 }
 
 func (a App) acquireAWS(ctx context.Context, cfg Config, keep bool) (Server, SSHTarget, string, error) {
+	cfg = a.chooseAWSRegion(ctx, cfg)
 	client, err := newAWSClient(ctx, cfg)
 	if err != nil {
 		return Server{}, SSHTarget{}, "", err
@@ -487,7 +488,7 @@ func (a App) acquireAWS(ctx context.Context, cfg Config, keep bool) (Server, SSH
 	}
 	cfg.SSHKey = keyPath
 	cfg.ProviderKey = providerKeyForLease(leaseID)
-	fmt.Fprintf(a.Stderr, "provisioning provider=aws lease=%s class=%s preferred_type=%s region=%s keep=%v spot=true\n", leaseID, cfg.Class, cfg.ServerType, cfg.AWSRegion, keep)
+	fmt.Fprintf(a.Stderr, "provisioning provider=aws lease=%s class=%s preferred_type=%s region=%s keep=%v market=%s strategy=%s\n", leaseID, cfg.Class, cfg.ServerType, cfg.AWSRegion, keep, cfg.Capacity.Market, cfg.Capacity.Strategy)
 	server, cfg, err := client.CreateServerWithFallback(ctx, cfg, publicKey, leaseID, keep, func(format string, args ...any) {
 		fmt.Fprintf(a.Stderr, format, args...)
 	})
@@ -511,6 +512,35 @@ func (a App) acquireAWS(ctx context.Context, cfg Config, keep bool) (Server, SSH
 		fmt.Fprintf(a.Stderr, "warning: set tags: %v\n", err)
 	}
 	return server, target, leaseID, nil
+}
+
+func (a App) chooseAWSRegion(ctx context.Context, cfg Config) Config {
+	if cfg.Provider != "aws" || cfg.Capacity.Market != "spot" || len(cfg.Capacity.Regions) < 2 {
+		return cfg
+	}
+	client, err := newAWSClient(ctx, cfg)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "warning: spot placement score unavailable: %v\n", err)
+		return cfg
+	}
+	scores, err := client.SpotPlacementScores(ctx, cfg)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "warning: spot placement score unavailable: %v\n", err)
+		return cfg
+	}
+	if len(scores) == 0 {
+		return cfg
+	}
+	best := awsString(scores[0].Region)
+	score := int32(0)
+	if scores[0].Score != nil {
+		score = *scores[0].Score
+	}
+	if best != "" && best != cfg.AWSRegion {
+		fmt.Fprintf(a.Stderr, "selected aws region=%s spot_score=%d previous=%s\n", best, score, cfg.AWSRegion)
+		cfg.AWSRegion = best
+	}
+	return cfg
 }
 
 func waitForServerIP(ctx context.Context, client *HetznerClient, id int64) (Server, error) {

@@ -9,7 +9,7 @@ crabbox init --force
 
 It writes:
 
-- `.crabbox.json`
+- `.crabbox.yaml`
 - `.github/workflows/crabbox.yml`
 - `.agents/skills/crabbox/SKILL.md`
 

@@ -62,6 +62,18 @@ func (a App) configShow(args []string) error {
 		"env": map[string]any{
 			"allow": cfg.EnvAllow,
 		},
+		"capacity": map[string]any{
+			"market":            cfg.Capacity.Market,
+			"strategy":          cfg.Capacity.Strategy,
+			"fallback":          cfg.Capacity.Fallback,
+			"regions":           cfg.Capacity.Regions,
+			"availabilityZones": cfg.Capacity.AvailabilityZones,
+		},
+		"actions": map[string]any{
+			"workflow": cfg.Actions.Workflow,
+			"job":      cfg.Actions.Job,
+			"ref":      cfg.Actions.Ref,
+		},
 		"hetzner": map[string]any{
 			"location": cfg.Location,
 			"image":    cfg.Image,
@@ -85,6 +97,8 @@ func (a App) configShow(args []string) error {
 	fmt.Fprintf(a.Stdout, "ssh=%s@<host>:%s key=%s\n", cfg.SSHUser, cfg.SSHPort, cfg.SSHKey)
 	fmt.Fprintf(a.Stdout, "sync delete=%t checksum=%t git_seed=%t fingerprint=%t base_ref=%s excludes=%d\n", cfg.Sync.Delete, cfg.Sync.Checksum, cfg.Sync.GitSeed, cfg.Sync.Fingerprint, blank(cfg.Sync.BaseRef, "-"), len(configuredExcludes(cfg)))
 	fmt.Fprintf(a.Stdout, "env allow=%s\n", strings.Join(cfg.EnvAllow, ","))
+	fmt.Fprintf(a.Stdout, "capacity market=%s strategy=%s fallback=%s regions=%s\n", cfg.Capacity.Market, cfg.Capacity.Strategy, cfg.Capacity.Fallback, blank(strings.Join(cfg.Capacity.Regions, ","), "-"))
+	fmt.Fprintf(a.Stdout, "actions workflow=%s job=%s ref=%s\n", blank(cfg.Actions.Workflow, "-"), blank(cfg.Actions.Job, "-"), blank(cfg.Actions.Ref, "-"))
 	fmt.Fprintf(a.Stdout, "aws region=%s root_gb=%d\n", cfg.AWSRegion, cfg.AWSRootGB)
 	return nil
 }

@@ -36,6 +36,13 @@ export interface LeaseRequest {
   awsSubnetID?: string;
   awsProfile?: string;
   awsRootGB?: number;
+  capacity?: {
+    market?: "spot" | "on-demand";
+    strategy?: "most-available" | "price-capacity-optimized" | "capacity-optimized" | "sequential";
+    fallback?: string;
+    regions?: string[];
+    availabilityZones?: string[];
+  };
   sshUser?: string;
   sshPort?: string;
   providerKey?: string;
