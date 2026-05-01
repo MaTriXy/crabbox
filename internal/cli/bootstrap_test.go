@@ -13,6 +13,7 @@ func TestCloudInitUsesRetryingBootstrap(t *testing.T) {
 		"Acquire::Retries \"8\";",
 		"retry apt-get update",
 		"retry apt-get install -y --no-install-recommends openssh-server ca-certificates curl git rsync build-essential docker.io jq",
+		"https://deb.nodesource.com/setup_24.x",
 		"retry corepack prepare pnpm@10.33.2 --activate",
 		"docker --version",
 	} {

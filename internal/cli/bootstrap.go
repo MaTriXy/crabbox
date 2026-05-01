@@ -57,7 +57,7 @@ runcmd:
     systemctl restart ssh
     systemctl enable --now docker
     usermod -aG docker %[1]s
-    retry bash -c 'curl -fsSL https://deb.nodesource.com/setup_22.x | bash -'
+    retry bash -c 'curl -fsSL https://deb.nodesource.com/setup_24.x | bash -'
     retry apt-get install -y nodejs
     corepack enable
     retry corepack prepare pnpm@10.33.2 --activate

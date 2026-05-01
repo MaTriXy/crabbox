@@ -35,6 +35,7 @@ describe("cloud-init bootstrap", () => {
     expect(got).toContain(
       "retry apt-get install -y --no-install-recommends openssh-server ca-certificates curl git rsync build-essential docker.io jq",
     );
+    expect(got).toContain("https://deb.nodesource.com/setup_24.x");
     expect(got).toContain("retry corepack prepare pnpm@10.33.2 --activate");
     expect(got).toContain("docker --version");
     expect(got).not.toContain("\npackages:\n");

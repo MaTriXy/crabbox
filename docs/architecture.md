@@ -110,7 +110,7 @@ Bootstrap should produce machines with:
 - SSH key-only auth.
 - Docker.
 - Git.
-- Node 22.
+- Node 24.
 - pnpm.
 - build-essential.
 - rsync.

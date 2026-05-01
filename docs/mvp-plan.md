@@ -118,7 +118,7 @@ Build in this order:
 
 8. OpenClaw profile
    - `openclaw-check` profile.
-   - Linux x64, Docker, Node 22, pnpm, Git.
+   - Linux x64, Docker, Node 24, pnpm, Git.
    - Default TTL: 90 minutes.
    - Default machine class configurable, likely `ccx33` first.
    - Env allowlist: `OPENCLAW_*`, `NODE_OPTIONS`, common model/provider keys only when explicitly configured locally.
