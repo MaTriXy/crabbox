@@ -1,4 +1,35 @@
-# AGENTS.md
+# Repository Guidelines
 
-## Notes
-- Issue/PR references: always use full GitHub URLs, every time.
+## Project Structure & Module Organization
+
+Crabbox is a Go CLI plus a Cloudflare Worker coordinator. The CLI entrypoint is `cmd/crabbox`, with implementation and Go tests in `internal/cli`. Worker source lives in `worker/src`, with Vitest tests in `worker/test`. Documentation lives in `docs/`; command docs are under `docs/commands`, and feature notes under `docs/features`. Release configuration is in `.goreleaser.yaml`; GitHub Actions live in `.github/workflows`. Generated outputs such as `bin/`, `dist/`, `worker/dist/`, and `worker/node_modules/` should not be edited by hand.
+
+## Build, Test, and Development Commands
+
+- `go build -trimpath -o bin/crabbox ./cmd/crabbox`: build the local CLI.
+- `go vet ./...`: run Go static checks.
+- `go test -race ./...`: run the Go test suite with the race detector.
+- `gofmt -w $(git ls-files '*.go')`: format Go files.
+- `npm ci --prefix worker`: install Worker dependencies.
+- `npm run format:check --prefix worker`: verify TypeScript formatting.
+- `npm run lint --prefix worker`: run `oxlint`.
+- `npm run check --prefix worker`: run TypeScript typechecking.
+- `npm test --prefix worker`: run Vitest tests.
+- `npm run build --prefix worker`: dry-run the Worker build through Wrangler.
+- `node scripts/build-docs-site.mjs`: generate the docs site into `dist/docs-site`.
+
+## Coding Style & Naming Conventions
+
+Use standard Go formatting and keep package names short and lowercase. Prefer table-driven Go tests where behavior has multiple cases, and keep command behavior close to the matching file in `internal/cli` (for example, cache behavior in `cache.go`). Worker code is TypeScript ESM; use existing module boundaries in `worker/src` and rely on `oxfmt`, `oxlint`, and `tsc`.
+
+## Testing Guidelines
+
+Name Go tests `*_test.go` beside the code they cover. Name Worker tests `*.test.ts` under `worker/test`. Add regression tests for bug fixes when practical. Before handoff, run the relevant subset; before release or broad changes, run the full CI-equivalent gate from the README.
+
+## Commit & Pull Request Guidelines
+
+History uses Conventional Commit prefixes such as `feat:`, `fix:`, `docs:`, and `ci:`. Keep commits focused and mention user-visible behavior changes. Pull requests should include a clear summary, verification commands, config or secret implications, and screenshots only for generated docs or UI changes. Issue/PR references: always use full GitHub URLs, every time.
+
+## Security & Configuration Tips
+
+Keep provider and broker tokens out of the repository. Do not pass secrets as command-line arguments. Local config belongs in `~/.config/crabbox/config.yaml`, `~/Library/Application Support/crabbox/config.yaml`, `crabbox.yaml`, or `.crabbox.yaml` as documented.
