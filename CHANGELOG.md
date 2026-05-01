@@ -15,6 +15,8 @@ Initial Crabbox release.
 - Login and identity commands: `login`, `logout`, and `whoami`.
 - Trusted operator admin command for listing, releasing, and deleting coordinator leases.
 - Run history and retained run-log tails via `history` and `logs`.
+- JUnit test-result summaries via `run --junit` and `results`.
+- Cache controls via `cache stats`, `cache warm`, and `cache purge`.
 - Usage command for estimated cost and runtime reporting by user, org, or fleet.
 - GitHub Actions bridge with `actions register`, `actions dispatch`, and `actions hydrate` for running project-owned workflow setup on leased boxes.
 - Hydrated workspace detection so `crabbox run --id <lease>` syncs local dirty work into the workflow's `$GITHUB_WORKSPACE`.

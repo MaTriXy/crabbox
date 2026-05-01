@@ -1,6 +1,6 @@
 # login
 
-`crabbox login` stores broker credentials in the user config and verifies coordinator identity.
+`crabbox login` stores broker credentials in the user config and verifies coordinator identity. It is currently token-based, not a GitHub browser OAuth flow.
 
 ```sh
 printf '%s' "$CRABBOX_COORDINATOR_TOKEN" | crabbox login \
@@ -21,6 +21,8 @@ Flags:
 ```
 
 `login` calls `GET /v1/whoami` after writing config. If verification fails, inspect the stored config with `crabbox config show` and retry with the correct token.
+
+The coordinator may still derive identity from Cloudflare Access or Git email headers, but the CLI does not yet open a browser or mint a GitHub-scoped user token.
 
 Related docs:
 

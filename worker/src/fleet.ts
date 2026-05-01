@@ -334,6 +334,9 @@ export class FleetDurableObject implements DurableObject {
     const log = input.log ?? "";
     run.logBytes = new TextEncoder().encode(log).byteLength;
     run.logTruncated = Boolean(input.logTruncated);
+    if (input.results) {
+      run.results = input.results;
+    }
     await this.state.storage.put(runLogKey(runID), log);
     await this.putRun(run);
     return json({ run });

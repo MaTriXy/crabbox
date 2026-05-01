@@ -92,6 +92,7 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 	debugSync := fs.Bool("debug", false, "print detailed sync timing")
 	shellMode := fs.Bool("shell", false, "run command through the remote shell")
 	checksumSync := fs.Bool("checksum", false, "use checksum rsync instead of size/time")
+	junitResults := fs.String("junit", "", "comma-separated remote JUnit XML paths to record")
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
@@ -122,6 +123,9 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 	}
 	if flagWasSet(fs, "checksum") {
 		cfg.Sync.Checksum = *checksumSync
+	}
+	if *junitResults != "" {
+		cfg.Results.JUnit = splitCommaList(*junitResults)
 	}
 	if cfg.TTL <= 0 {
 		return exit(2, "idle timeout must be positive")
@@ -270,8 +274,17 @@ afterSync:
 	stderr := io.MultiWriter(a.Stderr, &logBuffer)
 	code := runSSHStream(ctx, target, remote, stdout, stderr)
 	timings.command = time.Since(commandStart)
+	var results *TestResultSummary
+	if len(cfg.Results.JUnit) > 0 {
+		results, err = collectRemoteJUnitResults(ctx, target, workdir, cfg.Results.JUnit)
+		if err != nil {
+			fmt.Fprintf(a.Stderr, "warning: collect test results failed: %v\n", err)
+		} else if line := resultSummaryLine(results); line != "" {
+			fmt.Fprintln(a.Stderr, line)
+		}
+	}
 	if runID != "" {
-		if _, err := coord.FinishRun(context.Background(), runID, code, timings.sync, timings.command, logBuffer.String(), logBuffer.Truncated()); err != nil {
+		if _, err := coord.FinishRun(context.Background(), runID, code, timings.sync, timings.command, logBuffer.String(), logBuffer.Truncated(), results); err != nil {
 			fmt.Fprintf(a.Stderr, "warning: run history finish failed for %s: %v\n", runID, err)
 		}
 	}

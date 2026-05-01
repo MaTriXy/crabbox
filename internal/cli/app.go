@@ -54,6 +54,10 @@ func (a App) Run(ctx context.Context, args []string) error {
 		return a.history(ctx, args[1:])
 	case "logs":
 		return a.logs(ctx, args[1:])
+	case "results":
+		return a.results(ctx, args[1:])
+	case "cache":
+		return a.cache(ctx, args[1:])
 	case "config":
 		return a.config(ctx, args[1:])
 	case "init":
@@ -114,6 +118,8 @@ Commands:
   run         Sync the repo, run a remote command, stream output
   history     List recorded remote runs
   logs        Print recorded run logs
+  results     Show recorded test result summaries
+  cache       Inspect, purge, or warm remote caches
   status      Show lease state; add --wait to block until ready
   list        List Crabbox machines
   usage       Show cost and usage estimates by user, org, or fleet
@@ -134,6 +140,8 @@ Common Flows:
   crabbox inspect --id cbx_123 --json
   crabbox history --lease cbx_123
   crabbox logs run_123
+  crabbox results run_123
+  crabbox cache stats --id cbx_123
   crabbox usage --scope org
   crabbox admin leases --state active
   crabbox warmup --actions-runner --idle-timeout 90m

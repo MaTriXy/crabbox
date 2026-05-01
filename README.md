@@ -83,6 +83,8 @@ Working today:
 - [`crabbox run`](docs/commands/run.md)
 - [`crabbox history`](docs/commands/history.md)
 - [`crabbox logs`](docs/commands/logs.md)
+- [`crabbox results`](docs/commands/results.md)
+- [`crabbox cache`](docs/commands/cache.md)
 - [`crabbox status`](docs/commands/status.md)
 - [`crabbox list`](docs/commands/list.md)
 - [`crabbox usage`](docs/commands/usage.md)
@@ -105,6 +107,8 @@ Working today:
 - [per-lease SSH keys under the Crabbox config directory](docs/features/ssh-keys.md)
 - [coordinator cost guardrails and monthly usage summaries](docs/features/cost-usage.md)
 - [coordinator run history and retained run-log tails](docs/features/history-logs.md)
+- [JUnit test result summaries for recorded runs](docs/features/test-results.md)
+- [explicit warm-box cache controls](docs/features/cache.md)
 - [operator login, identity, and admin lease controls](docs/features/auth-admin.md)
 - [provider-backed price estimates with static fallback rates](docs/features/cost-usage.md)
 - [sync sanity checks for mass tracked deletions](docs/features/sync.md)
@@ -114,7 +118,6 @@ Working today:
 
 Not yet done:
 
-- `crabbox login`
 - untrusted multi-tenant isolation
 
 ## Quick Start
@@ -352,6 +355,10 @@ CRABBOX_SYNC_DELETE              opt into/out of rsync --delete
 CRABBOX_SYNC_GIT_SEED            opt into/out of remote Git seeding
 CRABBOX_SYNC_FINGERPRINT         opt into/out of no-op sync skipping
 CRABBOX_SYNC_BASE_REF            default base ref to hydrate
+CRABBOX_RESULTS_JUNIT            comma-separated remote JUnit XML paths
+CRABBOX_CACHE_PNPM/NPM/DOCKER/GIT opt into/out of cache kinds
+CRABBOX_CACHE_MAX_GB             cache policy size hint
+CRABBOX_CACHE_PURGE_ON_RELEASE   purge cache on release policy hint
 CRABBOX_ENV_ALLOW                comma-separated env allowlist
 CRABBOX_OWNER                    bearer-auth usage owner override
 CRABBOX_ORG                      bearer-auth usage org

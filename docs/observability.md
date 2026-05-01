@@ -56,9 +56,10 @@ bin/crabbox history
 bin/crabbox history --lease cbx_...
 bin/crabbox history --owner steipete@gmail.com --json
 bin/crabbox logs run_...
+bin/crabbox results run_...
 ```
 
-History is for command debugging, not unlimited log archival. Logs are bounded tails of remote stdout/stderr.
+History is for command debugging, not unlimited log archival. Logs are bounded tails of remote stdout/stderr. Test results are stored as structured summaries when `--junit` or `results.junit` is configured.
 
 ## Remote Debugging
 
@@ -110,6 +111,5 @@ Keep the lease ID, owner, org, provider, class, and request time when comparing 
 
 Current Crabbox observability is enough for maintainer operations, but not yet a full analytics product. Missing pieces:
 
-- structured test-result ingestion;
 - alerting on budget or failure-rate thresholds;
 - dashboard UI.

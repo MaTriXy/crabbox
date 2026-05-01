@@ -53,6 +53,16 @@ actions:
     - linux-large
   runnerVersion: latest
   ephemeral: false
+results:
+  junit:
+    - junit.xml
+cache:
+  pnpm: true
+  npm: false
+  docker: true
+  git: true
+  maxGB: 120
+  purgeOnRelease: true
 ssh:
   key: ~/.ssh/crabbox
 `), 0o600); err != nil {
@@ -95,6 +105,12 @@ ssh:
 	}
 	if cfg.Actions.Ephemeral || len(cfg.Actions.RunnerLabels) != 2 || cfg.Actions.RunnerLabels[1] != "linux-large" {
 		t.Fatalf("actions runner config not loaded: %#v", cfg.Actions)
+	}
+	if len(cfg.Results.JUnit) != 1 || cfg.Results.JUnit[0] != "junit.xml" {
+		t.Fatalf("results config not loaded: %#v", cfg.Results)
+	}
+	if !cfg.Cache.Pnpm || cfg.Cache.Npm || !cfg.Cache.Docker || !cfg.Cache.Git || cfg.Cache.MaxGB != 120 || !cfg.Cache.PurgeOnRelease {
+		t.Fatalf("cache config not loaded: %#v", cfg.Cache)
 	}
 }
 

@@ -49,13 +49,32 @@ describe("fleet run history", () => {
 
     const finish = await fleet.fetch(
       request("POST", `/v1/runs/${run.id}/finish`, {
-        body: { exitCode: 0, syncMs: 12, commandMs: 34, log: "ok\n" },
+        body: {
+          exitCode: 0,
+          syncMs: 12,
+          commandMs: 34,
+          log: "ok\n",
+          results: {
+            format: "junit",
+            files: ["junit.xml"],
+            suites: 1,
+            tests: 2,
+            failures: 1,
+            errors: 0,
+            skipped: 0,
+            timeSeconds: 1.2,
+            failed: [{ suite: "pkg", name: "fails", kind: "failure" }],
+          },
+        },
       }),
     );
     expect(finish.status).toBe(200);
-    const finished = (await finish.json()) as { run: { state: string; logBytes: number } };
+    const finished = (await finish.json()) as {
+      run: { state: string; logBytes: number; results?: { tests: number } };
+    };
     expect(finished.run.state).toBe("succeeded");
     expect(finished.run.logBytes).toBe(3);
+    expect(finished.run.results?.tests).toBe(2);
 
     const listed = await fleet.fetch(request("GET", "/v1/runs?leaseID=cbx_000000000001"));
     const listBody = (await listed.json()) as { runs: Array<{ id: string; owner: string }> };

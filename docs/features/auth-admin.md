@@ -6,7 +6,7 @@ Read when:
 - changing trusted operator controls;
 - debugging who owns a lease or run.
 
-Crabbox currently supports bearer-token broker auth. `crabbox login` stores the broker URL, provider, and token in the user config, then verifies the token with `GET /v1/whoami`.
+Crabbox currently supports bearer-token broker auth. `crabbox login` stores the broker URL, provider, and token in the user config, then verifies the token with `GET /v1/whoami`. It is not yet a GitHub browser OAuth flow.
 
 Identity sent to the coordinator:
 

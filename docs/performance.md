@@ -47,6 +47,14 @@ git diff --name-only origin/main...
 
 Runner bootstrap prepares shared package cache locations for Node, pnpm, Docker, Git, and build tools. These caches are best-effort speedups and must not be treated as source of truth.
 
+Use explicit cache commands on kept leases:
+
+```sh
+bin/crabbox cache stats --id cbx_...
+bin/crabbox cache warm --id cbx_... -- pnpm install --frozen-lockfile
+bin/crabbox cache purge --id cbx_... --kind pnpm --force
+```
+
 For repeatable setup that needs repository secrets, use Actions hydration:
 
 ```sh

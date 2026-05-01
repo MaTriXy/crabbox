@@ -19,6 +19,8 @@ Core features:
 - [SSH keys](ssh-keys.md): per-lease keys, provider key cleanup, and local storage.
 - [Cost and usage](cost-usage.md): guardrails, provider-backed pricing, and reporting.
 - [History and logs](history-logs.md): coordinator run records and retained remote output tails.
+- [Test results](test-results.md): JUnit summaries attached to recorded runs.
+- [Cache controls](cache.md): inspect, purge, and warm remote package/build caches.
 - [Auth and admin](auth-admin.md): login/logout/whoami and trusted operator controls.
 - [Lifecycle cleanup](lifecycle-cleanup.md): release, expiry, keep mode, and direct cleanup.
 - [Repository onboarding](repository-onboarding.md): `crabbox init`, repo config, workflow stub, and agent skill.
@@ -31,6 +33,8 @@ Command docs:
 - [run](../commands/run.md)
 - [history](../commands/history.md)
 - [logs](../commands/logs.md)
+- [results](../commands/results.md)
+- [cache](../commands/cache.md)
 - [status](../commands/status.md)
 - [list](../commands/list.md)
 - [usage](../commands/usage.md)

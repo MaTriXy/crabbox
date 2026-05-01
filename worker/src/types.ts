@@ -99,6 +99,7 @@ export interface RunRecord {
   durationMs?: number;
   logBytes: number;
   logTruncated: boolean;
+  results?: TestResultSummary;
   startedAt: string;
   endedAt?: string;
 }
@@ -117,6 +118,29 @@ export interface RunFinishRequest {
   commandMs?: number;
   log?: string;
   logTruncated?: boolean;
+  results?: TestResultSummary;
+}
+
+export interface TestResultSummary {
+  format: "junit";
+  files: string[];
+  suites: number;
+  tests: number;
+  failures: number;
+  errors: number;
+  skipped: number;
+  timeSeconds: number;
+  failed: TestFailure[];
+}
+
+export interface TestFailure {
+  suite: string;
+  name: string;
+  classname?: string;
+  file?: string;
+  message?: string;
+  type?: string;
+  kind: "failure" | "error";
 }
 
 export interface HetznerServer {

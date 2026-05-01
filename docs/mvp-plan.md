@@ -196,7 +196,7 @@ And proves:
 ## Next Implementation Milestones
 
 1. Raise Hetzner dedicated-core quota so `beast` can use `ccx63` instead of falling back to `cpx62`.
-2. Add `crabbox login` and Cloudflare Access token handling.
+2. Replace shared-token login with Cloudflare Access/GitHub OAuth user tokens.
 3. Add Cloudflare Access service-token support for non-browser CLI use on `crabbox.clawd.bot`.
 4. Add heartbeat support for long-running commands.
 5. Add one-shot `run --profile` cleanup semantics coverage in integration tests.

@@ -36,6 +36,8 @@ type Config struct {
 	EnvAllow    []string
 	Capacity    CapacityConfig
 	Actions     ActionsConfig
+	Results     ResultsConfig
+	Cache       CacheConfig
 }
 
 type SyncConfig struct {
@@ -63,6 +65,19 @@ type ActionsConfig struct {
 	RunnerLabels  []string
 	RunnerVersion string
 	Ephemeral     bool
+}
+
+type ResultsConfig struct {
+	JUnit []string
+}
+
+type CacheConfig struct {
+	Pnpm           bool
+	Npm            bool
+	Docker         bool
+	Git            bool
+	MaxGB          int
+	PurgeOnRelease bool
 }
 
 func defaultConfig() Config {
@@ -127,6 +142,13 @@ func baseConfig() Config {
 			RunnerVersion: "latest",
 			Ephemeral:     true,
 		},
+		Cache: CacheConfig{
+			Pnpm:   true,
+			Npm:    true,
+			Docker: true,
+			Git:    true,
+			MaxGB:  80,
+		},
 	}
 }
 
@@ -145,6 +167,8 @@ type fileConfig struct {
 	Env              *fileEnvConfig      `yaml:"env,omitempty"`
 	Capacity         *fileCapacityConfig `yaml:"capacity,omitempty"`
 	Actions          *fileActionsConfig  `yaml:"actions,omitempty"`
+	Results          *fileResultsConfig  `yaml:"results,omitempty"`
+	Cache            *fileCacheConfig    `yaml:"cache,omitempty"`
 	WorkRoot         string              `yaml:"workRoot,omitempty"`
 }
 
@@ -205,6 +229,19 @@ type fileActionsConfig struct {
 	RunnerLabels  []string `yaml:"runnerLabels,omitempty"`
 	RunnerVersion string   `yaml:"runnerVersion,omitempty"`
 	Ephemeral     *bool    `yaml:"ephemeral,omitempty"`
+}
+
+type fileResultsConfig struct {
+	JUnit []string `yaml:"junit,omitempty"`
+}
+
+type fileCacheConfig struct {
+	Pnpm           *bool `yaml:"pnpm,omitempty"`
+	Npm            *bool `yaml:"npm,omitempty"`
+	Docker         *bool `yaml:"docker,omitempty"`
+	Git            *bool `yaml:"git,omitempty"`
+	MaxGB          int   `yaml:"maxGB,omitempty"`
+	PurgeOnRelease *bool `yaml:"purgeOnRelease,omitempty"`
 }
 
 func configPaths() []string {
@@ -420,6 +457,29 @@ func applyFileConfig(cfg *Config, file fileConfig) {
 			cfg.Actions.Ephemeral = *file.Actions.Ephemeral
 		}
 	}
+	if file.Results != nil && len(file.Results.JUnit) > 0 {
+		cfg.Results.JUnit = appendUniqueStrings(nil, file.Results.JUnit...)
+	}
+	if file.Cache != nil {
+		if file.Cache.Pnpm != nil {
+			cfg.Cache.Pnpm = *file.Cache.Pnpm
+		}
+		if file.Cache.Npm != nil {
+			cfg.Cache.Npm = *file.Cache.Npm
+		}
+		if file.Cache.Docker != nil {
+			cfg.Cache.Docker = *file.Cache.Docker
+		}
+		if file.Cache.Git != nil {
+			cfg.Cache.Git = *file.Cache.Git
+		}
+		if file.Cache.MaxGB > 0 {
+			cfg.Cache.MaxGB = file.Cache.MaxGB
+		}
+		if file.Cache.PurgeOnRelease != nil {
+			cfg.Cache.PurgeOnRelease = *file.Cache.PurgeOnRelease
+		}
+	}
 }
 
 func applyEnv(cfg *Config) {
@@ -455,6 +515,25 @@ func applyEnv(cfg *Config) {
 	}
 	if value, ok := getenvBool("CRABBOX_ACTIONS_EPHEMERAL"); ok {
 		cfg.Actions.Ephemeral = value
+	}
+	if junit := os.Getenv("CRABBOX_RESULTS_JUNIT"); junit != "" {
+		cfg.Results.JUnit = splitCommaList(junit)
+	}
+	if value, ok := getenvBool("CRABBOX_CACHE_PNPM"); ok {
+		cfg.Cache.Pnpm = value
+	}
+	if value, ok := getenvBool("CRABBOX_CACHE_NPM"); ok {
+		cfg.Cache.Npm = value
+	}
+	if value, ok := getenvBool("CRABBOX_CACHE_DOCKER"); ok {
+		cfg.Cache.Docker = value
+	}
+	if value, ok := getenvBool("CRABBOX_CACHE_GIT"); ok {
+		cfg.Cache.Git = value
+	}
+	cfg.Cache.MaxGB = getenvInt("CRABBOX_CACHE_MAX_GB", cfg.Cache.MaxGB)
+	if value, ok := getenvBool("CRABBOX_CACHE_PURGE_ON_RELEASE"); ok {
+		cfg.Cache.PurgeOnRelease = value
 	}
 	if regions := os.Getenv("CRABBOX_CAPACITY_REGIONS"); regions != "" {
 		cfg.Capacity.Regions = splitCommaList(regions)

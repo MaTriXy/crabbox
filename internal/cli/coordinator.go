@@ -74,23 +74,46 @@ type CoordinatorRunResponse struct {
 }
 
 type CoordinatorRun struct {
-	ID           string   `json:"id"`
-	LeaseID      string   `json:"leaseID"`
-	Owner        string   `json:"owner"`
-	Org          string   `json:"org"`
-	Provider     string   `json:"provider"`
-	Class        string   `json:"class"`
-	ServerType   string   `json:"serverType"`
-	Command      []string `json:"command"`
-	State        string   `json:"state"`
-	ExitCode     *int     `json:"exitCode,omitempty"`
-	SyncMs       int64    `json:"syncMs,omitempty"`
-	CommandMs    int64    `json:"commandMs,omitempty"`
-	DurationMs   int64    `json:"durationMs,omitempty"`
-	LogBytes     int64    `json:"logBytes"`
-	LogTruncated bool     `json:"logTruncated"`
-	StartedAt    string   `json:"startedAt"`
-	EndedAt      string   `json:"endedAt,omitempty"`
+	ID           string             `json:"id"`
+	LeaseID      string             `json:"leaseID"`
+	Owner        string             `json:"owner"`
+	Org          string             `json:"org"`
+	Provider     string             `json:"provider"`
+	Class        string             `json:"class"`
+	ServerType   string             `json:"serverType"`
+	Command      []string           `json:"command"`
+	State        string             `json:"state"`
+	ExitCode     *int               `json:"exitCode,omitempty"`
+	SyncMs       int64              `json:"syncMs,omitempty"`
+	CommandMs    int64              `json:"commandMs,omitempty"`
+	DurationMs   int64              `json:"durationMs,omitempty"`
+	LogBytes     int64              `json:"logBytes"`
+	LogTruncated bool               `json:"logTruncated"`
+	Results      *TestResultSummary `json:"results,omitempty"`
+	StartedAt    string             `json:"startedAt"`
+	EndedAt      string             `json:"endedAt,omitempty"`
+}
+
+type TestResultSummary struct {
+	Format      string        `json:"format"`
+	Files       []string      `json:"files"`
+	Suites      int           `json:"suites"`
+	Tests       int           `json:"tests"`
+	Failures    int           `json:"failures"`
+	Errors      int           `json:"errors"`
+	Skipped     int           `json:"skipped"`
+	TimeSeconds float64       `json:"timeSeconds"`
+	Failed      []TestFailure `json:"failed"`
+}
+
+type TestFailure struct {
+	Suite     string `json:"suite"`
+	Name      string `json:"name"`
+	Classname string `json:"classname,omitempty"`
+	File      string `json:"file,omitempty"`
+	Message   string `json:"message,omitempty"`
+	Type      string `json:"type,omitempty"`
+	Kind      string `json:"kind"`
 }
 
 type CoordinatorUsageSummary struct {
@@ -328,7 +351,7 @@ func (c *CoordinatorClient) CreateRun(ctx context.Context, leaseID string, cfg C
 	return res.Run, err
 }
 
-func (c *CoordinatorClient) FinishRun(ctx context.Context, runID string, exitCode int, sync, command time.Duration, log string, truncated bool) (CoordinatorRun, error) {
+func (c *CoordinatorClient) FinishRun(ctx context.Context, runID string, exitCode int, sync, command time.Duration, log string, truncated bool, results *TestResultSummary) (CoordinatorRun, error) {
 	var res CoordinatorRunResponse
 	err := c.do(ctx, http.MethodPost, "/v1/runs/"+url.PathEscape(runID)+"/finish", map[string]any{
 		"exitCode":     exitCode,
@@ -336,6 +359,7 @@ func (c *CoordinatorClient) FinishRun(ctx context.Context, runID string, exitCod
 		"commandMs":    command.Milliseconds(),
 		"log":          log,
 		"logTruncated": truncated,
+		"results":      results,
 	}, &res)
 	return res.Run, err
 }

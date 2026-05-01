@@ -21,7 +21,7 @@ MVP:
 - GitHub Access IdP is configured for the `openclaw` org.
 - Coordinator validates `Cf-Access-Jwt-Assertion`.
 - Coordinator maps Access identity to lease owner.
-- Workers.dev automation currently uses a shared bearer token while `crabbox login` and Access service-token support are completed.
+- Workers.dev automation currently uses a shared bearer token. `crabbox login` stores and verifies that token; browser-based Cloudflare Access/GitHub OAuth and split user/admin tokens are still future hardening.
 - Missing shared-token config fails closed for non-health coordinator routes.
 
 Target:

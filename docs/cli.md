@@ -36,6 +36,10 @@ crabbox warmup [--provider hetzner|aws] [--profile <name>] [--idle-timeout <dura
 crabbox run [--id <lease-id>] [--shell] [--checksum] [--debug] -- <command...>
 crabbox history [--lease <lease-id>] [--owner <email>] [--org <name>] [--limit <n>] [--json]
 crabbox logs <run-id> [--json]
+crabbox results <run-id> [--json]
+crabbox cache stats --id <lease-id> [--json]
+crabbox cache purge --id <lease-id> --kind pnpm|npm|docker|git|all --force
+crabbox cache warm --id <lease-id> -- <command...>
 crabbox actions hydrate --id <lease-id> [--workflow <file|name|id>] [--wait-timeout <duration>]
 crabbox actions register --id <lease-id> [--repo owner/name]
 crabbox actions dispatch [--workflow <file|name|id>] [-f key=value]
@@ -119,8 +123,18 @@ crabbox config show --json
 Inspect recorded runs:
 
 ```sh
+crabbox run --id cbx_123 --junit junit.xml -- go test ./...
 crabbox history --lease cbx_123
 crabbox logs run_123
+crabbox results run_123
+```
+
+Inspect or warm caches on a kept box:
+
+```sh
+crabbox cache stats --id cbx_123
+crabbox cache warm --id cbx_123 -- pnpm install --frozen-lockfile
+crabbox cache purge --id cbx_123 --kind pnpm --force
 ```
 
 Trusted operator lease controls:
@@ -167,6 +181,7 @@ Flags:
 --shell                 run the command string through bash -lc
 --checksum              use checksum rsync instead of size/time
 --debug                 print sync timing and itemized rsync output
+--junit <paths>         comma-separated remote JUnit XML paths to attach to run history
 ```
 
 Secrets must not be accepted as flag values. Env forwarding is name-based only.
@@ -256,6 +271,16 @@ env:
     - CI
     - NODE_OPTIONS
     - PROJECT_*
+results:
+  junit:
+    - junit.xml
+cache:
+  pnpm: true
+  npm: true
+  docker: true
+  git: true
+  maxGB: 80
+  purgeOnRelease: false
 ```
 
 ## Environment Variables
@@ -267,6 +292,10 @@ CRABBOX_PROVIDER
 CRABBOX_PROFILE
 CRABBOX_CONFIG
 CRABBOX_SSH_KEY
+CRABBOX_RESULTS_JUNIT
+CRABBOX_CACHE_PNPM/NPM/DOCKER/GIT
+CRABBOX_CACHE_MAX_GB
+CRABBOX_CACHE_PURGE_ON_RELEASE
 ```
 
 Provider/deploy variables live outside normal CLI operation:
