@@ -37,3 +37,8 @@ Initial Crabbox release.
 - `doctor` accepts per-lease SSH keys as the default posture and validates explicit `CRABBOX_SSH_KEY` only when set.
 - Coordinator requests bound dial/TLS timeouts and fall back to local `curl` on transport failures.
 - Local per-lease SSH keys move with coordinator-renamed lease IDs.
+
+### Fixed
+
+- Config-writing commands honor `CRABBOX_CONFIG`, so isolated login/logout tests do not touch the normal user config.
+- Boolean flags for `logs` and admin lease actions work after positional IDs, such as `crabbox logs run_... --json`.

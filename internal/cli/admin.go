@@ -51,6 +51,8 @@ func (a App) adminLeases(ctx context.Context, args []string) error {
 }
 
 func (a App) adminRelease(ctx context.Context, args []string) error {
+	args, deleteAnywhere := extractBoolFlag(args, "delete")
+	args, jsonAnywhere := extractBoolFlag(args, "json")
 	fs := newFlagSet("admin release", a.Stderr)
 	id := fs.String("id", "", "lease id")
 	deleteServer := fs.Bool("delete", false, "delete server while releasing")
@@ -63,6 +65,12 @@ func (a App) adminRelease(ctx context.Context, args []string) error {
 	}
 	if *id == "" {
 		return exit(2, "usage: crabbox admin release --id <lease-id>")
+	}
+	if deleteAnywhere {
+		*deleteServer = true
+	}
+	if jsonAnywhere {
+		*jsonOut = true
 	}
 	coord, err := configuredCoordinator()
 	if err != nil {
@@ -80,6 +88,8 @@ func (a App) adminRelease(ctx context.Context, args []string) error {
 }
 
 func (a App) adminDelete(ctx context.Context, args []string) error {
+	args, forceAnywhere := extractBoolFlag(args, "force")
+	args, jsonAnywhere := extractBoolFlag(args, "json")
 	fs := newFlagSet("admin delete", a.Stderr)
 	id := fs.String("id", "", "lease id")
 	force := fs.Bool("force", false, "confirm deletion")
@@ -92,6 +102,12 @@ func (a App) adminDelete(ctx context.Context, args []string) error {
 	}
 	if *id == "" {
 		return exit(2, "usage: crabbox admin delete --id <lease-id> --force")
+	}
+	if forceAnywhere {
+		*force = true
+	}
+	if jsonAnywhere {
+		*jsonOut = true
 	}
 	if !*force {
 		return exit(2, "admin delete requires --force")

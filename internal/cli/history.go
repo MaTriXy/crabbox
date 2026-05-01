@@ -38,6 +38,7 @@ func (a App) history(ctx context.Context, args []string) error {
 }
 
 func (a App) logs(ctx context.Context, args []string) error {
+	args, jsonAnywhere := extractBoolFlag(args, "json")
 	fs := newFlagSet("logs", a.Stderr)
 	runID := fs.String("id", "", "run id")
 	jsonOut := fs.Bool("json", false, "print JSON metadata and log")
@@ -49,6 +50,9 @@ func (a App) logs(ctx context.Context, args []string) error {
 	}
 	if *runID == "" {
 		return exit(2, "usage: crabbox logs <run-id>")
+	}
+	if jsonAnywhere {
+		*jsonOut = true
 	}
 	coord, err := configuredCoordinator()
 	if err != nil {

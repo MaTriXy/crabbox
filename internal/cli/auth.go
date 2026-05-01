@@ -73,7 +73,7 @@ func (a App) logout(_ context.Context, args []string) error {
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
-	path := userConfigPath()
+	path := writableConfigPath()
 	if path == "" {
 		return exit(2, "user config directory is unavailable")
 	}
@@ -125,7 +125,7 @@ func (a App) whoami(ctx context.Context, args []string) error {
 }
 
 func writeBrokerLogin(brokerURL, token, provider string) (string, Config, error) {
-	path := userConfigPath()
+	path := writableConfigPath()
 	if path == "" {
 		return "", Config{}, exit(2, "user config directory is unavailable")
 	}

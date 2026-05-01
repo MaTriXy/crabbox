@@ -250,7 +250,7 @@ func readFileConfig(path string) (fileConfig, error) {
 }
 
 func writeUserFileConfig(cfg fileConfig) (string, error) {
-	path := userConfigPath()
+	path := writableConfigPath()
 	if path == "" {
 		return "", exit(2, "user config directory is unavailable")
 	}
@@ -265,6 +265,13 @@ func writeUserFileConfig(cfg fileConfig) (string, error) {
 		return "", exit(2, "write config %s: %v", path, err)
 	}
 	return path, nil
+}
+
+func writableConfigPath() string {
+	if explicit := os.Getenv("CRABBOX_CONFIG"); explicit != "" {
+		return explicit
+	}
+	return userConfigPath()
 }
 
 func applyConfigFile(cfg *Config, path string) error {

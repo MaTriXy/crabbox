@@ -129,7 +129,7 @@ func (a App) configSetBroker(args []string) error {
 			return exit(2, "broker token from stdin is empty")
 		}
 	}
-	path := userConfigPath()
+	path := writableConfigPath()
 	if path == "" {
 		return exit(2, "user config directory is unavailable")
 	}
