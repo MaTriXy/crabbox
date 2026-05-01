@@ -14,11 +14,11 @@ Crabbox performance comes from avoiding repeated setup, keeping the sync small, 
 Use `warmup` for repeated agent loops:
 
 ```sh
-bin/crabbox warmup --class beast --idle-timeout 90m
-bin/crabbox run --id cbx_... -- pnpm test:changed:max
+bin/crabbox warmup --class beast
+bin/crabbox run --id blue-lobster -- pnpm test:changed:max
 ```
 
-Warm leases avoid waiting for a fresh VM and preserve package caches outside the synced source tree. Use `crabbox stop cbx_...` when the loop is done.
+Warm leases avoid waiting for a fresh VM and preserve package caches outside the synced source tree. They release after the idle timeout, default `30m`, if untouched. Use `crabbox stop blue-lobster` when the loop is done.
 
 ## Sync Size
 
@@ -59,16 +59,16 @@ Runner bootstrap prepares shared package cache locations for Node, pnpm, Docker,
 Use explicit cache commands on kept leases:
 
 ```sh
-bin/crabbox cache stats --id cbx_...
-bin/crabbox cache warm --id cbx_... -- pnpm install --frozen-lockfile
-bin/crabbox cache purge --id cbx_... --kind pnpm --force
+bin/crabbox cache stats --id blue-lobster
+bin/crabbox cache warm --id blue-lobster -- pnpm install --frozen-lockfile
+bin/crabbox cache purge --id blue-lobster --kind pnpm --force
 ```
 
 For repeatable setup that needs repository secrets, use Actions hydration:
 
 ```sh
-bin/crabbox actions hydrate --id cbx_...
-bin/crabbox run --id cbx_... -- pnpm test:changed:max
+bin/crabbox actions hydrate --id blue-lobster
+bin/crabbox run --id blue-lobster -- pnpm test:changed:max
 ```
 
 The workflow owns dependency installation, cache/service setup, and secret-backed environment hydration. Crabbox attaches later commands to the hydrated workspace.

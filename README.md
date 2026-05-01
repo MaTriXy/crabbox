@@ -51,20 +51,20 @@ The **runner** is just an Ubuntu machine bootstrapped by cloud-init. Bootstrap c
 The normal lifecycle is:
 
 1. `crabbox run --class standard -- <command>` loads local config.
-2. CLI sends `POST /v1/leases` with provider, class, TTL, SSH public key, and bootstrap options.
-3. Worker creates a Hetzner server or AWS Spot instance and stores the lease.
+2. CLI sends `POST /v1/leases` with provider, class, TTL, idle timeout, slug, SSH public key, and bootstrap options.
+3. Worker creates a Hetzner server or AWS Spot instance and stores the lease metadata, including `lastTouchedAt` and idle expiry.
 4. CLI waits for `crabbox-ready` over SSH.
 5. CLI seeds remote Git when possible, then rsyncs tracked plus nonignored untracked files into `/work/crabbox/<lease>/<repo>`.
 6. CLI records sync fingerprints, enforces sync size/time guardrails, runs sync sanity checks, and hydrates configured base-ref history.
 7. CLI runs the command over SSH and returns the remote exit code.
-8. CLI releases the lease; the broker terminates the machine unless it was kept.
+8. CLI releases the lease unless it was kept; kept leases still auto-release after idle timeout.
 
 The GitHub Actions hydration lifecycle reuses the same machines, but lets the repository's workflow define setup:
 
-1. `crabbox warmup --idle-timeout 90m` leases a reusable box.
-2. `crabbox actions hydrate --id cbx_...` registers that box as an ephemeral GitHub Actions runner, dispatches the configured workflow, and waits for the workflow to write a ready marker.
+1. `crabbox warmup` leases a reusable box and prints both a stable `cbx_...` ID and a friendly slug.
+2. `crabbox actions hydrate --id blue-lobster` registers that box as an ephemeral GitHub Actions runner, dispatches the configured workflow, and waits for the workflow to write a ready marker.
 3. The workflow runs normal Actions steps such as checkout, dependency install, cache/service setup, and secret-backed environment hydration.
-4. `crabbox run --id cbx_... -- <command>` syncs the local dirty checkout into the hydrated `$GITHUB_WORKSPACE`, sources the workflow's non-secret env handoff, and runs commands there.
+4. `crabbox run --id blue-lobster -- <command>` syncs the local dirty checkout into the hydrated `$GITHUB_WORKSPACE`, sources the workflow's non-secret env handoff, and runs commands there.
 
 Crabbox does not parse or reimplement GitHub Actions YAML. The project-owned workflow decides what to install and when the machine is ready. GitHub secrets and OIDC request tokens remain workflow-step scoped unless that workflow intentionally persists its own short-lived handoff.
 
@@ -166,34 +166,34 @@ bin/crabbox init
 Warm a reusable testbox:
 
 ```sh
-bin/crabbox warmup --profile project-check --class beast --idle-timeout 90m
+bin/crabbox warmup --profile project-check --class beast
 ```
 
 Hydrate that box through the repo's GitHub Actions setup, then run local tests inside the hydrated workspace:
 
 ```sh
-bin/crabbox actions hydrate --id cbx_...
-CI=1 bin/crabbox run --id cbx_... -- pnpm test:changed:max
+bin/crabbox actions hydrate --id blue-lobster
+CI=1 bin/crabbox run --id blue-lobster -- pnpm test:changed:max
 ```
 
 Use AWS EC2 Spot through the broker:
 
 ```sh
-bin/crabbox warmup --class beast --idle-timeout 90m
+bin/crabbox warmup --class beast
 ```
 
 Run a command on an existing lease:
 
 ```sh
-CI=1 bin/crabbox run --id cbx_... -- pnpm test:changed:max
+CI=1 bin/crabbox run --id blue-lobster -- pnpm test:changed:max
 ```
 
 Inspect and connect:
 
 ```sh
-bin/crabbox status --id cbx_...
-bin/crabbox ssh --id cbx_...
-bin/crabbox inspect --id cbx_... --json
+bin/crabbox status --id blue-lobster
+bin/crabbox ssh --id blue-lobster
+bin/crabbox inspect --id blue-lobster --json
 ```
 
 Inspect usage and estimated cost:
@@ -209,7 +209,7 @@ bin/crabbox usage --scope all --json
 Stop a kept server:
 
 ```sh
-bin/crabbox stop cbx_...
+bin/crabbox stop blue-lobster
 ```
 
 Print the CLI version:

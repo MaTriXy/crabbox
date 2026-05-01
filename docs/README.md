@@ -22,11 +22,11 @@ The CLI is a Go binary. The broker is a Cloudflare Worker plus a single Durable 
 ## A run, end to end
 
 1. CLI loads config from flags, env, repo, user, defaults.
-2. CLI mints a per-lease SSH key, calls `POST /v1/leases` on the broker.
-3. Worker checks active-lease and monthly spend caps, reserves worst-case TTL cost, provisions a server, returns host / port / user / workdir / expiry.
+2. CLI mints a per-lease SSH key and slug, then calls `POST /v1/leases` on the broker.
+3. Worker checks active-lease and monthly spend caps, reserves worst-case TTL cost, provisions a server, returns host / port / user / workdir / expiry / slug.
 4. CLI waits for `crabbox-ready`, seeds remote Git when possible, rsyncs the Git file-list manifest, runs sync guardrails and sanity checks, hydrates the configured base ref.
-5. CLI runs the command over SSH, streams output, sends heartbeats.
-6. CLI releases the lease unless `--keep` is set; the broker terminates the runner and frees the reserved cost.
+5. CLI runs the command over SSH, streams output, sends heartbeats/touches.
+6. CLI releases the lease unless `--keep` is set; kept leases still auto-release after idle timeout, and the broker frees reserved cost when the lease closes.
 
 See [How Crabbox Works](how-it-works.md) for the full picture, including warm-machine reuse and the brokered vs direct provider paths.
 
@@ -39,11 +39,11 @@ crabbox login
 # one-shot run on a fresh leased box
 crabbox run -- pnpm test
 
-# keep a warm box around for repeated runs
-crabbox warmup --idle-timeout 90m
-crabbox run --id cbx_8f2 -- pnpm test:changed
-crabbox ssh --id cbx_8f2
-crabbox stop cbx_8f2
+# keep a warm box around for repeated runs; output includes an ID and slug
+crabbox warmup
+crabbox run --id blue-lobster -- pnpm test:changed
+crabbox ssh --id blue-lobster
+crabbox stop blue-lobster
 ```
 
 `crabbox doctor` validates local config, network reachability, and SSH key availability before you commit to a long workflow. `crabbox usage` summarizes recent spend by user, org, provider, and server type.

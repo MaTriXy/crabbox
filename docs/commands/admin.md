@@ -5,10 +5,12 @@
 ```sh
 crabbox admin leases
 crabbox admin leases --state active --json
-crabbox admin release cbx_...
-crabbox admin release cbx_... --delete
+crabbox admin release blue-lobster
+crabbox admin release blue-lobster --delete
 crabbox admin delete cbx_... --force
 ```
+
+Release/delete accept a canonical `cbx_...` ID or an active slug; use the canonical ID when an admin slug lookup is ambiguous.
 
 Admin commands require a configured coordinator and bearer token. The current coordinator trusts the shared operator token; do not expose it to untrusted users.
 

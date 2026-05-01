@@ -10,12 +10,12 @@ Actions hydration lets a repository reuse its existing GitHub Actions setup with
 
 The flow:
 
-1. `crabbox warmup --idle-timeout 90m` leases a machine.
-2. `crabbox actions hydrate --id cbx_...` registers that machine as an ephemeral self-hosted runner for the repository.
+1. `crabbox warmup` leases a machine and prints both `cbx_...` and a friendly slug.
+2. `crabbox actions hydrate --id blue-lobster` registers that machine as an ephemeral self-hosted runner for the repository.
 3. Crabbox inspects the configured workflow's `workflow_dispatch.inputs` when it can read the workflow path, then dispatches it with the lease ID, dynamic runner label, keepalive timeout, and optional expected hydrate job.
-4. The workflow runs on `[self-hosted, crabbox-cbx-...]`, checks out the repo, installs dependencies, starts services, warms caches, and performs any repo-specific setup.
+4. The workflow runs on `[self-hosted, crabbox-cbx-...]`; the runner also carries a readable slug label such as `crabbox-blue-lobster`.
 5. The workflow writes `$HOME/.crabbox/actions/<lease>.env` with `WORKSPACE`, `RUN_ID`, `JOB`, `ENV_FILE`, `SERVICES_FILE`, and `READY_AT`.
-6. `crabbox run --id cbx_... -- <command>` reads that marker, syncs the local dirty checkout into `$GITHUB_WORKSPACE`, and sources the non-secret env file when present.
+6. `crabbox run --id blue-lobster -- <command>` reads that marker, syncs the local dirty checkout into `$GITHUB_WORKSPACE`, and sources the non-secret env file when present.
 
 The important boundary: project setup lives in the repository workflow. Crabbox owns runner registration, dispatch, marker waiting, SSH sync, and command execution. It does not contain repository-specific setup code.
 

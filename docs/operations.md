@@ -95,8 +95,8 @@ Use:
 ```sh
 bin/crabbox list
 bin/crabbox admin leases --state active
-bin/crabbox inspect --id cbx_... --json
-bin/crabbox stop cbx_...
+bin/crabbox inspect --id blue-lobster --json
+bin/crabbox stop blue-lobster
 ```
 
 Trusted operators can use `crabbox admin release` or `crabbox admin delete --force` for stuck leases.

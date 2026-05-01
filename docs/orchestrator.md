@@ -41,9 +41,9 @@ The Worker stores coordinator leases as `active`, `released`, `expired`, or `fai
 
 ## Heartbeats And Idle Timeout
 
-`crabbox warmup --idle-timeout 90m` and `crabbox run --idle-timeout 90m` map to lease TTL. The CLI sends coordinator heartbeats while a lease is in use. Each heartbeat extends `expiresAt` by the original TTL.
+`crabbox warmup --idle-timeout 30m` and `crabbox run --idle-timeout 30m` set inactivity expiry. `--ttl` is a separate maximum wall-clock lifetime. The CLI sends coordinator heartbeats while a lease is in use; each heartbeat updates `lastTouchedAt` and recomputes `expiresAt = min(createdAt + ttl, lastTouchedAt + idleTimeout)`.
 
-Direct-provider mode does not have a central heartbeat. It labels machines with `created_at`, `expires_at`, and `state`; `crabbox cleanup` uses those labels conservatively.
+Direct-provider mode does not have a central heartbeat or alarm. It labels machines with `created_at`, `last_touched_at`, `idle_timeout_secs`, `expires_at`, `state`, `lease`, and `slug`; `crabbox cleanup` uses those labels conservatively.
 
 ## Cleanup
 
@@ -52,7 +52,8 @@ Brokered cleanup is owned by the Durable Object alarm. `crabbox cleanup` refuses
 Direct cleanup only deletes machines that are clearly safe:
 
 - `keep=true` is skipped;
-- active states are skipped;
+- running and provisioning states are skipped until the extra stale window;
+- expired ready/leased/active direct machines can be cleaned up manually;
 - expired inactive machines can be deleted;
 - stale active states older than expiry plus 12 hours can be deleted.
 

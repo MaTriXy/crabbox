@@ -14,14 +14,14 @@ Crabbox exposes operational visibility through CLI commands, coordinator usage s
 Use `status`, `list`, and `inspect`:
 
 ```sh
-bin/crabbox status --id cbx_...
+bin/crabbox status --id blue-lobster
 bin/crabbox list --json
-bin/crabbox inspect --id cbx_... --json
+bin/crabbox inspect --id blue-lobster --json
 ```
 
 Important fields:
 
-- lease ID;
+- lease ID and slug;
 - owner and org;
 - provider and server type;
 - state;
@@ -66,8 +66,8 @@ History is for command debugging, not unlimited log archival. Logs are bounded t
 Use SSH for live process and filesystem inspection:
 
 ```sh
-bin/crabbox ssh --id cbx_...
-bin/crabbox inspect --id cbx_... --json
+bin/crabbox ssh --id blue-lobster
+bin/crabbox inspect --id blue-lobster --json
 ```
 
 Useful remote checks:
@@ -80,7 +80,7 @@ free -h
 ps aux --sort=-%cpu | head
 ```
 
-If a lease was created with `--keep`, SSH remains available until `crabbox stop` or TTL cleanup removes it.
+If a lease was created with `--keep`, SSH remains available until `crabbox stop`, idle expiry, or the TTL cap removes it.
 
 ## Actions Hydration
 
@@ -89,11 +89,11 @@ If a lease was created with `--keep`, SSH remains available until `crabbox stop`
 Use:
 
 ```sh
-bin/crabbox actions hydrate --id cbx_...
-bin/crabbox inspect --id cbx_... --json
+bin/crabbox actions hydrate --id blue-lobster
+bin/crabbox inspect --id blue-lobster --json
 ```
 
-The hydrated run writes non-secret handoff data for later `crabbox run --id cbx_...` commands. Secrets and OIDC tokens remain workflow-step scoped unless the workflow intentionally writes its own short-lived handoff.
+The hydrated run writes non-secret handoff data for later `crabbox run --id blue-lobster` commands. Secrets and OIDC tokens remain workflow-step scoped unless the workflow intentionally writes its own short-lived handoff.
 
 ## Worker Logs
 

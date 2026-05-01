@@ -3,13 +3,13 @@
 `crabbox run` syncs the current dirty checkout to a box, runs a command, streams output, and returns the remote exit code.
 
 ```sh
-crabbox run --id cbx_123 -- pnpm test:changed:max
-crabbox run --class beast --idle-timeout 90m -- pnpm check
-crabbox run --id cbx_123 --shell 'pnpm install --frozen-lockfile && pnpm test'
+crabbox run --id blue-lobster -- pnpm test:changed:max
+crabbox run --class beast -- pnpm check
+crabbox run --id blue-lobster --shell 'pnpm install --frozen-lockfile && pnpm test'
 crabbox run --id cbx_123 --junit junit.xml -- go test ./...
 ```
 
-If `--id` is omitted, Crabbox creates a fresh non-kept lease and releases it when the command exits.
+If `--id` is omitted, Crabbox creates a fresh non-kept lease and releases it when the command exits. `--id` accepts the stable `cbx_...` ID or the active friendly slug.
 
 When the lease has been hydrated by `crabbox actions hydrate`, `run` reads the remote marker under `$HOME/.crabbox/actions`, syncs into the workflow's `$GITHUB_WORKSPACE`, and sources the non-secret env file written by the workflow. That preserves the setup the workflow performed: checkout path, installed dependencies, service containers, caches, runner temp/toolcache paths, and any project-specific preparation. GitHub secrets and OIDC request tokens remain workflow-step scoped unless the project explicitly persists its own short-lived credentials.
 
@@ -32,7 +32,7 @@ Use `crabbox sync-plan` to inspect the same local manifest without leasing a box
 Flags:
 
 ```text
---id <lease-id>
+--id <lease-id-or-slug>
 --provider hetzner|aws
 --profile <name>
 --class <name>
@@ -47,4 +47,8 @@ Flags:
 --checksum
 --debug
 --junit <comma-separated remote XML paths>
+--reclaim
 ```
+
+`--idle-timeout` controls inactivity expiry, default `30m`. `--ttl` remains the maximum wall-clock lifetime, default `90m`.
+Crabbox records a local repo claim for each reused lease. If a lease is already claimed by another repo, use `--reclaim` to move the claim intentionally.

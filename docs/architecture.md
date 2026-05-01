@@ -34,15 +34,15 @@ leased machine
 
 1. CLI loads config and authenticates to Cloudflare Access.
 2. CLI creates a per-lease SSH key.
-3. CLI sends `POST /v1/leases` with lease ID, profile, TTL, repo metadata, desired machine class, and SSH public key.
+3. CLI sends `POST /v1/leases` with lease ID, slug, profile, TTL, idle timeout, desired machine class, and SSH public key.
 4. Coordinator validates identity and policy.
 5. Durable Object chooses a provider from config and creates a Hetzner server or AWS EC2 Spot instance.
-6. Coordinator returns lease ID, machine address, SSH user, workdir, and expiry.
+6. Coordinator returns lease ID, slug, machine address, SSH user, workdir, and expiry.
 7. CLI waits for `crabbox-ready`.
 8. CLI seeds remote Git when possible, compares sync fingerprints, and syncs changed files with `rsync --delete`.
 9. CLI runs sync sanity and configured base-ref hydration.
 10. CLI runs the command over SSH and streams stdout/stderr.
-11. CLI heartbeats while the command runs.
+11. CLI heartbeats while the command runs; heartbeats touch `lastTouchedAt` and recompute idle expiry up to the TTL cap.
 12. CLI releases the lease when done.
 13. Durable Object alarm cleans up stale leases and expired machines.
 

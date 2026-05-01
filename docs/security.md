@@ -100,14 +100,14 @@ Cleanup is security-sensitive.
 
 Required:
 
-- Lease TTL.
-- Heartbeat deadline.
+- Lease TTL cap.
+- Idle timeout and heartbeat/touch deadline.
 - Explicit release.
 - Durable Object alarm cleanup.
 - Provider label sweep for clearly expired, inactive orphan machines.
 - Boot-time cleanup of stale `/work/crabbox/*` dirs.
 
-Direct-CLI cleanup currently uses provider labels and skips active states. When a coordinator is configured, provider-side cleanup is disabled because the Durable Object TTL alarm owns brokered cleanup.
+Direct-CLI cleanup uses provider labels. It skips kept machines, deletes expired ready/leased/active machines, and only removes running/provisioning machines after the extra stale safety window. When a coordinator is configured, provider-side cleanup is disabled because the Durable Object alarm owns brokered cleanup.
 
 Release must be idempotent. Delete must tolerate already-deleted provider resources.
 

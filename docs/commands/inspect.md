@@ -3,8 +3,8 @@
 `crabbox inspect` prints detailed lease and provider metadata.
 
 ```sh
-crabbox inspect --id cbx_123
-crabbox inspect --id cbx_123 --json
+crabbox inspect --id blue-lobster
+crabbox inspect --id blue-lobster --json
 ```
 
 Use this for debugging coordinator state, provider labels, expiry, and SSH target details.
@@ -12,7 +12,7 @@ Use this for debugging coordinator state, provider labels, expiry, and SSH targe
 Flags:
 
 ```text
---id <lease-id>
+--id <lease-id-or-slug>
 --provider hetzner|aws
 --json
 ```

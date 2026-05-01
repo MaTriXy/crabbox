@@ -33,26 +33,26 @@ crabbox config show [--json]
 crabbox config path
 crabbox config set-broker --url <url> --token-stdin [--provider hetzner|aws]
 crabbox warmup [--provider hetzner|aws] [--profile <name>] [--idle-timeout <duration>]
-crabbox run [--id <lease-id>] [--shell] [--checksum] [--debug] [--force-sync-large] -- <command...>
+crabbox run [--id <lease-id-or-slug>] [--shell] [--checksum] [--debug] [--force-sync-large] -- <command...>
 crabbox sync-plan [--limit <n>]
 crabbox history [--lease <lease-id>] [--owner <email>] [--org <name>] [--limit <n>] [--json]
 crabbox logs <run-id> [--json]
 crabbox results <run-id> [--json]
-crabbox cache stats --id <lease-id> [--json]
-crabbox cache purge --id <lease-id> --kind pnpm|npm|docker|git|all --force
-crabbox cache warm --id <lease-id> -- <command...>
-crabbox actions hydrate --id <lease-id> [--workflow <file|name|id>] [--wait-timeout <duration>]
-crabbox actions register --id <lease-id> [--repo owner/name]
+crabbox cache stats --id <lease-id-or-slug> [--json]
+crabbox cache purge --id <lease-id-or-slug> --kind pnpm|npm|docker|git|all --force
+crabbox cache warm --id <lease-id-or-slug> -- <command...>
+crabbox actions hydrate --id <lease-id-or-slug> [--workflow <file|name|id>] [--wait-timeout <duration>]
+crabbox actions register --id <lease-id-or-slug> [--repo owner/name]
 crabbox actions dispatch [--workflow <file|name|id>] [-f key=value]
-crabbox status --id <lease-id> [--wait]
+crabbox status --id <lease-id-or-slug> [--wait]
 crabbox list [--json]
 crabbox usage [--scope user|org|all] [--user <email>] [--org <name>] [--month YYYY-MM] [--json]
 crabbox admin leases [--state active|released|expired|failed] [--owner <email>] [--org <name>] [--json]
-crabbox admin release <lease-id> [--delete]
-crabbox admin delete <lease-id> --force
-crabbox ssh --id <lease-id>
-crabbox inspect --id <lease-id> [--json]
-crabbox stop <lease-id>
+crabbox admin release <lease-id-or-slug> [--delete]
+crabbox admin delete <lease-id-or-slug> --force
+crabbox ssh --id <lease-id-or-slug>
+crabbox inspect --id <lease-id-or-slug> [--json]
+crabbox stop <lease-id-or-slug>
 crabbox cleanup [--dry-run]
 ```
 
@@ -73,19 +73,19 @@ crabbox run --class beast -- pnpm check:changed
 Warm a box, then reuse it:
 
 ```sh
-crabbox warmup --profile project-check --idle-timeout 90m
-crabbox run --id cbx_123 -- pnpm test:changed
-crabbox run --id cbx_123 --shell 'pnpm install --frozen-lockfile && pnpm test'
-crabbox stop cbx_123
+crabbox warmup --profile project-check
+crabbox run --id blue-lobster -- pnpm test:changed
+crabbox run --id blue-lobster --shell 'pnpm install --frozen-lockfile && pnpm test'
+crabbox stop blue-lobster
 ```
 
 Hydrate through GitHub Actions, then run local dirty work in the hydrated workspace:
 
 ```sh
-crabbox warmup --idle-timeout 90m
-crabbox actions hydrate --id cbx_123
-crabbox run --id cbx_123 -- pnpm test:changed
-crabbox stop cbx_123
+crabbox warmup
+crabbox actions hydrate --id blue-lobster
+crabbox run --id blue-lobster -- pnpm test:changed
+crabbox stop blue-lobster
 ```
 
 Inspect pool:
@@ -117,7 +117,7 @@ crabbox cleanup --dry-run
 crabbox cleanup
 ```
 
-Cleanup is intentionally conservative: it skips kept machines and active states. When a coordinator is configured, brokered cleanup is owned by the Durable Object TTL alarm instead of provider-side sweeping.
+Cleanup is intentionally conservative: it skips kept machines, deletes expired ready/leased/active direct machines, and gives running/provisioning direct machines an extra stale safety window. When a coordinator is configured, brokered cleanup is owned by the Durable Object alarm instead of provider-side sweeping.
 
 Debug config:
 
@@ -131,7 +131,7 @@ crabbox config show --json
 Inspect recorded runs:
 
 ```sh
-crabbox run --id cbx_123 --junit junit.xml -- go test ./...
+crabbox run --id blue-lobster --junit junit.xml -- go test ./...
 crabbox history --lease cbx_123
 crabbox logs run_123
 crabbox results run_123
@@ -140,16 +140,16 @@ crabbox results run_123
 Inspect or warm caches on a kept box:
 
 ```sh
-crabbox cache stats --id cbx_123
-crabbox cache warm --id cbx_123 -- pnpm install --frozen-lockfile
-crabbox cache purge --id cbx_123 --kind pnpm --force
+crabbox cache stats --id blue-lobster
+crabbox cache warm --id blue-lobster -- pnpm install --frozen-lockfile
+crabbox cache purge --id blue-lobster --kind pnpm --force
 ```
 
 Trusted operator lease controls:
 
 ```sh
 crabbox admin leases --state active
-crabbox admin release cbx_123
+crabbox admin release blue-lobster
 crabbox admin delete cbx_123 --force
 ```
 
@@ -176,13 +176,13 @@ Fresh non-kept leases retry once with a new machine when bootstrap never reaches
 Flags:
 
 ```text
---id <lease-id>          reuse an existing lease
+--id <lease-id-or-slug>  reuse an existing lease
 --provider <name>        hetzner or aws
 --profile <name>        profile to run on
 --class <name>          machine class override
 --type <name>           provider server or instance type override
---ttl <duration>        lease TTL, default from profile
---idle-timeout <duration>
+--ttl <duration>        maximum lease lifetime, default 90m
+--idle-timeout <duration> idle expiry, default 30m
 --no-sync               run without syncing
 --sync-only             sync and exit
 --force-sync-large      allow a sync candidate above configured fail thresholds
@@ -191,9 +191,12 @@ Flags:
 --checksum              use checksum rsync instead of size/time
 --debug                 print sync timing and itemized rsync output
 --junit <paths>         comma-separated remote JUnit XML paths to attach to run history
+--reclaim              claim an existing lease for the current repo
 ```
 
 Secrets must not be accepted as flag values. Env forwarding is name-based only.
+
+Crabbox stores local lease claims under its state directory. `warmup` and first reuse claim the lease for the current repo; later `run`, `ssh`, `cache`, and `actions hydrate/register` refuse a conflicting repo claim unless `--reclaim` is set.
 
 ## Exit Codes
 
@@ -231,6 +234,9 @@ broker:
   token: ...
 profile: project-check
 class: beast
+lease:
+  idleTimeout: 30m
+  ttl: 90m
 capacity:
   market: spot
   strategy: most-available
@@ -306,6 +312,8 @@ CRABBOX_COORDINATOR_TOKEN
 CRABBOX_PROVIDER
 CRABBOX_PROFILE
 CRABBOX_CONFIG
+CRABBOX_IDLE_TIMEOUT
+CRABBOX_TTL
 CRABBOX_SSH_KEY
 CRABBOX_RESULTS_JUNIT
 CRABBOX_SYNC_TIMEOUT
@@ -336,7 +344,7 @@ Human output:
 
 ```text
 acquiring lease profile=project-check ttl=90m
-leased cbx_abc123 machine=hz-ccx33-01 expires=2026-04-30T17:30:00Z
+leased cbx_abc123 slug=blue-lobster provider=aws server=i-0123 type=c7a.48xlarge ip=203.0.113.10 idle_timeout=30m0s expires=2026-05-01T17:30:00Z
 syncing 184 files -> /work/crabbox/cbx_abc123/openclaw
 running pnpm check:changed
 ...

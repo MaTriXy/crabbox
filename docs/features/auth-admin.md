@@ -29,7 +29,7 @@ Trusted operator controls:
 
 ```sh
 crabbox admin leases --state active
-crabbox admin release cbx_...
+crabbox admin release blue-lobster
 crabbox admin delete cbx_... --force
 ```
 

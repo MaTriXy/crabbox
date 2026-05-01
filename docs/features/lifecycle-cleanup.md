@@ -15,16 +15,18 @@ active -> expired
 active -> failed
 ```
 
-The CLI heartbeats active coordinator leases while a command runs. Release and expiry both call the provider delete path for non-kept machines. Kept machines remain available until explicitly stopped or expired by policy.
+The CLI heartbeats active coordinator leases while a command runs. Heartbeat is a touch: it updates `lastTouchedAt` and extends idle expiry up to the lease TTL cap. Release and expiry both call the provider delete path; `keep=true` only skips command-exit release, not coordinator idle expiry.
+
+The CLI also keeps a local claim file per lease so repo-local wrappers do not need their own ledger. Commands that reuse a lease validate that the current repo matches the claim; `--reclaim` moves the claim intentionally.
 
 Brokered cleanup belongs to the Durable Object alarm. `crabbox cleanup` refuses to sweep provider resources when a coordinator is configured because that can race live brokered leases.
 
 Direct-provider cleanup is conservative:
 
 - skip `keep=true`;
-- skip active states;
-- delete clearly expired inactive machines;
-- delete stale active machines only after expiry plus the extra safety window.
+- skip running/provisioning states until expiry plus the extra safety window;
+- delete clearly expired ready/leased/active direct machines;
+- delete clearly expired inactive machines.
 
 Provider resources should carry Crabbox labels/tags so orphan cleanup can identify them without touching unrelated infrastructure.
 

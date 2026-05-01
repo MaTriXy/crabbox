@@ -3,11 +3,13 @@
 `crabbox cache` inspects, purges, or warms caches on a leased box.
 
 ```sh
-crabbox cache stats --id cbx_...
-crabbox cache stats --id cbx_... --json
-crabbox cache warm --id cbx_... -- pnpm install --frozen-lockfile
-crabbox cache purge --id cbx_... --kind pnpm --force
+crabbox cache stats --id blue-lobster
+crabbox cache stats --id blue-lobster --json
+crabbox cache warm --id blue-lobster -- pnpm install --frozen-lockfile
+crabbox cache purge --id blue-lobster --kind pnpm --force
 ```
+
+`--id` accepts the stable `cbx_...` ID or an active friendly slug. Cache commands that SSH to the box touch the lease and validate the local repo claim; add `--reclaim` to move an existing claim.
 
 Cache kinds:
 

@@ -5,28 +5,32 @@
 It uses GitHub's runner and workflow APIs:
 
 - `actions register` gets a repository runner registration token through `gh api`, installs the official `actions/runner` package on an existing box, and starts it with systemd.
-- `actions hydrate` registers the runner, dispatches the configured workflow with the lease label, waits for the workflow to write the hydrated workspace marker, and then returns.
+- `actions hydrate` registers the runner, dispatches the configured workflow with the canonical lease label, waits for the workflow to write the hydrated workspace marker, and then returns.
 - `actions dispatch` calls `gh workflow run` for the configured workflow.
 
 For `actions hydrate`, Crabbox inspects the selected workflow's `workflow_dispatch.inputs` when the workflow path is available under `.github/workflows/`. It only sends declared inputs, requires `crabbox_id`, `crabbox_runner_label`, and `crabbox_keep_alive_minutes`, and treats `crabbox_job` as optional. If GitHub still rejects `crabbox_job` as an unexpected input, Crabbox retries once without it so older workflow refs remain usable.
 
+Runner names and extra labels use the friendly slug when available, but workflow inputs and state-file paths keep using the canonical `cbx_...` ID.
+
 On success, `actions hydrate` prints a concise total duration line.
 
 ```sh
-crabbox warmup --actions-runner --idle-timeout 90m
-crabbox actions hydrate --id cbx_123
-crabbox actions register --id cbx_123
+crabbox warmup --actions-runner
+crabbox actions hydrate --id blue-lobster
+crabbox actions register --id blue-lobster
 crabbox actions dispatch -f testbox_id=cbx_123
-crabbox run --id cbx_123 -- pnpm test
+crabbox run --id blue-lobster -- pnpm test
 ```
 
 Subcommands:
 
 ```text
-hydrate --id <lease> [--repo owner/name] [--workflow <file|name|id>] [--ref <ref>] [--wait-timeout 20m] [--keep-alive-minutes 90] [-f key=value]
-register --id <lease> [--repo owner/name] [--name <runner-name>] [--labels <csv>] [--version latest] [--ephemeral=true]
+hydrate --id <lease-id-or-slug> [--repo owner/name] [--workflow <file|name|id>] [--ref <ref>] [--wait-timeout 20m] [--keep-alive-minutes 90] [--reclaim] [-f key=value]
+register --id <lease-id-or-slug> [--repo owner/name] [--name <runner-name>] [--labels <csv>] [--version latest] [--ephemeral=true] [--reclaim]
 dispatch [--repo owner/name] [--workflow <file|name|id>] [--ref <ref>] [-f key=value]
 ```
+
+Hydrate/register validate the local repo claim before touching the lease. Use `--reclaim` when intentionally moving a lease to the current repo.
 
 Config:
 
@@ -50,9 +54,9 @@ When `actions.job` is set and the workflow declares `crabbox_job`, Crabbox sends
 Use hydration when CI already knows how to prepare the repository and an agent needs a fast local-style loop:
 
 ```sh
-crabbox warmup --idle-timeout 90m
-crabbox actions hydrate --id cbx_123
-crabbox run --id cbx_123 -- pnpm test:changed
+crabbox warmup
+crabbox actions hydrate --id blue-lobster
+crabbox run --id blue-lobster -- pnpm test:changed
 ```
 
 The Actions workflow owns repository-specific setup: checkout, dependency install, services, caches, secrets, and any project tools. Crabbox only registers the runner, dispatches the workflow, waits for the marker, and later syncs local edits into the marked workspace. There is no project-specific setup code in the Crabbox binary.
@@ -103,4 +107,4 @@ services_file="$HOME/.crabbox/actions/${{ inputs.crabbox_id }}.services"
 mv "${state}.tmp" "$state"
 ```
 
-`crabbox run --id <lease>` reads that marker, syncs into the hydrated `$GITHUB_WORKSPACE`, and sources the non-secret env file when present. The env file should contain stable GitHub/runner context such as `GITHUB_WORKSPACE`, `GITHUB_RUN_ID`, `RUNNER_TEMP`, and `RUNNER_TOOL_CACHE`; do not persist secrets or OIDC request tokens there. Keep the workflow job alive when service containers or job-scoped setup must remain running for the remote command loop. `crabbox stop <lease>` writes the `.stop` marker before releasing the box.
+`crabbox run --id <lease-id-or-slug>` reads that marker, syncs into the hydrated `$GITHUB_WORKSPACE`, and sources the non-secret env file when present. The env file should contain stable GitHub/runner context such as `GITHUB_WORKSPACE`, `GITHUB_RUN_ID`, `RUNNER_TEMP`, and `RUNNER_TOOL_CACHE`; do not persist secrets or OIDC request tokens there. Keep the workflow job alive when service containers or job-scoped setup must remain running for the remote command loop. `crabbox stop <lease-id-or-slug>` writes the `.stop` marker before releasing the box.

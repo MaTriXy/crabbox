@@ -51,7 +51,7 @@ A single `crabbox run` command walks through five phases:
 
 **1. Plan.** Load config (flags -> env -> repo -> user -> defaults). Mint a temporary lease ID and per-lease SSH key.
 
-**2. Lease.** `POST /v1/leases` to the broker with class, provider, TTL, bootstrap options, and the SSH public key. Worker authenticates, then forwards to the Fleet Durable Object. Durable Object enforces active-lease and monthly spend caps, asks the provider for live pricing, reserves the worst-case TTL cost, provisions the machine, and returns host / SSH user / port / work root / expiry / lease ID. CLI re-keys its local key dir if the broker assigned a different final lease ID.
+**2. Lease.** `POST /v1/leases` to the broker with class, provider, TTL, idle timeout, slug, bootstrap options, and the SSH public key. Worker authenticates, then forwards to the Fleet Durable Object. Durable Object enforces active-lease and monthly spend caps, asks the provider for live pricing, reserves the worst-case TTL cost, provisions the machine, and returns host / SSH user / port / work root / expiry / lease ID / slug. CLI re-keys its local key dir if the broker assigned a different final lease ID.
 
 **3. Sync.** Wait for SSH and the `crabbox-ready` marker. Seed remote Git when possible. Compare local and remote sync fingerprints; skip rsync if nothing changed. Otherwise rsync the dirty checkout into `/work/crabbox/<lease>/<repo>`, run sanity checks, hydrate the configured base ref.
 
@@ -64,13 +64,13 @@ A single `crabbox run` command walks through five phases:
 `crabbox warmup` follows the same lease creation path, then keeps the box ready for later use. Reuse is explicit:
 
 ```sh
-crabbox warmup --profile project-check --idle-timeout 90m
-crabbox run --id cbx_... -- pnpm test:changed
-crabbox ssh --id cbx_...
-crabbox stop cbx_...
+crabbox warmup --profile project-check
+crabbox run --id blue-lobster -- pnpm test:changed
+crabbox ssh --id blue-lobster
+crabbox stop blue-lobster
 ```
 
-While the CLI is using a lease it sends heartbeats; the Durable Object extends the lease accordingly. If a lease goes stale, the alarm expires it and deletes non-kept resources.
+While the CLI is using a lease it sends heartbeats; the Durable Object updates `lastTouchedAt` and recomputes idle expiry. If a warm lease goes untouched for the idle timeout, the alarm releases it.
 
 ## Brokered vs Direct Provider
 

@@ -32,9 +32,9 @@ The per-kind toggles control `cache stats` and `cache purge`. Disabled kinds are
 Commands:
 
 ```sh
-crabbox cache stats --id cbx_...
-crabbox cache warm --id cbx_... -- pnpm install --frozen-lockfile
-crabbox cache purge --id cbx_... --kind pnpm --force
+crabbox cache stats --id blue-lobster
+crabbox cache warm --id blue-lobster -- pnpm install --frozen-lockfile
+crabbox cache purge --id blue-lobster --kind pnpm --force
 ```
 
 Caches are speed hints, not source of truth. The synced worktree remains authoritative. Disposable leases lose cache state when the VM is deleted; kept leases can reuse cache state across repeated agent runs.

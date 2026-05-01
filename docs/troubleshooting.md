@@ -166,8 +166,8 @@ Symptoms:
 Checks:
 
 ```sh
-bin/crabbox actions hydrate --id cbx_...
-bin/crabbox inspect --id cbx_... --json
+bin/crabbox actions hydrate --id blue-lobster
+bin/crabbox inspect --id blue-lobster --json
 ```
 
 Fixes:

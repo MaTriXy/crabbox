@@ -9,7 +9,7 @@ crabbox cleanup
 
 Cleanup refuses to run when a coordinator is configured. Brokered cleanup belongs to the Durable Object alarm.
 
-Direct cleanup skips kept machines and active states. It deletes clearly expired inactive machines and stale active-state machines after an extra safety window.
+Direct cleanup skips kept machines, deletes expired ready/leased/active machines, and gives running/provisioning machines an extra stale safety window. It relies on provider labels such as `lease`, `slug`, `expires_at`, and `state`.
 
 Flags:
 
