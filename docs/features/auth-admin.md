@@ -6,12 +6,13 @@ Read when:
 - changing trusted operator controls;
 - debugging who owns a lease or run.
 
-Crabbox currently supports bearer-token broker auth. `crabbox login` stores the broker URL, provider, and token in the user config, then verifies the token with `GET /v1/whoami`. It is not yet a GitHub browser OAuth flow.
+Crabbox supports GitHub browser login for normal users and shared bearer-token login for trusted operator automation. `crabbox login` opens GitHub, the coordinator exchanges the OAuth code, and the CLI stores a signed user token in the user config. `crabbox login --token-stdin` stores the shared operator token instead.
 
 Identity sent to the coordinator:
 
 ```text
 Cloudflare Access email, when present
+signed GitHub login token from browser auth
 X-Crabbox-Owner from CRABBOX_OWNER, Git email env, or git config user.email
 X-Crabbox-Org from CRABBOX_ORG
 CRABBOX_DEFAULT_ORG fallback in the Worker
@@ -20,6 +21,8 @@ CRABBOX_DEFAULT_ORG fallback in the Worker
 Commands:
 
 ```sh
+crabbox login
+crabbox login --no-browser
 crabbox login --url <url> --token-stdin
 crabbox whoami
 crabbox logout
@@ -33,7 +36,7 @@ crabbox admin release blue-lobster
 crabbox admin delete cbx_... --force
 ```
 
-Admin commands use the same coordinator token as normal broker calls. Do not distribute the shared token to untrusted users. A future access-control pass should split operator and user tokens before Crabbox is opened beyond trusted maintainers.
+Admin commands require the shared operator token. GitHub browser-login tokens can create and use normal leases, but cannot call admin routes. Do not distribute the shared token to untrusted users.
 
 Related docs:
 

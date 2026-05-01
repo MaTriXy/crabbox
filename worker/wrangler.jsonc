@@ -5,7 +5,14 @@
   "compatibility_date": "2026-04-30",
   "workers_dev": true,
   "preview_urls": false,
+  "vars": {
+    "CRABBOX_PUBLIC_URL": "https://crabbox.openclaw.ai",
+  },
   "routes": [
+    {
+      "pattern": "crabbox.openclaw.ai/*",
+      "zone_name": "openclaw.ai",
+    },
     {
       "pattern": "crabbox.clawd.bot/*",
       "zone_name": "clawd.bot",

@@ -71,6 +71,22 @@ type CoordinatorWhoami struct {
 	Auth  string `json:"auth"`
 }
 
+type CoordinatorGitHubLoginStart struct {
+	LoginID   string `json:"loginID"`
+	URL       string `json:"url"`
+	ExpiresAt string `json:"expiresAt"`
+}
+
+type CoordinatorGitHubLoginPoll struct {
+	Status   string `json:"status"`
+	Token    string `json:"token,omitempty"`
+	Owner    string `json:"owner,omitempty"`
+	Org      string `json:"org,omitempty"`
+	Login    string `json:"login,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	Error    string `json:"error,omitempty"`
+}
+
 type CoordinatorRunsResponse struct {
 	Runs []CoordinatorRun `json:"runs"`
 }
@@ -323,6 +339,25 @@ func (c *CoordinatorClient) Usage(ctx context.Context, scope, owner, org, month 
 func (c *CoordinatorClient) Whoami(ctx context.Context) (CoordinatorWhoami, error) {
 	var res CoordinatorWhoami
 	err := c.do(ctx, http.MethodGet, "/v1/whoami", nil, &res)
+	return res, err
+}
+
+func (c *CoordinatorClient) StartGitHubLogin(ctx context.Context, pollSecretHash, provider string) (CoordinatorGitHubLoginStart, error) {
+	var res CoordinatorGitHubLoginStart
+	body := map[string]any{"pollSecretHash": pollSecretHash}
+	if provider != "" {
+		body["provider"] = provider
+	}
+	err := c.do(ctx, http.MethodPost, "/v1/auth/github/start", body, &res)
+	return res, err
+}
+
+func (c *CoordinatorClient) PollGitHubLogin(ctx context.Context, loginID, pollSecret string) (CoordinatorGitHubLoginPoll, error) {
+	var res CoordinatorGitHubLoginPoll
+	err := c.do(ctx, http.MethodPost, "/v1/auth/github/poll", map[string]any{
+		"loginID":    loginID,
+		"pollSecret": pollSecret,
+	}, &res)
 	return res, err
 }
 

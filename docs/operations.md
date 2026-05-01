@@ -75,10 +75,10 @@ CRABBOX_DEFAULT_ORG
 The canonical Worker URL is:
 
 ```text
-https://crabbox-coordinator.steipete.workers.dev
+https://crabbox.openclaw.ai
 ```
 
-The `crabbox.clawd.bot/*` route is attached and protected by Cloudflare Access. Bearer-token CLI automation talks to the Worker with `CRABBOX_SHARED_TOKEN`/`CRABBOX_COORDINATOR_TOKEN`.
+The `crabbox.openclaw.ai/*` route is attached to the coordinator Worker. Bearer-token CLI automation talks to the Worker with `CRABBOX_SHARED_TOKEN`/`CRABBOX_COORDINATOR_TOKEN`; GitHub browser login stores a user-scoped signed token.
 
 Use `crabbox config show` to confirm which URL and provider the CLI will use:
 

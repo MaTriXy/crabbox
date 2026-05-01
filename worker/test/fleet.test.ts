@@ -14,6 +14,10 @@ class MemoryStorage {
     this.values.set(key, value);
   }
 
+  async delete(key: string): Promise<void> {
+    this.values.delete(key);
+  }
+
   async deleteAlarm(): Promise<void> {}
 
   async setAlarm(_time: number): Promise<void> {}
@@ -255,6 +259,52 @@ describe("fleet identity", () => {
       auth: "bearer",
     });
   });
+
+  it("rejects admin routes without an admin token context", async () => {
+    const fleet = testFleet();
+    const response = await fleet.fetch(request("GET", "/v1/admin/leases"));
+    expect(response.status).toBe(403);
+  });
+
+  it("starts GitHub login and keeps polling secret server-side", async () => {
+    const storage = new MemoryStorage();
+    const fleet = new FleetDurableObject(
+      { storage } as unknown as DurableObjectState,
+      {
+        CRABBOX_DEFAULT_ORG: "openclaw",
+        CRABBOX_GITHUB_CLIENT_ID: "github-client",
+        CRABBOX_GITHUB_CLIENT_SECRET: "github-secret",
+        CRABBOX_SHARED_TOKEN: "shared",
+      } as Env,
+    );
+    const pollSecret = "local-poll-secret";
+    const start = await fleet.fetch(
+      request("POST", "/v1/auth/github/start", {
+        body: {
+          pollSecretHash: await sha256HexForTest(pollSecret),
+          provider: "aws",
+        },
+      }),
+    );
+    expect(start.status).toBe(200);
+    const body = (await start.json()) as { loginID: string; url: string };
+    expect(body.loginID).toMatch(/^login_/);
+    const url = new URL(body.url);
+    expect(url.origin + url.pathname).toBe("https://github.com/login/oauth/authorize");
+    expect(url.searchParams.get("client_id")).toBe("github-client");
+    expect(url.searchParams.get("scope")).toBe("read:user user:email");
+
+    const poll = await fleet.fetch(
+      request("POST", "/v1/auth/github/poll", {
+        body: {
+          loginID: body.loginID,
+          pollSecret,
+        },
+      }),
+    );
+    expect(poll.status).toBe(200);
+    await expect(poll.json()).resolves.toMatchObject({ status: "pending" });
+  });
 });
 
 function testFleet(storage = new MemoryStorage(), providers = {}): FleetDurableObject {
@@ -335,4 +385,9 @@ function request(
     },
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
   });
+}
+
+async function sha256HexForTest(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }

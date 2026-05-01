@@ -1,5 +1,6 @@
+import { authenticateRequest, requestWithAuthContext } from "./auth";
 import { FleetDurableObject } from "./fleet";
-import { bearerToken, json } from "./http";
+import { json } from "./http";
 import type { Env } from "./types";
 
 export { FleetDurableObject };
@@ -10,18 +11,22 @@ export default {
     if (request.method === "GET" && url.pathname === "/v1/health") {
       return json({ ok: true, service: "crabbox-coordinator" });
     }
-    if (!isAuthorized(request, env)) {
+    if (url.pathname.startsWith("/v1/auth/")) {
+      const id = env.FLEET.idFromName("default");
+      return env.FLEET.get(id).fetch(request);
+    }
+    const auth = await authenticateRequest(request, env);
+    if (!auth?.authorized) {
       return json({ error: "unauthorized" }, { status: 401 });
     }
     const id = env.FLEET.idFromName("default");
-    return env.FLEET.get(id).fetch(request);
+    return env.FLEET.get(id).fetch(requestWithAuthContext(request, auth));
   },
 };
 
-export function isAuthorized(request: Request, env: Pick<Env, "CRABBOX_SHARED_TOKEN">): boolean {
-  const expected = env.CRABBOX_SHARED_TOKEN;
-  if (!expected) {
-    return false;
-  }
-  return bearerToken(request) === expected;
+export async function isAuthorized(
+  request: Request,
+  env: Pick<Env, "CRABBOX_SHARED_TOKEN" | "CRABBOX_SESSION_SECRET" | "CRABBOX_DEFAULT_ORG">,
+): Promise<boolean> {
+  return Boolean((await authenticateRequest(request, env))?.authorized);
 }

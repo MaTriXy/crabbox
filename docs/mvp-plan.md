@@ -175,18 +175,18 @@ And proves:
 - The Cloudflare coordinator and Durable Object lease store are implemented and deployed. The CLI uses them when `CRABBOX_COORDINATOR` is set, and falls back to direct Hetzner otherwise.
 - Intended primary domain: `crabbox.openclaw.ai`.
 - Current Cloudflare-manageable fallback domain: `crabbox.clawd.bot`.
-- `openclaw.ai` is currently not visible as a Cloudflare zone in the available account; DNS is on Namecheap nameservers.
+- `openclaw.ai` must be visible as a Cloudflare zone before `crabbox.openclaw.ai/*` can be attached as a Worker route. Current public DNS is on Namecheap nameservers.
 - Cloudflare account ID and Crabbox Cloudflare token are available in local and MacBook Pro `~/.profile`.
 - The current Crabbox Cloudflare token is `crabbox-deploy`, scoped to `Steipete@gmail.com's Account` and the `clawd.bot` zone.
 - The current Crabbox Cloudflare token verifies Workers scripts, Access apps, Access IdPs, Access keys, DNS records, and zone Worker routes.
 - Cloudflare Access is enabled.
 - Current Access IdPs are OTP and GitHub.
-- GitHub OAuth app `Crabbox Access` exists under the `openclaw` org.
-- GitHub OAuth client ID and secret are present in local and MacBook Pro `~/.profile`.
+- GitHub OAuth app `Crabbox Access` exists under the `openclaw` org for Cloudflare Access.
+- Crabbox browser login uses a GitHub OAuth callback at `/v1/auth/github/callback` and stores OAuth client values as Worker secrets.
 - Cloudflare Access GitHub IdP `GitHub OpenClaw` exists.
 - Cloudflare Access app `Crabbox Coordinator` exists for `crabbox.clawd.bot`.
-- Worker `crabbox-coordinator` is deployed at `https://crabbox-coordinator.steipete.workers.dev` and routed from `crabbox.clawd.bot/*`.
-- Coordinator bearer auth uses `CRABBOX_COORDINATOR_TOKEN` locally and `CRABBOX_SHARED_TOKEN` in the Worker.
+- Worker `crabbox-coordinator` is deployed at `https://crabbox-coordinator.steipete.workers.dev` and routed from `crabbox.clawd.bot/*`. The canonical target is `https://crabbox.openclaw.ai` once the Cloudflare zone is delegated.
+- Coordinator auth supports GitHub browser-login user tokens plus shared-token operator automation. Shared-token auth uses `CRABBOX_COORDINATOR_TOKEN` locally and `CRABBOX_SHARED_TOKEN` in the Worker.
 - Hetzner token is available in local and Mac Studio `~/.profile`.
 - The Hetzner account currently hits a dedicated-core quota/resource limit for `ccx63`, `ccx53`, and `ccx43`. The `beast` class falls back to `cpx62` until quota is raised.
 - Public SSH on port 22 was not usable from the tested network path; cloud-init opens SSH on port 2222 and the CLI uses that by default.
@@ -197,8 +197,9 @@ And proves:
 ## Next Implementation Milestones
 
 1. Raise Hetzner dedicated-core quota so `beast` can use `ccx63` instead of falling back to `cpx62`.
-2. Replace shared-token login with Cloudflare Access/GitHub OAuth user tokens.
-3. Add Cloudflare Access service-token support for non-browser CLI use on `crabbox.clawd.bot`.
-4. Add one-shot `run --profile` cleanup semantics coverage in integration tests.
-5. Add coordinator drain controls beyond release/delete.
-6. Re-run OpenClaw `pnpm test:changed:max` on `ccx63` and compare against the current Crabbox baseline.
+2. Add GitHub org/team allowlisting for browser-login user tokens.
+3. Delegate `openclaw.ai` to Cloudflare or provide a token that can create/manage that zone, then attach `crabbox.openclaw.ai/*`.
+4. Add Cloudflare Access service-token support for non-browser CLI use on fallback routes.
+5. Add one-shot `run --profile` cleanup semantics coverage in integration tests.
+6. Add coordinator drain controls beyond release/delete.
+7. Re-run OpenClaw `pnpm test:changed:max` on `ccx63` and compare against the current Crabbox baseline.

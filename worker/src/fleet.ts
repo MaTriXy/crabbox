@@ -1,7 +1,9 @@
+import { isAdminRequest } from "./auth";
 import { EC2SpotClient } from "./aws";
 import { leaseConfig } from "./config";
 import { HetznerClient } from "./hetzner";
 import { errorMessage, json, pathParts, readJson, requestOwner } from "./http";
+import { githubAuthRoute } from "./oauth";
 import { leaseSlugFromID, normalizeLeaseSlug, slugWithCollisionSuffix } from "./slug";
 import type {
   Env,
@@ -33,6 +35,9 @@ export class FleetDurableObject implements DurableObject {
       if (method === "GET" && parts.join("/") === "v1/health") {
         return json({ ok: true, fleet: fleetID });
       }
+      if (parts[0] === "v1" && parts[1] === "auth" && parts[2] === "github") {
+        return await githubAuthRoute(request, parts[3], this.state.storage, this.env);
+      }
       if (method === "GET" && parts.join("/") === "v1/pool") {
         return await this.pool(request);
       }
@@ -43,9 +48,15 @@ export class FleetDurableObject implements DurableObject {
         return this.whoami(request);
       }
       if (method === "GET" && parts.join("/") === "v1/admin/leases") {
+        if (!isAdminRequest(request)) {
+          return json({ error: "forbidden", message: "admin token required" }, { status: 403 });
+        }
         return await this.adminLeases(request);
       }
       if (parts[0] === "v1" && parts[1] === "admin" && parts[2] === "leases" && parts[3]) {
+        if (!isAdminRequest(request)) {
+          return json({ error: "forbidden", message: "admin token required" }, { status: 403 });
+        }
         return await this.adminLeaseRoute(request, parts[3], parts[4]);
       }
       if (method === "GET" && parts.join("/") === "v1/runs") {

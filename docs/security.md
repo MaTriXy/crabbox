@@ -13,15 +13,16 @@ Assumptions:
 
 ## Authentication
 
-Cloudflare Access can protect custom coordinator routes. The Worker also enforces bearer-token auth for every non-health route.
+Cloudflare Access can protect custom coordinator routes. The Worker also enforces auth for every non-health route.
 
 MVP:
 
 - One-time PIN Access remains available for early fallback.
 - GitHub Access IdP is configured for the `openclaw` org.
-- Workers.dev automation uses a shared bearer token. `crabbox login` stores and verifies that token.
-- The CLI sends owner/org headers in bearer-token mode; Cloudflare Access identity mapping is future hardening for browser/user flows.
-- Browser-based Cloudflare Access/GitHub OAuth and split user/admin tokens are still future hardening.
+- `crabbox login` opens GitHub, receives a signed user token from the coordinator, and stores it in local config.
+- Workers.dev automation can still use a shared bearer token via `crabbox login --token-stdin`.
+- The CLI sends owner/org headers only for shared-token automation; GitHub login tokens carry owner/org inside the signed token.
+- GitHub browser-login tokens are user tokens, not admin tokens.
 - Missing shared-token config fails closed for non-health coordinator routes.
 
 Target:
@@ -53,7 +54,8 @@ Rules:
 - Never accept secret values as command-line flag values.
 - Never log env values.
 - Redact known secret-looking strings in diagnostics.
-- `CRABBOX_SHARED_TOKEN` is stored as a Worker secret; local clients use `CRABBOX_COORDINATOR_TOKEN`.
+- `CRABBOX_SHARED_TOKEN` is stored as a Worker secret for trusted operator automation; local automation can use `CRABBOX_COORDINATOR_TOKEN`.
+- `CRABBOX_GITHUB_CLIENT_ID`, `CRABBOX_GITHUB_CLIENT_SECRET`, and `CRABBOX_SESSION_SECRET` are Worker secrets for browser login.
 
 Project allowlist example:
 

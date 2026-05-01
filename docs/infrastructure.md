@@ -5,22 +5,22 @@
 Canonical Worker endpoint:
 
 ```text
-https://crabbox-coordinator.steipete.workers.dev
+https://crabbox.openclaw.ai
 ```
 
-Cloudflare Access protected route:
+Legacy fallback route:
 
 ```text
 https://crabbox.clawd.bot
 ```
 
-Intended future product endpoint:
+Workers.dev fallback endpoint:
 
 ```text
-https://crabbox.openclaw.ai
+https://crabbox-coordinator.steipete.workers.dev
 ```
 
-The Worker route is the stable automation endpoint today. `crabbox.clawd.bot/*` is attached for Access-protected browser/user flows. Move to `crabbox.openclaw.ai` once that zone is available in Cloudflare.
+The `crabbox.openclaw.ai/*` Worker route is the stable automation and browser-login endpoint. `crabbox.clawd.bot/*` and the workers.dev URL remain fallback routes.
 
 ## Cloudflare
 
@@ -30,7 +30,7 @@ Use Cloudflare for:
 - Access auth.
 - Worker runtime.
 - Durable Object lease state.
-- DNS/custom domain once the target zone is available.
+- DNS/custom domain routing.
 
 Known setup:
 
@@ -63,11 +63,21 @@ Homepage URL: https://crabbox.openclaw.ai
 Callback URL: https://openclaw-crabbox.cloudflareaccess.com/cdn-cgi/access/callback
 ```
 
+Crabbox browser login also needs a coordinator OAuth callback on the same or a second GitHub OAuth app:
+
+```text
+Homepage URL: https://github.com/openclaw/crabbox
+Callback URL: https://crabbox.openclaw.ai/v1/auth/github/callback
+```
+
 Store resulting values outside the repo:
 
 ```text
 CRABBOX_GITHUB_OAUTH_CLIENT_ID
 CRABBOX_GITHUB_OAUTH_CLIENT_SECRET
+CRABBOX_GITHUB_CLIENT_ID
+CRABBOX_GITHUB_CLIENT_SECRET
+CRABBOX_SESSION_SECRET
 ```
 
 Current local status:
@@ -75,29 +85,29 @@ Current local status:
 - Core Cloudflare, Hetzner, and GitHub tokens are present in local `~/.profile`.
 - The Crabbox Cloudflare token is mirrored to MacBook Pro `~/.profile`.
 - `CRABBOX_COORDINATOR` and `CRABBOX_COORDINATOR_TOKEN` are present in local and MacBook Pro `~/.profile`.
-- GitHub OAuth client ID and secret are present in local and MacBook Pro `~/.profile`.
+- Cloudflare Access GitHub OAuth client ID and secret may be stored locally as `CRABBOX_GITHUB_OAUTH_*`.
+- Crabbox browser-login OAuth secrets are deployed as Worker secrets `CRABBOX_GITHUB_CLIENT_ID`, `CRABBOX_GITHUB_CLIENT_SECRET`, and `CRABBOX_SESSION_SECRET`.
 - Cloudflare Access GitHub IdP is created.
+- Worker route is attached for `crabbox.openclaw.ai/*`.
 - Cloudflare Access fallback app is created for `crabbox.clawd.bot`.
 - `CRABBOX_COORDINATOR`, `CRABBOX_PROFILE`, `CRABBOX_CONFIG`, `CRABBOX_FLEET_CONFIG`, `CRABBOX_SSH_KEY`, `CRABBOX_NO_COLOR`, and `CRABBOX_LOG` are optional CLI defaults and are not required to build the MVP.
 
-The Cloudflare token `crabbox-deploy` is scoped to `Steipete@gmail.com's Account` and the `clawd.bot` zone. It verifies access to Workers scripts, Access applications, Access identity providers, Access keys, DNS records, and zone Worker routes from both the local machine and MacBook Pro.
+The Cloudflare token `crabbox-deploy` is scoped to `Steipete@gmail.com's Account` and the Crabbox zones. It verifies access to Workers scripts, Access applications, Access identity providers, Access keys, DNS records, and zone Worker routes from both the local machine and MacBook Pro.
 
 ## DNS Decision
 
 Preferred path:
 
-1. Add `openclaw.ai` to Cloudflare.
-2. Copy existing DNS records exactly.
-3. Add `crabbox.openclaw.ai`.
-4. Switch nameservers at registrar.
-5. Deploy Worker custom domain.
+1. Keep `openclaw.ai` in Cloudflare.
+2. Add proxied DNS for `crabbox.openclaw.ai`.
+3. Deploy Worker route `crabbox.openclaw.ai/*`.
+4. Set `CRABBOX_PUBLIC_URL=https://crabbox.openclaw.ai`.
+5. Configure the GitHub OAuth callback on `https://crabbox.openclaw.ai/v1/auth/github/callback`.
 
 Temporary path:
 
-1. Deploy Worker under `crabbox.clawd.bot`.
-2. Keep `CRABBOX_DOMAIN=crabbox.openclaw.ai` as intended target.
-3. Use fallback domain for early testing.
-4. Move to `openclaw.ai` once DNS is ready.
+1. Use the workers.dev URL for health checks if DNS is disrupted.
+2. Use `crabbox.clawd.bot` only as a legacy fallback.
 
 ## Hetzner
 
@@ -250,16 +260,17 @@ Deployment should:
 3. Set Worker secrets.
 4. Deploy Worker.
 5. Verify `/v1/health` on `workers.dev`.
-6. Configure route/custom domain on `crabbox.clawd.bot`.
-7. Verify `/v1/health` on the fallback domain.
+6. Configure route/custom domain on `crabbox.openclaw.ai`.
+7. Verify `/v1/health` on the canonical and fallback domains.
 
 Use `npx wrangler` from the Worker package unless `wrangler` is installed globally. Do not assume `hcloud` is installed; the implementation can use the Hetzner API directly from Go or from the Worker.
 
 Current deployed coordinator:
 
 ```text
+https://crabbox.openclaw.ai
 https://crabbox-coordinator.steipete.workers.dev
-crabbox.clawd.bot/* -> crabbox-coordinator, protected by Cloudflare Access
+crabbox.clawd.bot/* -> crabbox-coordinator fallback
 ```
 
 Current Worker secrets:

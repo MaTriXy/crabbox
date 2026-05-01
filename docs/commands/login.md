@@ -1,10 +1,22 @@
 # login
 
-`crabbox login` stores broker credentials in the user config and verifies coordinator identity. It is currently token-based, not a GitHub browser OAuth flow.
+`crabbox login` opens GitHub in the browser, waits for the coordinator callback, stores the returned broker token in the user config, and verifies identity with `GET /v1/whoami`.
+
+```sh
+crabbox login
+```
+
+If the browser cannot open automatically, print the URL and paste it manually:
+
+```sh
+crabbox login --no-browser
+```
+
+Trusted operator automation can still write the shared coordinator token over stdin:
 
 ```sh
 printf '%s' "$CRABBOX_COORDINATOR_TOKEN" | crabbox login \
-  --url https://crabbox-coordinator.steipete.workers.dev \
+  --url https://crabbox.openclaw.ai \
   --provider aws \
   --token-stdin
 ```
@@ -16,13 +28,12 @@ Flags:
 ```text
 --url <url>                 broker URL
 --provider hetzner|aws      default provider to store with the broker
---token-stdin               read broker token from stdin
+--no-browser                print the GitHub login URL instead of opening it
+--token-stdin               read broker token from stdin for operator automation
 --json                      print JSON
 ```
 
-`login` calls `GET /v1/whoami` after writing config. If verification fails, inspect the stored config with `crabbox config show` and retry with the correct token.
-
-The coordinator may still derive identity from Cloudflare Access or Git email headers, but the CLI does not yet open a browser or mint a GitHub-scoped user token.
+The default broker URL is `https://crabbox.openclaw.ai`; pass `--url` for another coordinator. GitHub browser login issues a user-scoped Crabbox bearer token. `--token-stdin` stores the shared operator token and should stay limited to trusted maintainers.
 
 Related docs:
 

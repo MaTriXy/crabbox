@@ -70,7 +70,7 @@ POST /v1/admin/leases/{id-or-slug}/release
 POST /v1/admin/leases/{id-or-slug}/delete
 ```
 
-Admin endpoints currently use the same Worker bearer-token gate. Split user/admin tokens and GitHub team gating are future hardening.
+Admin endpoints require the shared operator token. GitHub browser-login tokens are user tokens for normal lease operations; GitHub org/team gating is future hardening.
 
 ## Durable Object State
 
