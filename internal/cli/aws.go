@@ -122,7 +122,7 @@ func (c *AWSClient) DeleteSSHKey(ctx context.Context, name string) error {
 	return err
 }
 
-func (c *AWSClient) CreateServerWithFallback(ctx context.Context, cfg Config, publicKey, leaseID string, keep bool, logf func(string, ...any)) (Server, Config, error) {
+func (c *AWSClient) CreateServerWithFallback(ctx context.Context, cfg Config, publicKey, leaseID, slug string, keep bool, logf func(string, ...any)) (Server, Config, error) {
 	if cfg.ProviderKey == "" {
 		cfg.ProviderKey = "crabbox-steipete"
 	}
@@ -149,7 +149,7 @@ func (c *AWSClient) CreateServerWithFallback(ctx context.Context, cfg Config, pu
 		if i > 0 && logf != nil {
 			logf("fallback provisioning type=%s after capacity/quota rejection\n", instanceType)
 		}
-		server, err := c.createServer(ctx, next, publicKey, leaseID, keep, imageID, securityGroupID, useSpot)
+		server, err := c.createServer(ctx, next, publicKey, leaseID, slug, keep, imageID, securityGroupID, useSpot)
 		if err == nil {
 			return server, next, nil
 		}
@@ -165,7 +165,7 @@ func (c *AWSClient) CreateServerWithFallback(ctx context.Context, cfg Config, pu
 			if logf != nil {
 				logf("fallback provisioning type=%s market=on-demand after spot rejection\n", instanceType)
 			}
-			server, err := c.createServer(ctx, next, publicKey, leaseID, keep, imageID, securityGroupID, false)
+			server, err := c.createServer(ctx, next, publicKey, leaseID, slug, keep, imageID, securityGroupID, false)
 			if err == nil {
 				return server, next, nil
 			}
@@ -178,25 +178,11 @@ func (c *AWSClient) CreateServerWithFallback(ctx context.Context, cfg Config, pu
 	return Server{}, cfg, joinErrors(errs)
 }
 
-func (c *AWSClient) createServer(ctx context.Context, cfg Config, publicKey, leaseID string, keep bool, imageID, securityGroupID string, spot bool) (Server, error) {
+func (c *AWSClient) createServer(ctx context.Context, cfg Config, publicKey, leaseID, slug string, keep bool, imageID, securityGroupID string, spot bool) (Server, error) {
 	_ = publicKey
-	name := strings.ReplaceAll("crabbox-"+leaseID, "_", "-")
+	name := leaseProviderName(leaseID, slug)
 	now := time.Now().UTC()
-	labels := map[string]string{
-		"class":        cfg.Class,
-		"crabbox":      "true",
-		"created_by":   "crabbox",
-		"keep":         fmt.Sprint(keep),
-		"lease":        leaseID,
-		"profile":      cfg.Profile,
-		"provider_key": cfg.ProviderKey,
-		"provider":     "aws",
-		"server_type":  cfg.ServerType,
-		"market":       mapMarket(spot),
-		"state":        "leased",
-		"created_at":   now.Format(time.RFC3339),
-		"expires_at":   now.Add(cfg.TTL).Format(time.RFC3339),
-	}
+	labels := directLeaseLabels(cfg, leaseID, slug, "aws", mapMarket(spot), keep, now)
 	userData := base64.StdEncoding.EncodeToString([]byte(cloudInit(cfg, publicKey)))
 	rootGB := cfg.AWSRootGB
 	if rootGB <= 0 {

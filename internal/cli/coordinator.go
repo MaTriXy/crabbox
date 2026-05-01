@@ -24,23 +24,29 @@ type CoordinatorClient struct {
 }
 
 type CoordinatorLease struct {
-	ID         string `json:"id"`
-	Provider   string `json:"provider"`
-	Owner      string `json:"owner"`
-	Org        string `json:"org"`
-	Profile    string `json:"profile"`
-	Class      string `json:"class"`
-	ServerType string `json:"serverType"`
-	ServerID   int64  `json:"serverID"`
-	CloudID    string `json:"cloudID"`
-	ServerName string `json:"serverName"`
-	Host       string `json:"host"`
-	SSHUser    string `json:"sshUser"`
-	SSHPort    string `json:"sshPort"`
-	WorkRoot   string `json:"workRoot"`
-	Keep       bool   `json:"keep"`
-	State      string `json:"state"`
-	ExpiresAt  string `json:"expiresAt"`
+	ID                 string `json:"id"`
+	Slug               string `json:"slug,omitempty"`
+	Provider           string `json:"provider"`
+	Owner              string `json:"owner"`
+	Org                string `json:"org"`
+	Profile            string `json:"profile"`
+	Class              string `json:"class"`
+	ServerType         string `json:"serverType"`
+	ServerID           int64  `json:"serverID"`
+	CloudID            string `json:"cloudID"`
+	ServerName         string `json:"serverName"`
+	Host               string `json:"host"`
+	SSHUser            string `json:"sshUser"`
+	SSHPort            string `json:"sshPort"`
+	WorkRoot           string `json:"workRoot"`
+	Keep               bool   `json:"keep"`
+	State              string `json:"state"`
+	TTLSeconds         int    `json:"ttlSeconds,omitempty"`
+	IdleTimeoutSeconds int    `json:"idleTimeoutSeconds,omitempty"`
+	CreatedAt          string `json:"createdAt,omitempty"`
+	UpdatedAt          string `json:"updatedAt,omitempty"`
+	LastTouchedAt      string `json:"lastTouchedAt,omitempty"`
+	ExpiresAt          string `json:"expiresAt"`
 }
 
 type CoordinatorMachine struct {
@@ -76,6 +82,7 @@ type CoordinatorRunResponse struct {
 type CoordinatorRun struct {
 	ID           string             `json:"id"`
 	LeaseID      string             `json:"leaseID"`
+	Slug         string             `json:"slug,omitempty"`
 	Owner        string             `json:"owner"`
 	Org          string             `json:"org"`
 	Provider     string             `json:"provider"`
@@ -197,12 +204,16 @@ func newCoordinatorClient(cfg Config) (*CoordinatorClient, bool, error) {
 	}, true, nil
 }
 
-func (c *CoordinatorClient) CreateLease(ctx context.Context, cfg Config, publicKey string, keep bool, leaseID string) (CoordinatorLease, error) {
+func (c *CoordinatorClient) CreateLease(ctx context.Context, cfg Config, publicKey string, keep bool, leaseID, slug string) (CoordinatorLease, error) {
 	var res struct {
 		Lease CoordinatorLease `json:"lease"`
 	}
+	if slug == "" {
+		slug = newLeaseSlug(leaseID)
+	}
 	err := c.do(ctx, http.MethodPost, "/v1/leases", map[string]any{
 		"leaseID":     leaseID,
+		"slug":        slug,
 		"profile":     cfg.Profile,
 		"provider":    cfg.Provider,
 		"class":       cfg.Class,
@@ -222,13 +233,14 @@ func (c *CoordinatorClient) CreateLease(ctx context.Context, cfg Config, publicK
 			"regions":           cfg.Capacity.Regions,
 			"availabilityZones": cfg.Capacity.AvailabilityZones,
 		},
-		"sshUser":      cfg.SSHUser,
-		"sshPort":      cfg.SSHPort,
-		"providerKey":  cfg.ProviderKey,
-		"workRoot":     cfg.WorkRoot,
-		"ttlSeconds":   int(cfg.TTL.Seconds()),
-		"keep":         keep,
-		"sshPublicKey": publicKey,
+		"sshUser":            cfg.SSHUser,
+		"sshPort":            cfg.SSHPort,
+		"providerKey":        cfg.ProviderKey,
+		"workRoot":           cfg.WorkRoot,
+		"ttlSeconds":         int(cfg.TTL.Seconds()),
+		"idleTimeoutSeconds": int(cfg.IdleTimeout.Seconds()),
+		"keep":               keep,
+		"sshPublicKey":       publicKey,
 	}, &res)
 	return res.Lease, err
 }
@@ -249,12 +261,28 @@ func (c *CoordinatorClient) ReleaseLease(ctx context.Context, id string, deleteS
 	return res.Lease, err
 }
 
-func (c *CoordinatorClient) HeartbeatLease(ctx context.Context, id string) (CoordinatorLease, error) {
+func (c *CoordinatorClient) TouchLease(ctx context.Context, id string) (CoordinatorLease, error) {
+	return c.heartbeatLease(ctx, id, nil)
+}
+
+func (c *CoordinatorClient) UpdateLeaseIdleTimeout(ctx context.Context, id string, idleTimeout time.Duration) (CoordinatorLease, error) {
+	return c.heartbeatLease(ctx, id, &idleTimeout)
+}
+
+func (c *CoordinatorClient) heartbeatLease(ctx context.Context, id string, idleTimeout *time.Duration) (CoordinatorLease, error) {
 	var res struct {
 		Lease CoordinatorLease `json:"lease"`
 	}
-	err := c.do(ctx, http.MethodPost, "/v1/leases/"+url.PathEscape(id)+"/heartbeat", map[string]any{}, &res)
+	err := c.do(ctx, http.MethodPost, "/v1/leases/"+url.PathEscape(id)+"/heartbeat", heartbeatRequestBody(idleTimeout), &res)
 	return res.Lease, err
+}
+
+func heartbeatRequestBody(idleTimeout *time.Duration) map[string]any {
+	body := map[string]any{}
+	if idleTimeout != nil && *idleTimeout > 0 {
+		body["idleTimeoutSeconds"] = int(idleTimeout.Seconds())
+	}
+	return body
 }
 
 func (c *CoordinatorClient) Pool(ctx context.Context, cfg Config) ([]CoordinatorMachine, error) {
@@ -595,8 +623,12 @@ func leaseToServerTarget(lease CoordinatorLease, cfg Config) (Server, SSHTarget,
 		Name:     lease.ServerName,
 		Status:   lease.State,
 		Labels: map[string]string{
-			"lease": lease.ID,
-			"keep":  fmt.Sprint(lease.Keep),
+			"lease":             lease.ID,
+			"slug":              lease.Slug,
+			"keep":              fmt.Sprint(lease.Keep),
+			"expires_at":        lease.ExpiresAt,
+			"last_touched_at":   lease.LastTouchedAt,
+			"idle_timeout_secs": fmt.Sprint(lease.IdleTimeoutSeconds),
 		},
 	}
 	if server.Provider == "" {
@@ -607,4 +639,19 @@ func leaseToServerTarget(lease CoordinatorLease, cfg Config) (Server, SSHTarget,
 	target := SSHTarget{User: lease.SSHUser, Host: lease.Host, Key: cfg.SSHKey, Port: lease.SSHPort}
 	useStoredTestboxKey(&target, lease.ID)
 	return server, target, lease.ID
+}
+
+func (a App) touchCoordinatorLeaseBestEffort(ctx context.Context, cfg Config, leaseID string) {
+	if leaseID == "" {
+		return
+	}
+	coord, ok, err := newCoordinatorClient(cfg)
+	if err != nil || !ok {
+		return
+	}
+	callCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	if _, err := coord.TouchLease(callCtx, leaseID); err != nil {
+		fmt.Fprintf(a.Stderr, "warning: touch failed for %s: %v\n", leaseID, err)
+	}
 }

@@ -22,6 +22,9 @@ func TestLoadConfigFromUserFile(t *testing.T) {
   token: secret
   provider: aws
 class: standard
+lease:
+  ttl: 2h
+  idleTimeout: 45m
 aws:
   region: eu-west-1
   rootGB: 800
@@ -88,6 +91,9 @@ ssh:
 	if cfg.Coordinator != "https://crabbox.example.test" || cfg.CoordToken != "secret" {
 		t.Fatalf("broker config not loaded: %#v", cfg)
 	}
+	if cfg.TTL.String() != "2h0m0s" || cfg.IdleTimeout.String() != "45m0s" {
+		t.Fatalf("lease config not loaded: ttl=%s idle=%s", cfg.TTL, cfg.IdleTimeout)
+	}
 	if cfg.AWSRootGB != 800 {
 		t.Fatalf("AWSRootGB=%d want 800", cfg.AWSRootGB)
 	}
@@ -130,6 +136,8 @@ func TestEnvOverridesConfig(t *testing.T) {
 	t.Setenv("CRABBOX_CONFIG", "")
 	t.Setenv("CRABBOX_PROVIDER", "hetzner")
 	t.Setenv("CRABBOX_DEFAULT_CLASS", "fast")
+	t.Setenv("CRABBOX_TTL", "3h")
+	t.Setenv("CRABBOX_IDLE_TIMEOUT", "20m")
 	path := userConfigPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
@@ -142,8 +150,8 @@ func TestEnvOverridesConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Provider != "hetzner" || cfg.Class != "fast" || cfg.ServerType != "ccx43" {
-		t.Fatalf("unexpected config: provider=%s class=%s type=%s", cfg.Provider, cfg.Class, cfg.ServerType)
+	if cfg.Provider != "hetzner" || cfg.Class != "fast" || cfg.ServerType != "ccx43" || cfg.TTL.String() != "3h0m0s" || cfg.IdleTimeout.String() != "20m0s" {
+		t.Fatalf("unexpected config: provider=%s class=%s type=%s ttl=%s idle=%s", cfg.Provider, cfg.Class, cfg.ServerType, cfg.TTL, cfg.IdleTimeout)
 	}
 }
 

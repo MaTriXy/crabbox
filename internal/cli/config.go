@@ -32,6 +32,7 @@ type Config struct {
 	ProviderKey string
 	WorkRoot    string
 	TTL         time.Duration
+	IdleTimeout time.Duration
 	Sync        SyncConfig
 	EnvAllow    []string
 	Capacity    CapacityConfig
@@ -132,6 +133,7 @@ func baseConfig() Config {
 		ProviderKey: "crabbox-steipete",
 		WorkRoot:    "/work/crabbox",
 		TTL:         90 * time.Minute,
+		IdleTimeout: 30 * time.Minute,
 		Sync: SyncConfig{
 			Delete:      true,
 			Checksum:    false,
@@ -180,6 +182,9 @@ type fileConfig struct {
 	Actions          *fileActionsConfig  `yaml:"actions,omitempty"`
 	Results          *fileResultsConfig  `yaml:"results,omitempty"`
 	Cache            *fileCacheConfig    `yaml:"cache,omitempty"`
+	Lease            *fileLeaseConfig    `yaml:"lease,omitempty"`
+	TTL              string              `yaml:"ttl,omitempty"`
+	IdleTimeout      string              `yaml:"idleTimeout,omitempty"`
 	WorkRoot         string              `yaml:"workRoot,omitempty"`
 }
 
@@ -259,6 +264,11 @@ type fileCacheConfig struct {
 	Git            *bool `yaml:"git,omitempty"`
 	MaxGB          int   `yaml:"maxGB,omitempty"`
 	PurgeOnRelease *bool `yaml:"purgeOnRelease,omitempty"`
+}
+
+type fileLeaseConfig struct {
+	TTL         string `yaml:"ttl,omitempty"`
+	IdleTimeout string `yaml:"idleTimeout,omitempty"`
 }
 
 func configPaths() []string {
@@ -412,6 +422,12 @@ func applyFileConfig(cfg *Config, file fileConfig) {
 	if file.WorkRoot != "" {
 		cfg.WorkRoot = file.WorkRoot
 	}
+	applyLeaseDuration(&cfg.TTL, file.TTL)
+	applyLeaseDuration(&cfg.IdleTimeout, file.IdleTimeout)
+	if file.Lease != nil {
+		applyLeaseDuration(&cfg.TTL, file.Lease.TTL)
+		applyLeaseDuration(&cfg.IdleTimeout, file.Lease.IdleTimeout)
+	}
 	if file.Sync != nil {
 		cfg.Sync.Excludes = appendUniqueStrings(cfg.Sync.Excludes, file.Sync.Exclude...)
 		cfg.Sync.Excludes = appendUniqueStrings(cfg.Sync.Excludes, file.Sync.Excludes...)
@@ -519,6 +535,15 @@ func applyFileConfig(cfg *Config, file fileConfig) {
 	}
 }
 
+func applyLeaseDuration(target *time.Duration, value string) {
+	if value == "" {
+		return
+	}
+	if parsed, err := time.ParseDuration(value); err == nil && parsed > 0 {
+		*target = parsed
+	}
+}
+
 func applyEnv(cfg *Config) {
 	cfg.Profile = getenv("CRABBOX_PROFILE", cfg.Profile)
 	cfg.Provider = getenv("CRABBOX_PROVIDER", cfg.Provider)
@@ -539,6 +564,12 @@ func applyEnv(cfg *Config) {
 	cfg.SSHPort = getenv("CRABBOX_SSH_PORT", cfg.SSHPort)
 	cfg.ProviderKey = getenv("CRABBOX_HETZNER_SSH_KEY", cfg.ProviderKey)
 	cfg.WorkRoot = getenv("CRABBOX_WORK_ROOT", cfg.WorkRoot)
+	if ttl := os.Getenv("CRABBOX_TTL"); ttl != "" {
+		applyLeaseDuration(&cfg.TTL, ttl)
+	}
+	if idleTimeout := os.Getenv("CRABBOX_IDLE_TIMEOUT"); idleTimeout != "" {
+		applyLeaseDuration(&cfg.IdleTimeout, idleTimeout)
+	}
 	cfg.Capacity.Market = getenv("CRABBOX_CAPACITY_MARKET", cfg.Capacity.Market)
 	cfg.Capacity.Strategy = getenv("CRABBOX_CAPACITY_STRATEGY", cfg.Capacity.Strategy)
 	cfg.Capacity.Fallback = getenv("CRABBOX_CAPACITY_FALLBACK", cfg.Capacity.Fallback)

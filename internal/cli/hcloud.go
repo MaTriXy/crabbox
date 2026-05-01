@@ -169,22 +169,10 @@ func (c *HetznerClient) DeleteSSHKey(ctx context.Context, name string) error {
 	return nil
 }
 
-func (c *HetznerClient) CreateServer(ctx context.Context, cfg Config, publicKey, leaseID string, keep bool) (Server, error) {
-	name := strings.ReplaceAll("crabbox-"+leaseID, "_", "-")
+func (c *HetznerClient) CreateServer(ctx context.Context, cfg Config, publicKey, leaseID, slug string, keep bool) (Server, error) {
+	name := leaseProviderName(leaseID, slug)
 	now := time.Now().UTC()
-	labels := map[string]string{
-		"crabbox":      "true",
-		"profile":      cfg.Profile,
-		"class":        cfg.Class,
-		"server_type":  cfg.ServerType,
-		"lease":        leaseID,
-		"state":        "leased",
-		"keep":         fmt.Sprint(keep),
-		"provider_key": cfg.ProviderKey,
-		"created_by":   "crabbox",
-		"created_at":   now.Format(time.RFC3339),
-		"expires_at":   now.Add(cfg.TTL).Format(time.RFC3339),
-	}
+	labels := directLeaseLabels(cfg, leaseID, slug, "hetzner", "", keep, now)
 	body := map[string]any{
 		"name":               name,
 		"server_type":        cfg.ServerType,
@@ -208,7 +196,7 @@ func (c *HetznerClient) CreateServer(ctx context.Context, cfg Config, publicKey,
 	return res.Server, nil
 }
 
-func (c *HetznerClient) CreateServerWithFallback(ctx context.Context, cfg Config, publicKey, leaseID string, keep bool, logf func(string, ...any)) (Server, Config, error) {
+func (c *HetznerClient) CreateServerWithFallback(ctx context.Context, cfg Config, publicKey, leaseID, slug string, keep bool, logf func(string, ...any)) (Server, Config, error) {
 	candidates := serverTypeCandidatesForClass(cfg.Class)
 	if cfg.ServerType != "" && cfg.ServerType != candidates[0] {
 		candidates = append([]string{cfg.ServerType}, candidates...)
@@ -221,7 +209,7 @@ func (c *HetznerClient) CreateServerWithFallback(ctx context.Context, cfg Config
 		if i > 0 && logf != nil {
 			logf("fallback provisioning type=%s after quota/capacity rejection\n", serverType)
 		}
-		server, err := c.CreateServer(ctx, next, publicKey, leaseID, keep)
+		server, err := c.CreateServer(ctx, next, publicKey, leaseID, slug, keep)
 		if err == nil {
 			return server, next, nil
 		}

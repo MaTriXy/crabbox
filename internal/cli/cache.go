@@ -33,7 +33,8 @@ func (a App) cache(ctx context.Context, args []string) error {
 
 func (a App) cacheStats(ctx context.Context, args []string) error {
 	fs := newFlagSet("cache stats", a.Stderr)
-	id := fs.String("id", "", "lease id")
+	id := fs.String("id", "", "lease id or slug")
+	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
 	jsonOut := fs.Bool("json", false, "print JSON")
 	if err := parseFlags(fs, args); err != nil {
 		return err
@@ -42,9 +43,9 @@ func (a App) cacheStats(ctx context.Context, args []string) error {
 		*id = fs.Arg(0)
 	}
 	if *id == "" {
-		return exit(2, "usage: crabbox cache stats --id <lease-id>")
+		return exit(2, "usage: crabbox cache stats --id <lease-id-or-slug>")
 	}
-	target, cfg, err := a.cacheTarget(ctx, *id)
+	target, cfg, _, err := a.cacheTarget(ctx, *id, *reclaim)
 	if err != nil {
 		return err
 	}
@@ -68,9 +69,10 @@ func (a App) cacheStats(ctx context.Context, args []string) error {
 
 func (a App) cachePurge(ctx context.Context, args []string) error {
 	fs := newFlagSet("cache purge", a.Stderr)
-	id := fs.String("id", "", "lease id")
+	id := fs.String("id", "", "lease id or slug")
 	kind := fs.String("kind", "all", "cache kind: pnpm, npm, docker, git, or all")
 	force := fs.Bool("force", false, "confirm purge")
+	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
@@ -78,12 +80,12 @@ func (a App) cachePurge(ctx context.Context, args []string) error {
 		*id = fs.Arg(0)
 	}
 	if *id == "" {
-		return exit(2, "usage: crabbox cache purge --id <lease-id> --kind <kind> --force")
+		return exit(2, "usage: crabbox cache purge --id <lease-id-or-slug> --kind <kind> --force")
 	}
 	if !*force {
 		return exit(2, "cache purge requires --force")
 	}
-	target, cfg, err := a.cacheTarget(ctx, *id)
+	target, cfg, leaseID, err := a.cacheTarget(ctx, *id, *reclaim)
 	if err != nil {
 		return err
 	}
@@ -94,13 +96,14 @@ func (a App) cachePurge(ctx context.Context, args []string) error {
 	if err := runSSHQuiet(ctx, target, remoteCachePurge(*kind, enabled)); err != nil {
 		return err
 	}
-	fmt.Fprintf(a.Stdout, "purged cache kind=%s lease=%s\n", *kind, *id)
+	fmt.Fprintf(a.Stdout, "purged cache kind=%s lease=%s\n", *kind, leaseID)
 	return nil
 }
 
 func (a App) cacheWarm(ctx context.Context, args []string) error {
 	fs := newFlagSet("cache warm", a.Stderr)
-	id := fs.String("id", "", "lease id")
+	id := fs.String("id", "", "lease id or slug")
+	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
@@ -112,9 +115,9 @@ func (a App) cacheWarm(ctx context.Context, args []string) error {
 		return exit(2, "cache warm requires --id")
 	}
 	if len(command) == 0 {
-		return exit(2, "usage: crabbox cache warm --id <lease-id> -- <command...>")
+		return exit(2, "usage: crabbox cache warm --id <lease-id-or-slug> -- <command...>")
 	}
-	target, cfg, err := a.cacheTarget(ctx, *id)
+	target, cfg, leaseID, err := a.cacheTarget(ctx, *id, *reclaim)
 	if err != nil {
 		return err
 	}
@@ -122,9 +125,9 @@ func (a App) cacheWarm(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	workdir := filepath.ToSlash(filepath.Join(cfg.WorkRoot, *id, repo.Name))
+	workdir := filepath.ToSlash(filepath.Join(cfg.WorkRoot, leaseID, repo.Name))
 	actionsEnvFile := ""
-	if state, err := readActionsHydrationState(ctx, target, *id); err == nil && state.Workspace != "" {
+	if state, err := readActionsHydrationState(ctx, target, leaseID); err == nil && state.Workspace != "" {
 		workdir = state.Workspace
 		actionsEnvFile = state.EnvFile
 		fmt.Fprintf(a.Stderr, "using GitHub Actions workspace %s\n", workdir)
@@ -136,13 +139,23 @@ func (a App) cacheWarm(ctx context.Context, args []string) error {
 	return nil
 }
 
-func (a App) cacheTarget(ctx context.Context, id string) (SSHTarget, Config, error) {
+func (a App) cacheTarget(ctx context.Context, id string, reclaim bool) (SSHTarget, Config, string, error) {
 	cfg, err := loadConfig()
 	if err != nil {
-		return SSHTarget{}, Config{}, err
+		return SSHTarget{}, Config{}, "", err
 	}
-	_, target, _, err := a.resolveLeaseTarget(ctx, cfg, id)
-	return target, cfg, err
+	server, target, leaseID, err := a.resolveLeaseTarget(ctx, cfg, id)
+	if err == nil {
+		repo, repoErr := findRepo()
+		if repoErr != nil {
+			return SSHTarget{}, Config{}, "", repoErr
+		}
+		if claimErr := claimLeaseForRepo(leaseID, serverSlug(server), repo.Root, cfg.IdleTimeout, reclaim); claimErr != nil {
+			return SSHTarget{}, Config{}, "", claimErr
+		}
+		a.touchCoordinatorLeaseBestEffort(ctx, cfg, leaseID)
+	}
+	return target, cfg, leaseID, err
 }
 
 func enabledCacheKinds(cfg CacheConfig) map[string]bool {

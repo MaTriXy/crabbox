@@ -2,10 +2,15 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCoordinatorMachineIDAcceptsStringOrNumber(t *testing.T) {
@@ -71,6 +76,41 @@ func TestCurlConfigKeepsBearerTokenInConfig(t *testing.T) {
 	bodyPath = strings.TrimPrefix(bodyPath, "@")
 	if _, err := os.Stat(bodyPath); err != nil {
 		t.Fatalf("body file missing: %v", err)
+	}
+}
+
+func TestHeartbeatRequestBodyOmitsIdleTimeoutForTouch(t *testing.T) {
+	if body := heartbeatRequestBody(nil); len(body) != 0 {
+		t.Fatalf("touch heartbeat body=%v, want empty", body)
+	}
+	idleTimeout := 45 * time.Minute
+	body := heartbeatRequestBody(&idleTimeout)
+	if body["idleTimeoutSeconds"] != 2700 {
+		t.Fatalf("heartbeat body=%v, want idle timeout seconds", body)
+	}
+}
+
+func TestCoordinatorTouchAndUpdateHeartbeatBodies(t *testing.T) {
+	var bodies []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/leases/cbx_123/heartbeat" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		data, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(data))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"lease":{"id":"cbx_123","provider":"aws","state":"active","expiresAt":"2026-05-01T00:30:00Z"}}`))
+	}))
+	defer server.Close()
+	client := CoordinatorClient{BaseURL: server.URL, Client: server.Client()}
+	if _, err := client.TouchLease(context.Background(), "cbx_123"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.UpdateLeaseIdleTimeout(context.Background(), "cbx_123", 45*time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if len(bodies) != 2 || bodies[0] != "{}" || !strings.Contains(bodies[1], `"idleTimeoutSeconds":2700`) {
+		t.Fatalf("heartbeat bodies=%q", bodies)
 	}
 }
 

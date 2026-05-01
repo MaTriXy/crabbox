@@ -90,11 +90,12 @@ func TestGitHubActionsRunnerLabels(t *testing.T) {
 	cfg.Profile = "Project Check"
 	cfg.Class = "beast"
 	cfg.Actions.RunnerLabels = []string{"linux-large", "crabbox"}
-	got := githubActionsRunnerLabels(cfg, "cbx_123", []string{"extra"})
+	got := githubActionsRunnerLabels(cfg, "cbx_123", "blue-lobster", []string{"extra"})
 	joined := strings.Join(got, ",")
 	for _, want := range []string{
 		"crabbox",
 		"crabbox-cbx-123",
+		"crabbox-blue-lobster",
 		"crabbox-profile-project-check",
 		"crabbox-class-beast",
 		"linux-large",

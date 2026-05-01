@@ -46,12 +46,13 @@ func (a App) actions(ctx context.Context, args []string) error {
 func (a App) actionsHydrate(ctx context.Context, args []string) error {
 	started := time.Now()
 	fs := newFlagSet("actions hydrate", a.Stderr)
-	leaseIDFlag := fs.String("id", "", "existing lease id")
+	leaseIDFlag := fs.String("id", "", "existing lease id or slug")
 	repoFlag := fs.String("repo", "", "GitHub repository owner/name")
 	workflowFlag := fs.String("workflow", "", "workflow file/name/id")
 	refFlag := fs.String("ref", "", "workflow ref")
 	waitTimeout := fs.Duration("wait-timeout", 20*time.Minute, "time to wait for Actions hydration")
 	keepAliveMinutes := fs.Int("keep-alive-minutes", 90, "minutes for workflow to keep the job alive")
+	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
 	fieldFlags := stringListFlag{}
 	fs.Var(&fieldFlags, "f", "workflow input key=value")
 	fs.Var(&fieldFlags, "field", "workflow input key=value")
@@ -85,12 +86,21 @@ func (a App) actionsHydrate(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	target, leaseID, err := a.resolveLeaseTargetForActions(ctx, cfg, *leaseIDFlag)
+	target, leaseID, slug, err := a.resolveLeaseTargetForActions(ctx, cfg, *leaseIDFlag)
 	if err != nil {
 		return err
 	}
+	if err := claimLeaseForRepo(leaseID, slug, repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
+		return err
+	}
+	if coord, ok, err := newCoordinatorClient(cfg); err != nil {
+		return err
+	} else if ok {
+		stopHeartbeat := startCoordinatorHeartbeat(ctx, coord, leaseID, cfg.IdleTimeout, nil, a.Stderr)
+		defer stopHeartbeat()
+	}
 	label := githubActionsLeaseLabel(leaseID)
-	if err := a.registerGitHubActionsRunner(ctx, cfg, target, leaseID, ghRepo, "", nil); err != nil {
+	if err := a.registerGitHubActionsRunner(ctx, cfg, target, leaseID, slug, ghRepo, "", nil); err != nil {
 		return err
 	}
 	if err := clearActionsHydrationState(ctx, target, leaseID); err != nil {
@@ -133,19 +143,20 @@ func (a App) actionsHydrate(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(a.Stdout, "actions hydrated id=%s workspace=%s run_id=%s\n", leaseID, state.Workspace, blank(state.RunID, "-"))
+	fmt.Fprintf(a.Stdout, "actions hydrated id=%s slug=%s workspace=%s run_id=%s\n", leaseID, blank(slug, "-"), state.Workspace, blank(state.RunID, "-"))
 	fmt.Fprintf(a.Stdout, "actions hydrate complete total=%s\n", time.Since(started).Round(time.Millisecond))
 	return nil
 }
 
 func (a App) actionsRegister(ctx context.Context, args []string) error {
 	fs := newFlagSet("actions register", a.Stderr)
-	leaseIDFlag := fs.String("id", "", "existing lease id")
+	leaseIDFlag := fs.String("id", "", "existing lease id or slug")
 	repoFlag := fs.String("repo", "", "GitHub repository owner/name")
 	nameFlag := fs.String("name", "", "runner name")
 	labelsFlag := fs.String("labels", "", "comma-separated extra runner labels")
 	versionFlag := fs.String("version", "", "actions/runner version or latest")
 	ephemeralFlag := fs.Bool("ephemeral", true, "register runner as ephemeral")
+	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
@@ -182,13 +193,21 @@ func (a App) actionsRegister(ctx context.Context, args []string) error {
 			return err
 		}
 		_, target, leaseID := leaseToServerTarget(lease, cfg)
-		return a.registerGitHubActionsRunner(ctx, cfg, target, leaseID, ghRepo, *nameFlag, extraLabels)
+		if err := claimLeaseForRepo(leaseID, lease.Slug, repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
+			return err
+		}
+		a.touchCoordinatorLeaseBestEffort(ctx, cfg, leaseID)
+		return a.registerGitHubActionsRunner(ctx, cfg, target, leaseID, lease.Slug, ghRepo, *nameFlag, extraLabels)
 	}
-	_, target, leaseID, err := a.findLease(ctx, cfg, *leaseIDFlag)
+	server, target, leaseID, err := a.findLease(ctx, cfg, *leaseIDFlag)
 	if err != nil {
 		return err
 	}
-	return a.registerGitHubActionsRunner(ctx, cfg, target, leaseID, ghRepo, *nameFlag, extraLabels)
+	if err := claimLeaseForRepo(leaseID, serverSlug(server), repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
+		return err
+	}
+	a.touchCoordinatorLeaseBestEffort(ctx, cfg, leaseID)
+	return a.registerGitHubActionsRunner(ctx, cfg, target, leaseID, serverSlug(server), ghRepo, *nameFlag, extraLabels)
 }
 
 func (a App) actionsDispatch(ctx context.Context, args []string) error {
@@ -234,16 +253,16 @@ func (a App) actionsDispatch(ctx context.Context, args []string) error {
 	return nil
 }
 
-func (a App) registerGitHubActionsRunner(ctx context.Context, cfg Config, target SSHTarget, leaseID string, ghRepo GitHubRepo, nameOverride string, extraLabels []string) error {
+func (a App) registerGitHubActionsRunner(ctx context.Context, cfg Config, target SSHTarget, leaseID, slug string, ghRepo GitHubRepo, nameOverride string, extraLabels []string) error {
 	token, err := githubActionsRegistrationToken(ctx, ghRepo)
 	if err != nil {
 		return err
 	}
 	name := nameOverride
 	if name == "" {
-		name = "crabbox-" + leaseID
+		name = leaseProviderName(leaseID, slug)
 	}
-	labels := githubActionsRunnerLabels(cfg, leaseID, extraLabels)
+	labels := githubActionsRunnerLabels(cfg, leaseID, slug, extraLabels)
 	script := githubActionsRunnerInstallScript(cfg.Actions.RunnerVersion, cfg.Actions.Ephemeral)
 	remote := fmt.Sprintf("RUNNER_REPO=%s RUNNER_NAME=%s RUNNER_LABELS=%s RUNNER_TOKEN=%s bash -s", shellQuote(ghRepo.Slug()), shellQuote(name), shellQuote(strings.Join(labels, ",")), shellQuote(token))
 	if err := runSSHInputQuiet(ctx, target, remote, script); err != nil {
@@ -253,19 +272,19 @@ func (a App) registerGitHubActionsRunner(ctx context.Context, cfg Config, target
 	return nil
 }
 
-func (a App) resolveLeaseTargetForActions(ctx context.Context, cfg Config, id string) (SSHTarget, string, error) {
+func (a App) resolveLeaseTargetForActions(ctx context.Context, cfg Config, id string) (SSHTarget, string, string, error) {
 	if coord, ok, err := newCoordinatorClient(cfg); err != nil {
-		return SSHTarget{}, "", err
+		return SSHTarget{}, "", "", err
 	} else if ok {
 		lease, err := coord.GetLease(ctx, id)
 		if err != nil {
-			return SSHTarget{}, "", err
+			return SSHTarget{}, "", "", err
 		}
 		_, target, leaseID := leaseToServerTarget(lease, cfg)
-		return target, leaseID, nil
+		return target, leaseID, lease.Slug, nil
 	}
-	_, target, leaseID, err := a.findLease(ctx, cfg, id)
-	return target, leaseID, err
+	server, target, leaseID, err := a.findLease(ctx, cfg, id)
+	return target, leaseID, serverSlug(server), err
 }
 
 func dispatchGitHubActionsWorkflow(ctx context.Context, dir string, repo GitHubRepo, workflow, ref string, fields []string) error {
@@ -418,12 +437,15 @@ func actionsRef(cfg Config, repo Repo) string {
 	return "main"
 }
 
-func githubActionsRunnerLabels(cfg Config, leaseID string, extra []string) []string {
+func githubActionsRunnerLabels(cfg Config, leaseID, slug string, extra []string) []string {
 	labels := []string{
 		"crabbox",
 		githubActionsLeaseLabel(leaseID),
 		"crabbox-profile-" + sanitizeGitHubRunnerLabel(cfg.Profile),
 		"crabbox-class-" + sanitizeGitHubRunnerLabel(cfg.Class),
+	}
+	if slug = normalizeLeaseSlug(slug); slug != "" {
+		labels = append(labels, "crabbox-"+sanitizeGitHubRunnerLabel(slug))
 	}
 	labels = append(labels, cfg.Actions.RunnerLabels...)
 	labels = append(labels, extra...)

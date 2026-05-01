@@ -44,8 +44,8 @@ func (a App) adminLeases(ctx context.Context, args []string) error {
 		return json.NewEncoder(a.Stdout).Encode(leases)
 	}
 	for _, lease := range leases {
-		fmt.Fprintf(a.Stdout, "%-16s %-8s %-10s %-14s %-24s owner=%s org=%s expires=%s\n",
-			lease.ID, lease.Provider, lease.State, lease.ServerType, lease.Host, lease.Owner, lease.Org, blank(lease.ExpiresAt, "-"))
+		fmt.Fprintf(a.Stdout, "%-16s %-16s %-8s %-10s %-14s %-24s owner=%s org=%s idle=%s expires=%s\n",
+			lease.ID, blank(lease.Slug, "-"), lease.Provider, lease.State, lease.ServerType, lease.Host, lease.Owner, lease.Org, formatSecondsDuration(lease.IdleTimeoutSeconds), blank(lease.ExpiresAt, "-"))
 	}
 	return nil
 }
@@ -54,7 +54,7 @@ func (a App) adminRelease(ctx context.Context, args []string) error {
 	args, deleteAnywhere := extractBoolFlag(args, "delete")
 	args, jsonAnywhere := extractBoolFlag(args, "json")
 	fs := newFlagSet("admin release", a.Stderr)
-	id := fs.String("id", "", "lease id")
+	id := fs.String("id", "", "lease id or slug")
 	deleteServer := fs.Bool("delete", false, "delete server while releasing")
 	jsonOut := fs.Bool("json", false, "print JSON")
 	if err := parseFlags(fs, args); err != nil {
@@ -64,7 +64,7 @@ func (a App) adminRelease(ctx context.Context, args []string) error {
 		*id = fs.Arg(0)
 	}
 	if *id == "" {
-		return exit(2, "usage: crabbox admin release --id <lease-id>")
+		return exit(2, "usage: crabbox admin release --id <lease-id-or-slug>")
 	}
 	if deleteAnywhere {
 		*deleteServer = true
@@ -83,7 +83,7 @@ func (a App) adminRelease(ctx context.Context, args []string) error {
 	if *jsonOut {
 		return json.NewEncoder(a.Stdout).Encode(lease)
 	}
-	fmt.Fprintf(a.Stdout, "released %s state=%s delete=%t\n", lease.ID, lease.State, *deleteServer)
+	fmt.Fprintf(a.Stdout, "released %s slug=%s state=%s delete=%t\n", lease.ID, blank(lease.Slug, "-"), lease.State, *deleteServer)
 	return nil
 }
 
@@ -91,7 +91,7 @@ func (a App) adminDelete(ctx context.Context, args []string) error {
 	args, forceAnywhere := extractBoolFlag(args, "force")
 	args, jsonAnywhere := extractBoolFlag(args, "json")
 	fs := newFlagSet("admin delete", a.Stderr)
-	id := fs.String("id", "", "lease id")
+	id := fs.String("id", "", "lease id or slug")
 	force := fs.Bool("force", false, "confirm deletion")
 	jsonOut := fs.Bool("json", false, "print JSON")
 	if err := parseFlags(fs, args); err != nil {
@@ -101,7 +101,7 @@ func (a App) adminDelete(ctx context.Context, args []string) error {
 		*id = fs.Arg(0)
 	}
 	if *id == "" {
-		return exit(2, "usage: crabbox admin delete --id <lease-id> --force")
+		return exit(2, "usage: crabbox admin delete --id <lease-id-or-slug> --force")
 	}
 	if forceAnywhere {
 		*force = true
@@ -123,7 +123,7 @@ func (a App) adminDelete(ctx context.Context, args []string) error {
 	if *jsonOut {
 		return json.NewEncoder(a.Stdout).Encode(lease)
 	}
-	fmt.Fprintf(a.Stdout, "deleted %s state=%s\n", lease.ID, lease.State)
+	fmt.Fprintf(a.Stdout, "deleted %s slug=%s state=%s\n", lease.ID, blank(lease.Slug, "-"), lease.State)
 	return nil
 }
 

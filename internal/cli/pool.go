@@ -38,8 +38,8 @@ func (a App) list(ctx context.Context, args []string) error {
 			return json.NewEncoder(a.Stdout).Encode(machines)
 		}
 		for _, s := range machines {
-			fmt.Fprintf(a.Stdout, "%-20s %-28s %-12s %-14s %-15s lease=%s keep=%s\n",
-				s.ID, s.Name, s.Status, s.ServerType, s.Host, s.Labels["lease"], s.Labels["keep"])
+			fmt.Fprintf(a.Stdout, "%-20s %-28s %-12s %-14s %-15s lease=%s slug=%s keep=%s\n",
+				s.ID, s.Name, s.Status, s.ServerType, s.Host, s.Labels["lease"], blank(s.Labels["slug"], "-"), s.Labels["keep"])
 		}
 		return nil
 	}
@@ -56,8 +56,8 @@ func (a App) list(ctx context.Context, args []string) error {
 			return json.NewEncoder(a.Stdout).Encode(servers)
 		}
 		for _, s := range servers {
-			fmt.Fprintf(a.Stdout, "%-20s %-28s %-12s %-14s %-15s lease=%s keep=%s\n",
-				s.DisplayID(), s.Name, s.Status, s.ServerType.Name, s.PublicNet.IPv4.IP, s.Labels["lease"], s.Labels["keep"])
+			fmt.Fprintf(a.Stdout, "%-20s %-28s %-12s %-14s %-15s lease=%s slug=%s keep=%s\n",
+				s.DisplayID(), s.Name, s.Status, s.ServerType.Name, s.PublicNet.IPv4.IP, s.Labels["lease"], blank(serverSlug(s), "-"), s.Labels["keep"])
 		}
 		return nil
 	}
@@ -73,8 +73,8 @@ func (a App) list(ctx context.Context, args []string) error {
 		return json.NewEncoder(a.Stdout).Encode(servers)
 	}
 	for _, s := range servers {
-		fmt.Fprintf(a.Stdout, "%-20s %-28s %-12s %-14s %-15s lease=%s keep=%s\n",
-			s.DisplayID(), s.Name, s.Status, s.ServerType.Name, s.PublicNet.IPv4.IP, s.Labels["lease"], s.Labels["keep"])
+		fmt.Fprintf(a.Stdout, "%-20s %-28s %-12s %-14s %-15s lease=%s slug=%s keep=%s\n",
+			s.DisplayID(), s.Name, s.Status, s.ServerType.Name, s.PublicNet.IPv4.IP, s.Labels["lease"], blank(serverSlug(s), "-"), s.Labels["keep"])
 	}
 	return nil
 }
@@ -166,10 +166,16 @@ func shouldCleanupServer(server Server, now time.Time) (bool, string) {
 	}
 	state := strings.ToLower(labels["state"])
 	switch state {
-	case "leased", "ready", "running", "active", "provisioning":
+	case "running", "provisioning":
 		expiresAt, ok := cleanupExpiry(labels)
 		if ok && now.After(expiresAt.Add(12*time.Hour)) {
 			return true, "stale state=" + state
+		}
+		return false, "state=" + state
+	case "leased", "ready", "active":
+		expiresAt, ok := cleanupExpiry(labels)
+		if ok && now.After(expiresAt) {
+			return true, "expired state=" + state
 		}
 		return false, "state=" + state
 	}
@@ -200,4 +206,15 @@ func cleanupExpiry(labels map[string]string) (time.Time, bool) {
 		}
 	}
 	return time.Time{}, false
+}
+
+func directLeaseExpiresAt(now time.Time, cfg Config) time.Time {
+	expiresAt := now.Add(cfg.IdleTimeout)
+	if cfg.TTL > 0 {
+		ttlExpiresAt := now.Add(cfg.TTL)
+		if ttlExpiresAt.Before(expiresAt) {
+			expiresAt = ttlExpiresAt
+		}
+	}
+	return expiresAt
 }

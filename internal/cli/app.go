@@ -105,9 +105,9 @@ Start Here:
       Check local tools, config, broker, and provider access.
   crabbox init
       Add repo-local Crabbox config, GitHub workflow, and agent skill.
-  crabbox warmup --class beast --idle-timeout 90m
-      Lease a reusable box and print a cbx_... id.
-  crabbox run --id cbx_... -- pnpm test:changed
+  crabbox warmup --class beast
+      Lease a reusable box and print a cbx_... id plus friendly slug.
+  crabbox run --id blue-lobster -- pnpm test:changed
       Sync this checkout to the box and run a command.
 
 Commands:
@@ -136,21 +136,21 @@ Commands:
 
 Common Flows:
   crabbox run --class beast -- pnpm check
-  crabbox warmup --idle-timeout 90m
-  crabbox status --id cbx_123 --wait
-  crabbox run --id cbx_123 --shell 'pnpm install --frozen-lockfile && pnpm test'
-  crabbox ssh --id cbx_123
-  crabbox inspect --id cbx_123 --json
+  crabbox warmup
+  crabbox status --id blue-lobster --wait
+  crabbox run --id blue-lobster --shell 'pnpm install --frozen-lockfile && pnpm test'
+  crabbox ssh --id blue-lobster
+  crabbox inspect --id blue-lobster --json
   crabbox history --lease cbx_123
   crabbox logs run_123
   crabbox results run_123
-  crabbox cache stats --id cbx_123
+  crabbox cache stats --id blue-lobster
   crabbox usage --scope org
   crabbox admin leases --state active
-  crabbox warmup --actions-runner --idle-timeout 90m
-  crabbox actions hydrate --id cbx_123
+  crabbox warmup --actions-runner
+  crabbox actions hydrate --id blue-lobster
   crabbox actions dispatch -f testbox_id=cbx_123
-  crabbox stop cbx_123
+  crabbox stop blue-lobster
 
 Global:
   -h, --help     Show help
@@ -168,13 +168,15 @@ Environment:
   CRABBOX_OWNER                Usage owner override
   CRABBOX_ORG                  Usage org override
   CRABBOX_CONFIG               Optional config path
+  CRABBOX_IDLE_TIMEOUT         Default idle expiry, e.g. 30m
+  CRABBOX_TTL                  Maximum lease lifetime, e.g. 90m
   CRABBOX_AWS_REGION           Default eu-west-1
   CRABBOX_CAPACITY_MARKET      spot or on-demand
   CRABBOX_CAPACITY_REGIONS     Comma-separated AWS Spot placement candidates
   HCLOUD_TOKEN/HETZNER_TOKEN   Direct Hetzner mode
 
 Aliases:
-  crabbox release <id>         Alias for stop
+  crabbox release <id-or-slug> Alias for stop
   crabbox pool list            Alias for list
   crabbox machine cleanup      Alias for cleanup
 
