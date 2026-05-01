@@ -116,6 +116,7 @@ Common Flows:
   crabbox inspect --id cbx_123 --json
   crabbox usage --scope org
   crabbox warmup --actions-runner --idle-timeout 90m
+  crabbox actions hydrate --id cbx_123
   crabbox actions dispatch -f testbox_id=cbx_123
   crabbox stop cbx_123
 

@@ -61,3 +61,29 @@ func TestGitHubActionsRunnerInstallScriptUsesOfficialRunner(t *testing.T) {
 		}
 	}
 }
+
+func TestParseActionsHydrationState(t *testing.T) {
+	got := parseActionsHydrationState("WORKSPACE=/home/runner/work/repo/repo\nRUN_ID=123\nREADY_AT=2026-05-01T00:00:00Z\n")
+	if got.Workspace != "/home/runner/work/repo/repo" || got.RunID != "123" || got.ReadyAt == "" {
+		t.Fatalf("unexpected hydration state: %#v", got)
+	}
+}
+
+func TestActionsHydrationStatePathSanitizesLease(t *testing.T) {
+	got := actionsHydrationStatePath("cbx_123")
+	if got != ".crabbox/actions/cbx-123.env" {
+		t.Fatalf("state path=%q", got)
+	}
+}
+
+func TestRemoteClearActionsHydrationStateRemovesReadyAndStop(t *testing.T) {
+	got := remoteClearActionsHydrationState("cbx_123")
+	for _, want := range []string{
+		".crabbox/actions/cbx-123.env",
+		".crabbox/actions/cbx-123.stop",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("clear command %q missing %q", got, want)
+		}
+	}
+}

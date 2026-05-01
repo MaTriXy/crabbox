@@ -90,14 +90,27 @@ on:
         description: "Git ref to hydrate"
         required: false
         type: string
+      crabbox_id:
+        description: "Crabbox lease ID"
+        required: true
+        type: string
+      crabbox_runner_label:
+        description: "Dynamic Crabbox runner label"
+        required: true
+        type: string
+      crabbox_keep_alive_minutes:
+        description: "Minutes to keep the hydrated job alive"
+        required: false
+        default: "90"
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   hydrate:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    runs-on: [self-hosted, "${{ inputs.crabbox_runner_label }}"]
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v6
         with:
@@ -107,6 +120,33 @@ jobs:
           if [ -f package-lock.json ]; then npm ci; fi
           if [ -f pnpm-lock.yaml ]; then corepack enable && pnpm install --frozen-lockfile; fi
           if [ -f go.mod ]; then go mod download; fi
+      - name: Mark Crabbox ready
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.crabbox/actions"
+          state="$HOME/.crabbox/actions/${{ inputs.crabbox_id }}.env"
+          tmp="${state}.tmp"
+          {
+            echo "WORKSPACE=${GITHUB_WORKSPACE}"
+            echo "RUN_ID=${GITHUB_RUN_ID}"
+            echo "READY_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > "$tmp"
+          mv "$tmp" "$state"
+      - name: Keep Crabbox job alive
+        shell: bash
+        run: |
+          minutes="${{ inputs.crabbox_keep_alive_minutes }}"
+          case "$minutes" in
+            ''|*[!0-9]*) minutes=90 ;;
+          esac
+          stop="$HOME/.crabbox/actions/${{ inputs.crabbox_id }}.stop"
+          deadline=$(( $(date +%s) + minutes * 60 ))
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            if [ -f "$stop" ]; then
+              exit 0
+            fi
+            sleep 15
+          done
 `
 }
 

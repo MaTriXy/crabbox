@@ -5,17 +5,21 @@
 It does not parse workflow YAML locally. It uses GitHub's runner and workflow APIs:
 
 - `actions register` gets a repository runner registration token through `gh api`, installs the official `actions/runner` package on an existing box, and starts it with systemd.
+- `actions hydrate` registers the runner, dispatches the configured workflow with the lease label, waits for the workflow to write the hydrated workspace marker, and then returns.
 - `actions dispatch` calls `gh workflow run` for the configured workflow.
 
 ```sh
 crabbox warmup --actions-runner --idle-timeout 90m
+crabbox actions hydrate --id cbx_123
 crabbox actions register --id cbx_123
 crabbox actions dispatch -f testbox_id=cbx_123
+crabbox run --id cbx_123 -- pnpm test
 ```
 
 Subcommands:
 
 ```text
+hydrate --id <lease> [--repo owner/name] [--workflow <file|name|id>] [--ref <ref>] [--wait-timeout 20m] [--keep-alive-minutes 90] [-f key=value]
 register --id <lease> [--repo owner/name] [--name <runner-name>] [--labels <csv>] [--version latest] [--ephemeral=true]
 dispatch [--repo owner/name] [--workflow <file|name|id>] [--ref <ref>] [-f key=value]
 ```
@@ -34,3 +38,42 @@ actions:
 ```
 
 Workflow jobs should target the dynamic label printed by registration, for example `crabbox-cbx-123`, plus any static labels configured for the project.
+
+Hydrate workflows must accept these inputs:
+
+```yaml
+on:
+  workflow_dispatch:
+    inputs:
+      crabbox_id:
+        required: true
+        type: string
+      crabbox_runner_label:
+        required: true
+        type: string
+      crabbox_keep_alive_minutes:
+        required: false
+        default: "90"
+        type: string
+```
+
+The hydrate job should run on the dynamic label:
+
+```yaml
+runs-on: [self-hosted, "${{ inputs.crabbox_runner_label }}"]
+```
+
+After checkout and dependency/service setup, the workflow writes the ready marker:
+
+```sh
+mkdir -p "$HOME/.crabbox/actions"
+state="$HOME/.crabbox/actions/${{ inputs.crabbox_id }}.env"
+{
+  echo "WORKSPACE=${GITHUB_WORKSPACE}"
+  echo "RUN_ID=${GITHUB_RUN_ID}"
+  echo "READY_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+} > "${state}.tmp"
+mv "${state}.tmp" "$state"
+```
+
+`crabbox run --id <lease>` reads that marker and syncs into the hydrated `$GITHUB_WORKSPACE` instead of the default `/work/crabbox/...` path. Keep the workflow job alive when service containers or job-scoped setup must remain running for the remote command loop.

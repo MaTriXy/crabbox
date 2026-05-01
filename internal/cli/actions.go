@@ -3,11 +3,13 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"os/exec"
 	"path"
 	"regexp"
 	"strings"
+	"time"
 )
 
 type GitHubRepo struct {
@@ -24,9 +26,11 @@ func (r GitHubRepo) Slug() string {
 
 func (a App) actions(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return exit(2, "usage: crabbox actions register|dispatch")
+		return exit(2, "usage: crabbox actions hydrate|register|dispatch")
 	}
 	switch args[0] {
+	case "hydrate":
+		return a.actionsHydrate(ctx, args[1:])
 	case "register":
 		return a.actionsRegister(ctx, args[1:])
 	case "dispatch":
@@ -34,6 +38,77 @@ func (a App) actions(ctx context.Context, args []string) error {
 	default:
 		return exit(2, "unknown actions command %q", args[0])
 	}
+}
+
+func (a App) actionsHydrate(ctx context.Context, args []string) error {
+	fs := newFlagSet("actions hydrate", a.Stderr)
+	leaseIDFlag := fs.String("id", "", "existing lease id")
+	repoFlag := fs.String("repo", "", "GitHub repository owner/name")
+	workflowFlag := fs.String("workflow", "", "workflow file/name/id")
+	refFlag := fs.String("ref", "", "workflow ref")
+	waitTimeout := fs.Duration("wait-timeout", 20*time.Minute, "time to wait for Actions hydration")
+	keepAliveMinutes := fs.Int("keep-alive-minutes", 90, "minutes for workflow to keep the job alive")
+	fieldFlags := stringListFlag{}
+	fs.Var(&fieldFlags, "f", "workflow input key=value")
+	fs.Var(&fieldFlags, "field", "workflow input key=value")
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
+	if *leaseIDFlag == "" {
+		return exit(2, "actions hydrate requires --id")
+	}
+	cfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	repo, err := findRepo()
+	if err != nil {
+		return err
+	}
+	if *repoFlag != "" {
+		cfg.Actions.Repo = *repoFlag
+	}
+	if *workflowFlag != "" {
+		cfg.Actions.Workflow = *workflowFlag
+	}
+	if *refFlag != "" {
+		cfg.Actions.Ref = *refFlag
+	}
+	if cfg.Actions.Workflow == "" {
+		return exit(2, "actions hydrate requires --workflow or actions.workflow")
+	}
+	ghRepo, err := resolveGitHubRepo(repo, cfg.Actions.Repo)
+	if err != nil {
+		return err
+	}
+	target, leaseID, err := a.resolveLeaseTargetForActions(ctx, cfg, *leaseIDFlag)
+	if err != nil {
+		return err
+	}
+	label := githubActionsLeaseLabel(leaseID)
+	if err := a.registerGitHubActionsRunner(ctx, cfg, target, leaseID, ghRepo, "", nil); err != nil {
+		return err
+	}
+	if err := clearActionsHydrationState(ctx, target, leaseID); err != nil {
+		return err
+	}
+	ref := actionsRef(cfg, repo)
+	fields := []string{
+		"crabbox_id=" + leaseID,
+		"crabbox_runner_label=" + label,
+		fmt.Sprintf("crabbox_keep_alive_minutes=%d", *keepAliveMinutes),
+	}
+	fields = append(fields, fieldFlags...)
+	if err := dispatchGitHubActionsWorkflow(ctx, repo.Root, ghRepo, cfg.Actions.Workflow, ref, fields); err != nil {
+		return err
+	}
+	fmt.Fprintf(a.Stdout, "dispatched workflow=%s repo=%s ref=%s runner_label=%s\n", cfg.Actions.Workflow, ghRepo.Slug(), ref, label)
+	state, err := waitForActionsHydration(ctx, target, leaseID, *waitTimeout, a.Stderr)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(a.Stdout, "actions hydrated id=%s workspace=%s run_id=%s\n", leaseID, state.Workspace, blank(state.RunID, "-"))
+	return nil
 }
 
 func (a App) actionsRegister(ctx context.Context, args []string) error {
@@ -124,21 +199,8 @@ func (a App) actionsDispatch(ctx context.Context, args []string) error {
 	if cfg.Actions.Workflow == "" {
 		return exit(2, "actions dispatch requires --workflow or actions.workflow")
 	}
-	ref := cfg.Actions.Ref
-	if ref == "" {
-		ref = repo.BaseRef
-	}
-	if ref == "" {
-		ref = "main"
-	}
-	cmdArgs := []string{"workflow", "run", cfg.Actions.Workflow, "--repo", ghRepo.Slug(), "--ref", ref}
-	for _, field := range fieldFlags {
-		if !strings.Contains(field, "=") {
-			return exit(2, "workflow input must be key=value: %s", field)
-		}
-		cmdArgs = append(cmdArgs, "-f", field)
-	}
-	if err := runGH(ctx, repo.Root, cmdArgs...); err != nil {
+	ref := actionsRef(cfg, repo)
+	if err := dispatchGitHubActionsWorkflow(ctx, repo.Root, ghRepo, cfg.Actions.Workflow, ref, fieldFlags); err != nil {
 		return err
 	}
 	fmt.Fprintf(a.Stdout, "dispatched workflow=%s repo=%s ref=%s\n", cfg.Actions.Workflow, ghRepo.Slug(), ref)
@@ -164,16 +226,130 @@ func (a App) registerGitHubActionsRunner(ctx context.Context, cfg Config, target
 	return nil
 }
 
+func (a App) resolveLeaseTargetForActions(ctx context.Context, cfg Config, id string) (SSHTarget, string, error) {
+	if coord, ok, err := newCoordinatorClient(cfg); err != nil {
+		return SSHTarget{}, "", err
+	} else if ok {
+		lease, err := coord.GetLease(ctx, id)
+		if err != nil {
+			return SSHTarget{}, "", err
+		}
+		_, target, leaseID := leaseToServerTarget(lease, cfg)
+		return target, leaseID, nil
+	}
+	_, target, leaseID, err := a.findLease(ctx, cfg, id)
+	return target, leaseID, err
+}
+
+func dispatchGitHubActionsWorkflow(ctx context.Context, dir string, repo GitHubRepo, workflow, ref string, fields []string) error {
+	cmdArgs := []string{"workflow", "run", workflow, "--repo", repo.Slug(), "--ref", ref}
+	for _, field := range fields {
+		if !strings.Contains(field, "=") {
+			return exit(2, "workflow input must be key=value: %s", field)
+		}
+		cmdArgs = append(cmdArgs, "-f", field)
+	}
+	return runGH(ctx, dir, cmdArgs...)
+}
+
+func actionsRef(cfg Config, repo Repo) string {
+	if cfg.Actions.Ref != "" {
+		return cfg.Actions.Ref
+	}
+	if repo.BaseRef != "" {
+		return repo.BaseRef
+	}
+	return "main"
+}
+
 func githubActionsRunnerLabels(cfg Config, leaseID string, extra []string) []string {
 	labels := []string{
 		"crabbox",
-		"crabbox-" + sanitizeGitHubRunnerLabel(leaseID),
+		githubActionsLeaseLabel(leaseID),
 		"crabbox-profile-" + sanitizeGitHubRunnerLabel(cfg.Profile),
 		"crabbox-class-" + sanitizeGitHubRunnerLabel(cfg.Class),
 	}
 	labels = append(labels, cfg.Actions.RunnerLabels...)
 	labels = append(labels, extra...)
 	return appendUniqueStrings(nil, labels...)
+}
+
+func githubActionsLeaseLabel(leaseID string) string {
+	return "crabbox-" + sanitizeGitHubRunnerLabel(leaseID)
+}
+
+type actionsHydrationState struct {
+	Workspace string
+	RunID     string
+	ReadyAt   string
+}
+
+func waitForActionsHydration(ctx context.Context, target SSHTarget, leaseID string, timeout time.Duration, stderr io.Writer) (actionsHydrationState, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		state, err := readActionsHydrationState(ctx, target, leaseID)
+		if err == nil && state.Workspace != "" {
+			return state, nil
+		}
+		if ctx.Err() != nil {
+			return actionsHydrationState{}, ctx.Err()
+		}
+		if time.Now().After(deadline) {
+			return actionsHydrationState{}, exit(5, "timed out waiting for GitHub Actions hydration marker for %s", leaseID)
+		}
+		fmt.Fprintf(stderr, "waiting for GitHub Actions hydration marker id=%s...\n", leaseID)
+		time.Sleep(10 * time.Second)
+	}
+}
+
+func readActionsHydrationState(ctx context.Context, target SSHTarget, leaseID string) (actionsHydrationState, error) {
+	out, err := runSSHOutput(ctx, target, remoteReadActionsHydrationState(leaseID))
+	if err != nil {
+		return actionsHydrationState{}, err
+	}
+	return parseActionsHydrationState(out), nil
+}
+
+func clearActionsHydrationState(ctx context.Context, target SSHTarget, leaseID string) error {
+	if err := runSSHQuiet(ctx, target, remoteClearActionsHydrationState(leaseID)); err != nil {
+		return exit(7, "clear GitHub Actions hydration marker on %s: %v", target.Host, err)
+	}
+	return nil
+}
+
+func parseActionsHydrationState(value string) actionsHydrationState {
+	state := actionsHydrationState{}
+	for _, line := range strings.Split(value, "\n") {
+		key, val, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		switch key {
+		case "WORKSPACE":
+			state.Workspace = strings.TrimSpace(val)
+		case "RUN_ID":
+			state.RunID = strings.TrimSpace(val)
+		case "READY_AT":
+			state.ReadyAt = strings.TrimSpace(val)
+		}
+	}
+	return state
+}
+
+func remoteReadActionsHydrationState(leaseID string) string {
+	return "cat \"$HOME\"/" + shellQuote(actionsHydrationStatePath(leaseID)) + " 2>/dev/null || true"
+}
+
+func remoteClearActionsHydrationState(leaseID string) string {
+	return "rm -f \"$HOME\"/" + shellQuote(actionsHydrationStatePath(leaseID)) + " \"$HOME\"/" + shellQuote(actionsHydrationStopPath(leaseID))
+}
+
+func actionsHydrationStatePath(leaseID string) string {
+	return ".crabbox/actions/" + sanitizeGitHubRunnerLabel(leaseID) + ".env"
+}
+
+func actionsHydrationStopPath(leaseID string) string {
+	return ".crabbox/actions/" + sanitizeGitHubRunnerLabel(leaseID) + ".stop"
 }
 
 func githubActionsRunnerInstallScript(version string, ephemeral bool) string {

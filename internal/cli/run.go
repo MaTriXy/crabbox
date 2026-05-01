@@ -184,6 +184,10 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 	}
 	timings := runTimings{started: time.Now()}
 	workdir := filepath.ToSlash(filepath.Join(cfg.WorkRoot, leaseID, repo.Name))
+	if state, err := readActionsHydrationState(ctx, target, leaseID); err == nil && state.Workspace != "" {
+		workdir = state.Workspace
+		fmt.Fprintf(a.Stderr, "using GitHub Actions workspace %s\n", workdir)
+	}
 	if !*noSync {
 		syncStart := time.Now()
 		fmt.Fprintf(a.Stderr, "syncing %s -> %s:%s\n", repo.Root, target.Host, workdir)
