@@ -17,11 +17,11 @@
     "fast-xml-parser": "^5.7.2"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260430.0",
+    "@cloudflare/workers-types": "^4.20260501.1",
     "oxfmt": "^0.47.0",
     "oxlint": "^1.62.0",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.10",
-    "wrangler": "^4.50.0"
+    "wrangler": "^4.87.0"
   }
 }

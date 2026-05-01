@@ -77,3 +77,70 @@ func TestParseLeaseLabelTimeAcceptsLegacyRFC3339(t *testing.T) {
 		t.Fatalf("parseLeaseLabelTime(%q)=%s,%v", legacy, got, ok)
 	}
 }
+
+func TestProviderLabelDisplayAndDurationHelpers(t *testing.T) {
+	if got := leaseLabelTimeDisplay("1777636800"); got != "2026-05-01T12:00:00Z" {
+		t.Fatalf("leaseLabelTimeDisplay=%q", got)
+	}
+	if got := leaseLabelTimeDisplay("not-a-time"); got != "" {
+		t.Fatalf("invalid leaseLabelTimeDisplay=%q", got)
+	}
+	for _, tc := range []struct {
+		value string
+		want  time.Duration
+		ok    bool
+	}{
+		{"240", 4 * time.Minute, true},
+		{"4m", 4 * time.Minute, true},
+		{"0", 0, false},
+		{"bad", 0, false},
+		{"", 0, false},
+	} {
+		got, ok := parseDurationSecondsLabel(tc.value)
+		if got != tc.want || ok != tc.ok {
+			t.Fatalf("parseDurationSecondsLabel(%q)=%s,%v want %s,%v", tc.value, got, ok, tc.want, tc.ok)
+		}
+	}
+	if got := durationSecondsLabel(0); got != "" {
+		t.Fatalf("zero duration label=%q", got)
+	}
+	if got := leaseLabelDurationDisplay("240", "5m"); got != "4m0s" {
+		t.Fatalf("duration display primary=%q", got)
+	}
+	if got := leaseLabelDurationDisplay("bad", "5m"); got != "5m0s" {
+		t.Fatalf("duration display fallback=%q", got)
+	}
+	if got := leaseLabelDurationDisplay("bad", "also-bad"); got != "" {
+		t.Fatalf("invalid duration display=%q", got)
+	}
+}
+
+func TestTouchDirectLeaseLabelsFallsBackForMalformedStoredValues(t *testing.T) {
+	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	cfg := Config{TTL: 10 * time.Minute, IdleTimeout: 2 * time.Minute}
+	got := touchDirectLeaseLabels(map[string]string{
+		"created_at":        "bad",
+		"idle_timeout_secs": "bad",
+		"ttl_secs":          "bad",
+		"slug":              "blue lobster",
+	}, cfg, "", now)
+	if got["created_at"] != "1777636800" || got["last_touched_at"] != "1777636800" {
+		t.Fatalf("timestamps did not fall back to now: %#v", got)
+	}
+	if got["idle_timeout_secs"] != "120" || got["ttl_secs"] != "600" || got["expires_at"] != "1777636920" {
+		t.Fatalf("durations did not fall back to cfg: %#v", got)
+	}
+	if got["slug"] != "blue_lobster" {
+		t.Fatalf("slug was not sanitized: %#v", got)
+	}
+}
+
+func TestSanitizeProviderLabelValueEdgeCases(t *testing.T) {
+	if got := sanitizeProviderLabelValue("..."); got != "unknown" {
+		t.Fatalf("punctuation-only value=%q", got)
+	}
+	long := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890123456789"
+	if got := sanitizeProviderLabelValue(long); len(got) != 63 {
+		t.Fatalf("long value length=%d value=%q", len(got), got)
+	}
+}

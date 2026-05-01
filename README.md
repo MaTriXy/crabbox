@@ -413,6 +413,7 @@ Run the local gate:
 gofmt -w $(git ls-files '*.go')
 go vet ./...
 go test -race ./...
+scripts/check-go-coverage.sh 85.0
 go build -trimpath -o bin/crabbox ./cmd/crabbox
 goreleaser release --snapshot --clean --skip=publish
 npm ci --prefix worker

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestLoadConfigFromUserFile(t *testing.T) {
@@ -185,5 +186,103 @@ func TestRepoConfigIsYamlOnly(t *testing.T) {
 	}
 	if cfg.Profile != "yaml-profile" || cfg.Provider != "aws" {
 		t.Fatalf("unexpected config: profile=%s provider=%s", cfg.Profile, cfg.Provider)
+	}
+}
+
+func TestConfigHelperBranches(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("CRABBOX_CONFIG", filepath.Join(t.TempDir(), "explicit.yaml"))
+
+	if got := configPaths(); len(got) != 1 || got[0] != os.Getenv("CRABBOX_CONFIG") {
+		t.Fatalf("configPaths=%v", got)
+	}
+	if got := writableConfigPath(); got != os.Getenv("CRABBOX_CONFIG") {
+		t.Fatalf("writableConfigPath=%q", got)
+	}
+
+	cfgPath, err := writeUserFileConfig(fileConfig{Profile: "written", Provider: "aws"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfgPath != os.Getenv("CRABBOX_CONFIG") {
+		t.Fatalf("write path=%q", cfgPath)
+	}
+	file, err := readFileConfig(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if file.Profile != "written" || file.Provider != "aws" {
+		t.Fatalf("file config=%#v", file)
+	}
+
+	empty, err := readFileConfig(filepath.Join(t.TempDir(), "missing.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if empty.Profile != "" {
+		t.Fatalf("missing file config=%#v", empty)
+	}
+
+	if got := expandUserPath("~"); got != home {
+		t.Fatalf("expand ~= %q want %q", got, home)
+	}
+	if got := expandUserPath("~/bin"); got != filepath.Join(home, "bin") {
+		t.Fatalf("expand ~/bin=%q", got)
+	}
+	if got := expandUserPath("/tmp/x"); got != "/tmp/x" {
+		t.Fatalf("absolute path changed to %q", got)
+	}
+
+	duration := 10 * time.Minute
+	applyLeaseDuration(&duration, "")
+	applyLeaseDuration(&duration, "bad")
+	applyLeaseDuration(&duration, "0s")
+	if duration != 10*time.Minute {
+		t.Fatalf("invalid durations changed value to %s", duration)
+	}
+	applyLeaseDuration(&duration, "15m")
+	if duration != 15*time.Minute {
+		t.Fatalf("duration=%s", duration)
+	}
+}
+
+func TestEnvHelperBranches(t *testing.T) {
+	t.Setenv("CRABBOX_INT", "42")
+	t.Setenv("CRABBOX_BAD_INT", "oops")
+	if got := getenvInt("CRABBOX_INT", 7); got != 42 {
+		t.Fatalf("int=%d", got)
+	}
+	if got := getenvInt("CRABBOX_BAD_INT", 7); got != 7 {
+		t.Fatalf("bad int fallback=%d", got)
+	}
+	if got := getenvInt("CRABBOX_MISSING_INT", 7); got != 7 {
+		t.Fatalf("missing int fallback=%d", got)
+	}
+
+	for _, tc := range []struct {
+		name  string
+		value string
+		want  bool
+		ok    bool
+	}{
+		{"CRABBOX_BOOL_TRUE", "yes", true, true},
+		{"CRABBOX_BOOL_FALSE", "off", false, true},
+		{"CRABBOX_BOOL_BAD", "maybe", false, false},
+		{"CRABBOX_BOOL_EMPTY", "", false, false},
+	} {
+		if tc.value != "" {
+			t.Setenv(tc.name, tc.value)
+		}
+		got, ok := getenvBool(tc.name)
+		if got != tc.want || ok != tc.ok {
+			t.Fatalf("getenvBool(%s)=%v,%v want %v,%v", tc.name, got, ok, tc.want, tc.ok)
+		}
+	}
+
+	list := splitCommaList(" CI, ,NODE_OPTIONS,CUSTOM_* ")
+	if len(list) != 3 || list[0] != "CI" || list[2] != "CUSTOM_*" {
+		t.Fatalf("splitCommaList=%v", list)
 	}
 }

@@ -11,7 +11,8 @@ permissions:
   contents: read
 
 env:
-  GOFLAGS: -mod=readonly
+  GOFLAGS: -mod=readonly -trimpath
+  GOTOOLCHAIN: local
 
 jobs:
   go:
@@ -32,9 +33,9 @@ jobs:
       - name: Check formatting
         shell: bash
         run: |
-          files="$(git ls-files '*.go')"
-          if [ -n "$files" ]; then
-            diff="$(gofmt -l $files)"
+          mapfile -t files < <(git ls-files '*.go')
+          if [ "${#files[@]}" -gt 0 ]; then
+            diff="$(gofmt -l "${files[@]}")"
             if [ -n "$diff" ]; then
               echo "$diff"
               exit 1
@@ -46,6 +47,9 @@ jobs:
 
       - name: Test
         run: go test -race ./...
+
+      - name: Coverage
+        run: scripts/check-go-coverage.sh 85.0
 
       - name: Build
         run: go build -trimpath -o /tmp/crabbox ./cmd/crabbox
