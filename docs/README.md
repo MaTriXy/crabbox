@@ -13,6 +13,7 @@ Start here:
 - [CLI](cli.md): command surface, flags, config, output, and exit codes.
 - [Commands](commands/README.md): one page per command.
 - [Features](features/README.md): one page per feature area.
+- [Actions hydration](features/actions-hydration.md): reuse GitHub Actions setup, then run local commands remotely.
 - [MVP Plan](mvp-plan.md): what to build, in order.
 - [Infrastructure](infrastructure.md): Cloudflare, Hetzner, DNS, Access, and fleet setup.
 - [Security](security.md): auth, secrets, SSH, cleanup, and trust boundaries.

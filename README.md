@@ -59,6 +59,15 @@ The normal lifecycle is:
 7. CLI runs the command over SSH and returns the remote exit code.
 8. CLI releases the lease; the broker terminates the machine unless it was kept.
 
+The GitHub Actions hydration lifecycle reuses the same machines, but lets the repository's workflow define setup:
+
+1. `crabbox warmup --idle-timeout 90m` leases a reusable box.
+2. `crabbox actions hydrate --id cbx_...` registers that box as an ephemeral GitHub Actions runner, dispatches the configured workflow, and waits for the workflow to write a ready marker.
+3. The workflow runs normal Actions steps such as checkout, dependency install, cache/service setup, and secret-backed environment hydration.
+4. `crabbox run --id cbx_... -- <command>` syncs the local dirty checkout into the hydrated `$GITHUB_WORKSPACE` and runs commands there.
+
+Crabbox does not parse or reimplement GitHub Actions YAML. The project-owned workflow decides what to install and when the machine is ready.
+
 Direct provider mode still exists for debugging. If no broker is configured, `--provider aws` uses the local AWS SDK credential chain and `--provider hetzner` uses `HCLOUD_TOKEN` or `HETZNER_TOKEN`. The brokered path is the default operational model.
 
 ## Status
@@ -75,6 +84,7 @@ Working today:
 - [`crabbox ssh`](docs/commands/ssh.md)
 - [`crabbox inspect`](docs/commands/inspect.md)
 - [`crabbox stop`](docs/commands/stop.md)
+- [`crabbox actions`](docs/commands/actions.md)
 - [`crabbox pool list`](docs/commands/list.md)
 - [`crabbox machine cleanup`](docs/commands/cleanup.md)
 - [`crabbox cleanup`](docs/commands/cleanup.md)
@@ -91,12 +101,12 @@ Working today:
 - [provider-backed price estimates with static fallback rates](docs/features/cost-usage.md)
 - [sync sanity checks for mass tracked deletions](docs/features/sync.md)
 - [shallow Git hydration for configured base-ref detection](docs/features/sync.md)
+- [GitHub Actions-backed hydration into project-defined runner workspaces](docs/features/actions-hydration.md)
 - [SSH execution on port `2222`](docs/features/runner-bootstrap.md)
 
 Not yet done:
 
 - `crabbox login`
-- GitHub Actions-backed hydration/execution
 - untrusted multi-tenant isolation
 
 ## Quick Start
@@ -145,6 +155,13 @@ Warm a reusable testbox:
 
 ```sh
 bin/crabbox warmup --profile project-check --class beast --idle-timeout 90m
+```
+
+Hydrate that box through the repo's GitHub Actions setup, then run local tests inside the hydrated workspace:
+
+```sh
+bin/crabbox actions hydrate --id cbx_...
+CI=1 bin/crabbox run --id cbx_... -- pnpm test:changed:max
 ```
 
 Use AWS EC2 Spot through the broker:

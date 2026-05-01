@@ -15,6 +15,7 @@ Core features:
 - [Providers](providers.md): Hetzner and AWS EC2 Spot provisioning, classes, and fallback.
 - [Runner bootstrap](runner-bootstrap.md): cloud-init, installed tools, SSH port, and readiness.
 - [Sync](sync.md): Git seeding, rsync, fingerprints, excludes, and sanity checks.
+- [Actions hydration](actions-hydration.md): let GitHub Actions prepare a runner, then sync local work into that workspace.
 - [SSH keys](ssh-keys.md): per-lease keys, provider key cleanup, and local storage.
 - [Cost and usage](cost-usage.md): guardrails, provider-backed pricing, and reporting.
 - [Lifecycle cleanup](lifecycle-cleanup.md): release, expiry, keep mode, and direct cleanup.
@@ -32,5 +33,6 @@ Command docs:
 - [ssh](../commands/ssh.md)
 - [inspect](../commands/inspect.md)
 - [stop](../commands/stop.md)
+- [actions](../commands/actions.md)
 - [cleanup](../commands/cleanup.md)
 - [config](../commands/config.md)

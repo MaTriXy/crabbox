@@ -31,6 +31,9 @@ crabbox config path
 crabbox config set-broker --url <url> --token-stdin [--provider hetzner|aws]
 crabbox warmup [--provider hetzner|aws] [--profile <name>] [--idle-timeout <duration>]
 crabbox run [--id <lease-id>] [--shell] [--checksum] [--debug] -- <command...>
+crabbox actions hydrate --id <lease-id> [--workflow <file|name|id>] [--wait-timeout <duration>]
+crabbox actions register --id <lease-id> [--repo owner/name]
+crabbox actions dispatch [--workflow <file|name|id>] [-f key=value]
 crabbox status --id <lease-id> [--wait]
 crabbox list [--json]
 crabbox usage [--scope user|org|all] [--user <email>] [--org <name>] [--month YYYY-MM] [--json]
@@ -60,6 +63,15 @@ Warm a box, then reuse it:
 crabbox warmup --profile project-check --idle-timeout 90m
 crabbox run --id cbx_123 -- pnpm test:changed
 crabbox run --id cbx_123 --shell 'pnpm install --frozen-lockfile && pnpm test'
+crabbox stop cbx_123
+```
+
+Hydrate through GitHub Actions, then run local dirty work in the hydrated workspace:
+
+```sh
+crabbox warmup --idle-timeout 90m
+crabbox actions hydrate --id cbx_123
+crabbox run --id cbx_123 -- pnpm test:changed
 crabbox stop cbx_123
 ```
 
@@ -104,13 +116,14 @@ Behavior:
 1. Load config.
 2. Acquire a lease unless `--id` is provided.
 3. Verify SSH readiness.
-4. Sync current repo, unless a matching sync fingerprint lets Crabbox skip rsync.
-5. Seed remote Git from the configured origin/base ref before first sync when possible.
-6. Run command over SSH.
-7. Stream remote output.
-8. Heartbeat coordinator leases in the background.
-9. Release lease unless `--keep` is set.
-10. Exit with the remote command exit code.
+4. Use the GitHub Actions workspace when the lease has a hydration marker.
+5. Sync current repo, unless a matching sync fingerprint lets Crabbox skip rsync.
+6. Seed remote Git from the configured origin/base ref before first sync when possible.
+7. Run command over SSH.
+8. Stream remote output.
+9. Heartbeat coordinator leases in the background.
+10. Release lease unless `--keep` is set.
+11. Exit with the remote command exit code.
 
 Fresh non-kept leases retry once with a new machine when bootstrap never reaches SSH readiness. Existing leases and `--keep` runs are not retried automatically, so commands are not duplicated on a machine the user asked to keep. Runner bootstrap also retries apt, NodeSource, and corepack steps inside cloud-init before `crabbox-ready` is allowed to pass.
 
@@ -199,6 +212,9 @@ profile: project-check
 class: beast
 actions:
   workflow: .github/workflows/crabbox.yml
+  ref: main
+  runnerLabels:
+    - crabbox
 sync:
   delete: true
   checksum: false

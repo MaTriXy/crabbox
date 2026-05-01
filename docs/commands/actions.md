@@ -39,6 +39,18 @@ actions:
 
 Workflow jobs should target the dynamic label printed by registration, for example `crabbox-cbx-123`, plus any static labels configured for the project.
 
+## Hydration Flow
+
+Use hydration when CI already knows how to prepare the repository and an agent needs a fast local-style loop:
+
+```sh
+crabbox warmup --idle-timeout 90m
+crabbox actions hydrate --id cbx_123
+crabbox run --id cbx_123 -- pnpm test:changed
+```
+
+The Actions workflow owns repository-specific setup: checkout, dependency install, services, caches, secrets, and any project tools. Crabbox only registers the runner, dispatches the workflow, waits for the marker, and later syncs local edits into the marked workspace. There is no project-specific setup code in the Crabbox binary.
+
 Hydrate workflows must accept these inputs:
 
 ```yaml

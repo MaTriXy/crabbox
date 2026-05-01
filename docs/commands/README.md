@@ -13,6 +13,7 @@ Command docs live here, one file per top-level command. Keep `docs/cli.md` as th
 - [ssh](ssh.md)
 - [inspect](inspect.md)
 - [stop](stop.md)
+- [actions](actions.md)
 - [cleanup](cleanup.md)
 - [doctor](doctor.md)
 - [config](config.md)
