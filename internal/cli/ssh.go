@@ -185,16 +185,12 @@ func shellQuote(s string) string {
 }
 
 func remoteCommand(workdir string, env map[string]string, command []string) string {
+	return remoteCommandWithEnvFile(workdir, env, "", command)
+}
+
+func remoteCommandWithEnvFile(workdir string, env map[string]string, envFile string, command []string) string {
 	var b strings.Builder
-	b.WriteString("cd ")
-	b.WriteString(shellQuote(workdir))
-	b.WriteString(" && ")
-	for k, v := range env {
-		b.WriteString(k)
-		b.WriteByte('=')
-		b.WriteString(shellQuote(v))
-		b.WriteByte(' ')
-	}
+	writeRemoteCommandPrefix(&b, workdir, env, envFile)
 	b.WriteString("bash -lc ")
 	b.WriteString(shellQuote(`exec "$@"`))
 	b.WriteString(" bash")
@@ -206,19 +202,34 @@ func remoteCommand(workdir string, env map[string]string, command []string) stri
 }
 
 func remoteShellCommand(workdir string, env map[string]string, script string) string {
+	return remoteShellCommandWithEnvFile(workdir, env, "", script)
+}
+
+func remoteShellCommandWithEnvFile(workdir string, env map[string]string, envFile, script string) string {
 	var b strings.Builder
+	writeRemoteCommandPrefix(&b, workdir, env, envFile)
+	b.WriteString("bash -lc ")
+	b.WriteString(shellQuote(script))
+	return b.String()
+}
+
+func writeRemoteCommandPrefix(b *strings.Builder, workdir string, env map[string]string, envFile string) {
 	b.WriteString("cd ")
 	b.WriteString(shellQuote(workdir))
 	b.WriteString(" && ")
+	if envFile != "" {
+		b.WriteString("if [ -f ")
+		b.WriteString(shellQuote(envFile))
+		b.WriteString(" ]; then . ")
+		b.WriteString(shellQuote(envFile))
+		b.WriteString("; fi && ")
+	}
 	for k, v := range env {
 		b.WriteString(k)
 		b.WriteByte('=')
 		b.WriteString(shellQuote(v))
 		b.WriteByte(' ')
 	}
-	b.WriteString("bash -lc ")
-	b.WriteString(shellQuote(script))
-	return b.String()
 }
 
 func shellWords(words []string) []string {

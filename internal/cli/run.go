@@ -159,6 +159,7 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 	if acquired {
 		defer func() {
 			if !*keep {
+				a.writeActionsHydrationStopBestEffort(context.Background(), target, leaseID)
 				fmt.Fprintf(a.Stderr, "releasing %s server=%s\n", leaseID, server.DisplayID())
 				if useCoordinator {
 					if err := releaseCoordinatorLease(context.Background(), coord, leaseID); err != nil {
@@ -184,8 +185,10 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 	}
 	timings := runTimings{started: time.Now()}
 	workdir := filepath.ToSlash(filepath.Join(cfg.WorkRoot, leaseID, repo.Name))
+	actionsEnvFile := ""
 	if state, err := readActionsHydrationState(ctx, target, leaseID); err == nil && state.Workspace != "" {
 		workdir = state.Workspace
+		actionsEnvFile = state.EnvFile
 		fmt.Fprintf(a.Stderr, "using GitHub Actions workspace %s\n", workdir)
 	}
 	if !*noSync {
@@ -248,9 +251,9 @@ afterSync:
 		defer setServerState(context.Background(), cfg, server, "ready", a.Stderr)
 	}
 	fmt.Fprintf(a.Stderr, "running on %s %s\n", target.Host, strings.Join(command, " "))
-	remote := remoteCommand(workdir, allowedEnv(cfg.EnvAllow), command)
+	remote := remoteCommandWithEnvFile(workdir, allowedEnv(cfg.EnvAllow), actionsEnvFile, command)
 	if *shellMode || shouldUseShell(command) {
-		remote = remoteShellCommand(workdir, allowedEnv(cfg.EnvAllow), strings.Join(command, " "))
+		remote = remoteShellCommandWithEnvFile(workdir, allowedEnv(cfg.EnvAllow), actionsEnvFile, strings.Join(command, " "))
 	}
 	code := runSSHStream(ctx, target, remote, a.Stdout, a.Stderr)
 	timings.command = time.Since(commandStart)
@@ -664,19 +667,37 @@ func (a App) stop(ctx context.Context, args []string) error {
 	if coord, ok, err := newCoordinatorClient(cfg); err != nil {
 		return err
 	} else if ok {
-		lease, err := coord.ReleaseLease(ctx, fs.Arg(0), true)
+		if lease, err := coord.GetLease(ctx, fs.Arg(0)); err == nil {
+			_, target, leaseID := leaseToServerTarget(lease, cfg)
+			a.writeActionsHydrationStopBestEffort(ctx, target, leaseID)
+		} else {
+			fmt.Fprintf(a.Stderr, "warning: could not inspect lease before release: %v\n", err)
+		}
+		released, err := coord.ReleaseLease(ctx, fs.Arg(0), true)
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(a.Stderr, "released lease=%s server=%s\n", lease.ID, leaseDisplayID(lease))
+		fmt.Fprintf(a.Stderr, "released lease=%s server=%s\n", released.ID, leaseDisplayID(released))
 		return nil
 	}
-	server, _, leaseID, err := a.findLease(ctx, cfg, fs.Arg(0))
+	server, target, leaseID, err := a.findLease(ctx, cfg, fs.Arg(0))
 	if err != nil {
 		return err
 	}
+	a.writeActionsHydrationStopBestEffort(ctx, target, leaseID)
 	fmt.Fprintf(a.Stderr, "deleting lease=%s server=%s name=%s\n", leaseID, server.DisplayID(), server.Name)
 	return deleteServer(ctx, cfg, server)
+}
+
+func (a App) writeActionsHydrationStopBestEffort(ctx context.Context, target SSHTarget, leaseID string) {
+	if leaseID == "" || target.Host == "" {
+		return
+	}
+	stopCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if err := writeActionsHydrationStop(stopCtx, target, leaseID); err != nil {
+		fmt.Fprintf(a.Stderr, "warning: could not stop GitHub Actions hydration for %s: %v\n", leaseID, err)
+	}
 }
 
 func leaseDisplayID(lease CoordinatorLease) string {

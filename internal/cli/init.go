@@ -56,6 +56,7 @@ capacity:
   fallback: on-demand-after-120s
 actions:
   workflow: .github/workflows/crabbox.yml
+  job: hydrate
   runnerLabels:
     - crabbox
   runnerVersion: latest
@@ -98,6 +99,11 @@ on:
         description: "Dynamic Crabbox runner label"
         required: true
         type: string
+      crabbox_job:
+        description: "Hydration job identifier expected by Crabbox"
+        required: false
+        default: "hydrate"
+        type: string
       crabbox_keep_alive_minutes:
         description: "Minutes to keep the hydrated job alive"
         required: false
@@ -123,12 +129,37 @@ jobs:
       - name: Mark Crabbox ready
         shell: bash
         run: |
+          job="${{ inputs.crabbox_job }}"
+          if [ -z "$job" ]; then job=hydrate; fi
           mkdir -p "$HOME/.crabbox/actions"
           state="$HOME/.crabbox/actions/${{ inputs.crabbox_id }}.env"
+          env_file="$HOME/.crabbox/actions/${{ inputs.crabbox_id }}.env.sh"
+          services_file="$HOME/.crabbox/actions/${{ inputs.crabbox_id }}.services"
+          write_export() {
+            key="$1"
+            value="${!key-}"
+            if [ -n "$value" ]; then
+              printf 'export %s=%q\n' "$key" "$value"
+            fi
+          }
+          {
+            for key in CI GITHUB_ACTIONS GITHUB_WORKSPACE GITHUB_REPOSITORY GITHUB_RUN_ID GITHUB_RUN_NUMBER GITHUB_RUN_ATTEMPT GITHUB_REF GITHUB_REF_NAME GITHUB_SHA GITHUB_EVENT_NAME GITHUB_ACTOR RUNNER_OS RUNNER_ARCH RUNNER_TEMP RUNNER_TOOL_CACHE; do
+              write_export "$key"
+            done
+          } > "${env_file}.tmp"
+          mv "${env_file}.tmp" "$env_file"
+          {
+            echo "# Docker containers visible from the hydrated runner"
+            docker ps --format '{{.Names}}\t{{.Image}}\t{{.Ports}}' 2>/dev/null || true
+          } > "${services_file}.tmp"
+          mv "${services_file}.tmp" "$services_file"
           tmp="${state}.tmp"
           {
             echo "WORKSPACE=${GITHUB_WORKSPACE}"
             echo "RUN_ID=${GITHUB_RUN_ID}"
+            echo "JOB=${job}"
+            echo "ENV_FILE=${env_file}"
+            echo "SERVICES_FILE=${services_file}"
             echo "READY_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } > "$tmp"
           mv "$tmp" "$state"

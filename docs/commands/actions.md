@@ -30,6 +30,7 @@ Config:
 actions:
   repo: owner/name
   workflow: .github/workflows/crabbox.yml
+  job: hydrate
   ref: main
   runnerLabels:
     - crabbox
@@ -38,6 +39,7 @@ actions:
 ```
 
 Workflow jobs should target the dynamic label printed by registration, for example `crabbox-cbx-123`, plus any static labels configured for the project.
+When `actions.job` is set, Crabbox sends it as `crabbox_job` and verifies that the ready marker came from that job. Older workflows can omit both.
 
 ## Hydration Flow
 
@@ -63,6 +65,10 @@ on:
       crabbox_runner_label:
         required: true
         type: string
+      crabbox_job:
+        required: false
+        default: "hydrate"
+        type: string
       crabbox_keep_alive_minutes:
         required: false
         default: "90"
@@ -80,12 +86,17 @@ After checkout and dependency/service setup, the workflow writes the ready marke
 ```sh
 mkdir -p "$HOME/.crabbox/actions"
 state="$HOME/.crabbox/actions/${{ inputs.crabbox_id }}.env"
+env_file="$HOME/.crabbox/actions/${{ inputs.crabbox_id }}.env.sh"
+services_file="$HOME/.crabbox/actions/${{ inputs.crabbox_id }}.services"
 {
   echo "WORKSPACE=${GITHUB_WORKSPACE}"
   echo "RUN_ID=${GITHUB_RUN_ID}"
+  echo "JOB=${{ inputs.crabbox_job }}"
+  echo "ENV_FILE=${env_file}"
+  echo "SERVICES_FILE=${services_file}"
   echo "READY_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 } > "${state}.tmp"
 mv "${state}.tmp" "$state"
 ```
 
-`crabbox run --id <lease>` reads that marker and syncs into the hydrated `$GITHUB_WORKSPACE` instead of the default `/work/crabbox/...` path. Keep the workflow job alive when service containers or job-scoped setup must remain running for the remote command loop.
+`crabbox run --id <lease>` reads that marker, syncs into the hydrated `$GITHUB_WORKSPACE`, and sources the non-secret env file when present. The env file should contain stable GitHub/runner context such as `GITHUB_WORKSPACE`, `GITHUB_RUN_ID`, `RUNNER_TEMP`, and `RUNNER_TOOL_CACHE`; do not persist secrets or OIDC request tokens there. Keep the workflow job alive when service containers or job-scoped setup must remain running for the remote command loop. `crabbox stop <lease>` writes the `.stop` marker before releasing the box.

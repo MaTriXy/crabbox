@@ -93,17 +93,12 @@ func (a App) actionsHydrate(ctx context.Context, args []string) error {
 		return err
 	}
 	ref := actionsRef(cfg, repo)
-	fields := []string{
-		"crabbox_id=" + leaseID,
-		"crabbox_runner_label=" + label,
-		fmt.Sprintf("crabbox_keep_alive_minutes=%d", *keepAliveMinutes),
-	}
-	fields = append(fields, fieldFlags...)
+	fields := actionsHydrateFields(leaseID, label, cfg.Actions.Job, *keepAliveMinutes, fieldFlags)
 	if err := dispatchGitHubActionsWorkflow(ctx, repo.Root, ghRepo, cfg.Actions.Workflow, ref, fields); err != nil {
 		return err
 	}
 	fmt.Fprintf(a.Stdout, "dispatched workflow=%s repo=%s ref=%s runner_label=%s\n", cfg.Actions.Workflow, ghRepo.Slug(), ref, label)
-	state, err := waitForActionsHydration(ctx, target, leaseID, *waitTimeout, a.Stderr)
+	state, err := waitForActionsHydration(ctx, target, leaseID, cfg.Actions.Job, *waitTimeout, a.Stderr)
 	if err != nil {
 		return err
 	}
@@ -252,6 +247,19 @@ func dispatchGitHubActionsWorkflow(ctx context.Context, dir string, repo GitHubR
 	return runGH(ctx, dir, cmdArgs...)
 }
 
+func actionsHydrateFields(leaseID, label, job string, keepAliveMinutes int, extra []string) []string {
+	fields := []string{
+		"crabbox_id=" + leaseID,
+		"crabbox_runner_label=" + label,
+		fmt.Sprintf("crabbox_keep_alive_minutes=%d", keepAliveMinutes),
+	}
+	if job != "" {
+		fields = append(fields, "crabbox_job="+job)
+	}
+	fields = append(fields, extra...)
+	return fields
+}
+
 func actionsRef(cfg Config, repo Repo) string {
 	if cfg.Actions.Ref != "" {
 		return cfg.Actions.Ref
@@ -279,16 +287,22 @@ func githubActionsLeaseLabel(leaseID string) string {
 }
 
 type actionsHydrationState struct {
-	Workspace string
-	RunID     string
-	ReadyAt   string
+	Workspace    string
+	RunID        string
+	ReadyAt      string
+	Job          string
+	EnvFile      string
+	ServicesFile string
 }
 
-func waitForActionsHydration(ctx context.Context, target SSHTarget, leaseID string, timeout time.Duration, stderr io.Writer) (actionsHydrationState, error) {
+func waitForActionsHydration(ctx context.Context, target SSHTarget, leaseID, expectedJob string, timeout time.Duration, stderr io.Writer) (actionsHydrationState, error) {
 	deadline := time.Now().Add(timeout)
 	for {
 		state, err := readActionsHydrationState(ctx, target, leaseID)
 		if err == nil && state.Workspace != "" {
+			if expectedJob != "" && state.Job != "" && state.Job != expectedJob {
+				return actionsHydrationState{}, exit(5, "GitHub Actions hydration marker for %s came from job %q, expected %q", leaseID, state.Job, expectedJob)
+			}
 			return state, nil
 		}
 		if ctx.Err() != nil {
@@ -317,6 +331,13 @@ func clearActionsHydrationState(ctx context.Context, target SSHTarget, leaseID s
 	return nil
 }
 
+func writeActionsHydrationStop(ctx context.Context, target SSHTarget, leaseID string) error {
+	if err := runSSHQuiet(ctx, target, remoteWriteActionsHydrationStop(leaseID)); err != nil {
+		return exit(7, "write GitHub Actions hydration stop marker on %s: %v", target.Host, err)
+	}
+	return nil
+}
+
 func parseActionsHydrationState(value string) actionsHydrationState {
 	state := actionsHydrationState{}
 	for _, line := range strings.Split(value, "\n") {
@@ -331,6 +352,12 @@ func parseActionsHydrationState(value string) actionsHydrationState {
 			state.RunID = strings.TrimSpace(val)
 		case "READY_AT":
 			state.ReadyAt = strings.TrimSpace(val)
+		case "JOB":
+			state.Job = strings.TrimSpace(val)
+		case "ENV_FILE":
+			state.EnvFile = strings.TrimSpace(val)
+		case "SERVICES_FILE":
+			state.ServicesFile = strings.TrimSpace(val)
 		}
 	}
 	return state
@@ -341,15 +368,31 @@ func remoteReadActionsHydrationState(leaseID string) string {
 }
 
 func remoteClearActionsHydrationState(leaseID string) string {
-	return "rm -f \"$HOME\"/" + shellQuote(actionsHydrationStatePath(leaseID)) + " \"$HOME\"/" + shellQuote(actionsHydrationStopPath(leaseID))
+	return "rm -f \"$HOME\"/" + shellQuote(actionsHydrationStatePath(leaseID)) + " \"$HOME\"/" + shellQuote(actionsHydrationEnvPath(leaseID)) + " \"$HOME\"/" + shellQuote(actionsHydrationServicesPath(leaseID)) + " \"$HOME\"/" + shellQuote(actionsHydrationStopPath(leaseID))
 }
 
 func actionsHydrationStatePath(leaseID string) string {
-	return ".crabbox/actions/" + leaseID + ".env"
+	return actionsHydrationDir() + "/" + leaseID + ".env"
+}
+
+func actionsHydrationEnvPath(leaseID string) string {
+	return actionsHydrationDir() + "/" + leaseID + ".env.sh"
+}
+
+func actionsHydrationServicesPath(leaseID string) string {
+	return actionsHydrationDir() + "/" + leaseID + ".services"
 }
 
 func actionsHydrationStopPath(leaseID string) string {
-	return ".crabbox/actions/" + leaseID + ".stop"
+	return actionsHydrationDir() + "/" + leaseID + ".stop"
+}
+
+func actionsHydrationDir() string {
+	return ".crabbox/actions"
+}
+
+func remoteWriteActionsHydrationStop(leaseID string) string {
+	return "mkdir -p \"$HOME\"/" + shellQuote(actionsHydrationDir()) + " && touch \"$HOME\"/" + shellQuote(actionsHydrationStopPath(leaseID))
 }
 
 func githubActionsRunnerInstallScript(version string, ephemeral bool) string {

@@ -12,10 +12,10 @@ The flow:
 
 1. `crabbox warmup --idle-timeout 90m` leases a machine.
 2. `crabbox actions hydrate --id cbx_...` registers that machine as an ephemeral self-hosted runner for the repository.
-3. Crabbox dispatches the configured workflow with the lease ID, dynamic runner label, and keepalive timeout.
+3. Crabbox dispatches the configured workflow with the lease ID, dynamic runner label, keepalive timeout, and optional expected hydrate job.
 4. The workflow runs on `[self-hosted, crabbox-cbx-...]`, checks out the repo, installs dependencies, starts services, warms caches, and performs any repo-specific setup.
-5. The workflow writes `$HOME/.crabbox/actions/<lease>.env` with `WORKSPACE`, `RUN_ID`, and `READY_AT`.
-6. `crabbox run --id cbx_... -- <command>` reads that marker and syncs the local dirty checkout into `$GITHUB_WORKSPACE`.
+5. The workflow writes `$HOME/.crabbox/actions/<lease>.env` with `WORKSPACE`, `RUN_ID`, `JOB`, `ENV_FILE`, `SERVICES_FILE`, and `READY_AT`.
+6. `crabbox run --id cbx_... -- <command>` reads that marker, syncs the local dirty checkout into `$GITHUB_WORKSPACE`, and sources the non-secret env file when present.
 
 The important boundary: project setup lives in the repository workflow. Crabbox owns runner registration, dispatch, marker waiting, SSH sync, and command execution. It does not contain repository-specific setup code.
 
@@ -24,6 +24,7 @@ Repo config:
 ```yaml
 actions:
   workflow: .github/workflows/crabbox.yml
+  job: hydrate
   ref: main
   runnerLabels:
     - crabbox
@@ -43,6 +44,10 @@ on:
       crabbox_runner_label:
         required: true
         type: string
+      crabbox_job:
+        required: false
+        default: "hydrate"
+        type: string
       crabbox_keep_alive_minutes:
         required: false
         default: "90"
@@ -60,16 +65,23 @@ The workflow marks readiness after setup:
 ```sh
 mkdir -p "$HOME/.crabbox/actions"
 state="$HOME/.crabbox/actions/${{ inputs.crabbox_id }}.env"
+env_file="$HOME/.crabbox/actions/${{ inputs.crabbox_id }}.env.sh"
+services_file="$HOME/.crabbox/actions/${{ inputs.crabbox_id }}.services"
 tmp="${state}.tmp"
 {
   echo "WORKSPACE=${GITHUB_WORKSPACE}"
   echo "RUN_ID=${GITHUB_RUN_ID}"
+  echo "JOB=${{ inputs.crabbox_job }}"
+  echo "ENV_FILE=${env_file}"
+  echo "SERVICES_FILE=${services_file}"
   echo "READY_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 } > "$tmp"
 mv "$tmp" "$state"
 ```
 
-The final workflow step should keep the job alive while agents run commands. It can exit when `$HOME/.crabbox/actions/${{ inputs.crabbox_id }}.stop` appears or when its timeout expires.
+The env file should contain only stable, non-secret context that SSH commands need, such as `GITHUB_WORKSPACE`, `GITHUB_RUN_ID`, `RUNNER_TEMP`, and `RUNNER_TOOL_CACHE`. Secrets and OIDC request tokens are step-scoped GitHub material and should stay inside the hydration workflow unless the project intentionally persists its own short-lived credentials.
+
+The final workflow step should keep the job alive while agents run commands. It can exit when `$HOME/.crabbox/actions/${{ inputs.crabbox_id }}.stop` appears or when its timeout expires. `crabbox stop` and non-kept `crabbox run` leases write that stop marker before releasing the machine.
 
 Related docs:
 

@@ -47,6 +47,20 @@ func TestRemoteShellCommandRunsScript(t *testing.T) {
 	}
 }
 
+func TestRemoteCommandSourcesActionsEnvFile(t *testing.T) {
+	got := remoteCommandWithEnvFile("/home/runner/work/repo/repo", map[string]string{"CI": "1"}, "/home/runner/.crabbox/actions/cbx-123.env.sh", []string{"pnpm", "test"})
+	for _, want := range []string{
+		"cd '/home/runner/work/repo/repo'",
+		"if [ -f '/home/runner/.crabbox/actions/cbx-123.env.sh' ]; then . '/home/runner/.crabbox/actions/cbx-123.env.sh'; fi",
+		"CI='1'",
+		"'exec \"$@\"' bash 'pnpm' 'test'",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("remoteCommandWithEnvFile() missing %q in %q", want, got)
+		}
+	}
+}
+
 func TestShouldUseShellForControlOperators(t *testing.T) {
 	if !shouldUseShell([]string{"pnpm", "install", "&&", "pnpm", "test"}) {
 		t.Fatal("expected shell mode for && token")

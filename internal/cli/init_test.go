@@ -42,6 +42,27 @@ func TestInitProjectWritesExpectedFiles(t *testing.T) {
 	if !strings.Contains(string(data), "crabbox warmup") {
 		t.Fatalf("skill missing warmup instructions: %s", data)
 	}
+	workflow, err := os.ReadFile(filepath.Join(dir, ".github/workflows/crabbox.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"crabbox_job:",
+		"ENV_FILE=${env_file}",
+		"SERVICES_FILE=${services_file}",
+		"RUNNER_TOOL_CACHE",
+	} {
+		if !strings.Contains(string(workflow), want) {
+			t.Fatalf("workflow missing %q:\n%s", want, workflow)
+		}
+	}
+	config, err := os.ReadFile(filepath.Join(dir, ".crabbox.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(config), "job: hydrate") {
+		t.Fatalf("config missing actions job:\n%s", config)
+	}
 	if err := app.Run(context.Background(), []string{"init"}); err == nil {
 		t.Fatal("second init without --force succeeded")
 	}
