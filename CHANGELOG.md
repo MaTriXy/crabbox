@@ -39,6 +39,7 @@ Crabbox 0.2.0 hardens the brokered runner path after real AWS and Blacksmith Tes
 - Added coordinator OAuth routes for GitHub login: `/v1/auth/github/start`, `/v1/auth/github/callback`, and `/v1/auth/github/poll`.
 - Added signed non-admin user-token auth in the Worker while keeping the shared operator token for admin routes.
 - Added GitHub org membership enforcement before minting browser-login tokens.
+- Added optional GitHub team allowlisting for browser-login tokens with `CRABBOX_GITHUB_ALLOWED_TEAMS`. Thanks @stainlu.
 - Added the canonical coordinator endpoint configured for OAuth callback generation.
 - Added Blacksmith Testbox workflow flags for `crabbox warmup` and `crabbox run`, enabling one-command Testbox runs without repo YAML or environment variables.
 - Added configurable SSH fallback ports via `ssh.fallbackPorts` and `CRABBOX_SSH_FALLBACK_PORTS`.

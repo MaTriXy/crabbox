@@ -22,6 +22,7 @@ MVP:
 - `crabbox login` opens GitHub, receives a signed user token from the coordinator, and stores it in local config.
 - Workers.dev automation can still use a shared bearer token via `crabbox login --token-stdin`.
 - The CLI sends owner/org headers only for shared-token automation; GitHub login tokens carry owner/org inside the signed token.
+- `CRABBOX_GITHUB_ALLOWED_TEAMS` can restrict browser-login tokens to selected GitHub team slugs after allowed-org membership passes.
 - GitHub browser-login tokens are user tokens, not admin tokens. They can only see and mutate leases, runs, logs, and usage for their own owner/org identity.
 - The Worker forwards signed GitHub token owner/org identity to the Fleet Durable Object and strips caller-supplied Access identity headers from that forwarded request.
 - Missing shared-token config fails closed for non-health coordinator routes.
@@ -29,7 +30,7 @@ MVP:
 Target:
 
 - Keep GitHub org membership as the normal access path.
-- Optional team allowlist for admin commands.
+- Optional team allowlist for narrower browser-login access.
 
 ## Authorization
 
@@ -41,7 +42,7 @@ maintainer: shared warm pool access
 admin: drain machines, cleanup, view all leases/runs/pool/usage, deploy
 ```
 
-Until GitHub teams are wired, admin identity can be an explicit allowlist in Worker config.
+Admin identity uses the shared operator token. Browser-login users can optionally be limited by GitHub team slug in Worker config.
 
 ## Secrets
 
@@ -57,6 +58,7 @@ Rules:
 - Redact known secret-looking strings in diagnostics.
 - `CRABBOX_SHARED_TOKEN` is stored as a Worker secret for trusted operator automation; local automation can use `CRABBOX_COORDINATOR_TOKEN`.
 - `CRABBOX_GITHUB_CLIENT_ID`, `CRABBOX_GITHUB_CLIENT_SECRET`, and `CRABBOX_SESSION_SECRET` are Worker secrets for browser login.
+- `CRABBOX_GITHUB_ALLOWED_ORG(S)` and `CRABBOX_GITHUB_ALLOWED_TEAMS` are Worker config values for browser-login authorization.
 
 Project allowlist example:
 
