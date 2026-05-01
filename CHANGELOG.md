@@ -60,6 +60,7 @@ Crabbox 0.2.0 hardens the brokered runner path after real AWS and Blacksmith Tes
 - Restricted Worker admin routes to shared-token admin auth so GitHub browser-login users cannot call admin endpoints.
 - Fixed `whoami` reporting for GitHub browser-login tokens.
 - Fixed exact `cbx_...` lookups bypassing owner-scoped slug authorization checks.
+- Prevented caller-supplied Access identity headers from overriding signed GitHub user token identity. Thanks @stainlu.
 - Added cleanup and a pending-login cap for unauthenticated GitHub OAuth login starts.
 
 ## 0.1.0 - 2026-05-01
