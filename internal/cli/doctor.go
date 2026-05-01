@@ -50,12 +50,12 @@ func (a App) doctor(ctx context.Context, args []string) error {
 		fmt.Fprintf(a.Stdout, "failed  coord    %v\n", err)
 		ok = false
 	} else if coordinatorConfigured {
+		useCoordinator = true
 		if err := coord.Health(ctx); err != nil {
 			fmt.Fprintf(a.Stdout, "failed  coord    %v\n", err)
 			ok = false
 		} else {
 			fmt.Fprintf(a.Stdout, "ok      coord    %s\n", cfg.Coordinator)
-			useCoordinator = true
 			if machines, err := coord.Pool(ctx, cfg); err != nil {
 				fmt.Fprintf(a.Stdout, "failed  broker   %v\n", err)
 				ok = false

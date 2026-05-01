@@ -387,7 +387,7 @@ func decodeCoordinatorResponse(method, path string, statusCode int, body io.Read
 }
 
 func isCoordinatorTransportError(err error) bool {
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, context.Canceled) {
 		return false
 	}
 	var urlErr *url.Error
