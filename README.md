@@ -214,6 +214,8 @@ crabbox usage --scope all --json
 
 `crabbox usage` reads coordinator history, so it requires a configured broker. Cost is an estimate for compute leases, not a provider invoice: the coordinator prefers explicit `CRABBOX_COST_RATES_JSON` overrides, then provider pricing from AWS Spot history or Hetzner server-type prices, then built-in fallback rates. Full reference: [docs/commands/usage.md](docs/commands/usage.md).
 
+Use the OpenClaw plugin when an agent should drive Crabbox through OpenClaw tools instead of shelling out manually. The repository root is also a native OpenClaw plugin package; install it from this repo or from a packaged release, then use the `crabbox_run`, `crabbox_warmup`, `crabbox_status`, `crabbox_list`, and `crabbox_stop` tools.
+
 Stop a kept server:
 
 ```sh

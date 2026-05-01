@@ -1,0 +1,29 @@
+{
+  "name": "@openclaw/crabbox-plugin",
+  "version": "0.1.0",
+  "description": "OpenClaw plugin for running Crabbox remote testbox workflows",
+  "license": "MIT",
+  "type": "module",
+  "main": "index.js",
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.4.25"
+    }
+  },
+  "scripts": {
+    "check": "node --check index.js && node --test index.test.js",
+    "test": "node --test index.test.js"
+  },
+  "files": [
+    "index.js",
+    "openclaw.plugin.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

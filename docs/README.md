@@ -48,6 +48,18 @@ crabbox stop blue-lobster
 
 `crabbox doctor` validates local config, network reachability, and SSH key availability before you commit to a long workflow. `crabbox usage` summarizes recent spend by user, org, provider, and server type.
 
+## OpenClaw plugin
+
+The repository root is also a native OpenClaw plugin package. Once installed in OpenClaw, it exposes Crabbox operations as agent tools:
+
+- `crabbox_run`
+- `crabbox_warmup`
+- `crabbox_status`
+- `crabbox_list`
+- `crabbox_stop`
+
+The plugin shells out to the configured `crabbox` binary with argv arrays, so local Crabbox config, broker login, repo claims, and sync behavior stay owned by the CLI. Configure `plugins.entries.crabbox.config.binary` if the binary is not on `PATH`.
+
 ## Where to read next
 
 Pick whichever matches your intent:

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Native OpenClaw plugin package exposing Crabbox run, warmup, status, list, and stop tools.
+
 ## 0.1.0 - 2026-05-01
 
 Initial Crabbox release.
