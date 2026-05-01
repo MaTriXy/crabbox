@@ -72,6 +72,17 @@ export class HetznerClient {
     return created.ssh_key;
   }
 
+  async deleteSSHKey(name: string): Promise<void> {
+    const byName = await this.request<HetznerListSSHKeysResponse>(
+      "GET",
+      `/ssh_keys?${new URLSearchParams({ name })}`,
+    );
+    const key = byName.ssh_keys.find((entry) => entry.name === name);
+    if (key) {
+      await this.request<void>("DELETE", `/ssh_keys/${key.id}`);
+    }
+  }
+
   async createServerWithFallback(
     config: LeaseConfig,
     leaseID: string,
@@ -150,6 +161,7 @@ export class HetznerClient {
       lease: leaseID,
       state: "leased",
       keep: String(config.keep),
+      provider_key: config.providerKey,
       owner: sanitizeLabel(owner),
       created_by: "crabbox",
       created_at: now.toISOString(),

@@ -4,7 +4,7 @@
 
 Crabbox has three main parts:
 
-- CLI: local Go binary used by maintainers.
+- CLI: local Go binary used by maintainers and agents.
 - Coordinator: Cloudflare Worker plus Durable Object state.
 - Workers: Hetzner or SSH-accessible machines that run commands.
 
@@ -33,15 +33,18 @@ leased machine
 ## Lease Flow
 
 1. CLI loads config and authenticates to Cloudflare Access.
-2. CLI sends `POST /v1/leases` with profile, TTL, repo metadata, and desired machine class.
-3. Coordinator validates identity and policy.
-4. Durable Object chooses a provider from config and creates a Hetzner server or AWS EC2 Spot instance.
-5. Coordinator returns lease ID, machine address, SSH user, workdir, and expiry.
-6. CLI rsyncs files to the machine.
-7. CLI runs the command over SSH and streams stdout/stderr.
-8. CLI heartbeats while the command runs.
-9. CLI releases the lease when done.
-10. Durable Object alarm cleans up stale leases and expired machines.
+2. CLI creates a per-lease SSH key.
+3. CLI sends `POST /v1/leases` with lease ID, profile, TTL, repo metadata, desired machine class, and SSH public key.
+4. Coordinator validates identity and policy.
+5. Durable Object chooses a provider from config and creates a Hetzner server or AWS EC2 Spot instance.
+6. Coordinator returns lease ID, machine address, SSH user, workdir, and expiry.
+7. CLI waits for `crabbox-ready`.
+8. CLI syncs files with `rsync --delete --checksum`.
+9. CLI runs sync sanity and shallow Git hydration.
+10. CLI runs the command over SSH and streams stdout/stderr.
+11. CLI heartbeats while the command runs.
+12. CLI releases the lease when done.
+13. Durable Object alarm cleans up stale leases and expired machines.
 
 ## Coordinator API
 
@@ -49,16 +52,12 @@ MVP endpoints:
 
 ```text
 GET  /v1/health
-GET  /v1/me
-GET  /v1/profiles
-GET  /v1/machines
+GET  /v1/pool
 POST /v1/leases
 GET  /v1/leases
 GET  /v1/leases/{id}
 POST /v1/leases/{id}/heartbeat
-POST /v1/leases/{id}/extend
 POST /v1/leases/{id}/release
-POST /v1/machines/{id}/drain
 ```
 
 Admin endpoints can be gated by GitHub team or explicit allowlist once GitHub IdP is active.
@@ -144,7 +143,7 @@ It must not store:
 - SSH private keys.
 - provider secrets.
 
-Provider secrets live in the broker environment, such as Cloudflare Worker secrets for AWS and Hetzner.
+Per-lease SSH private keys live under the user config directory, outside repo config. Provider secrets live in the broker environment, such as Cloudflare Worker secrets for AWS and Hetzner.
 
 ## Failure Model
 

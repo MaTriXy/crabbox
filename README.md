@@ -28,7 +28,7 @@ developer laptop
 leased runner
 ```
 
-The **CLI** is the user-facing tool. It loads config from `~/.config/crabbox/config.json` or the macOS user config path, reads the local SSH public key, asks the broker for a lease, waits for SSH, rsyncs the current checkout, rechecks SSH readiness, runs the requested command, streams output, and releases the lease unless `--keep` is set. SSH prefers the configured port and can fall back to port 22 during bootstrap.
+The **CLI** is the user-facing tool. It loads config from `~/.config/crabbox/config.json` or the macOS user config path, creates a per-lease SSH key, asks the broker for a lease, waits for SSH, rsyncs the current checkout with checksum/delete semantics, rechecks SSH readiness, runs the requested command, streams output, and releases the lease unless `--keep` is set. SSH prefers the configured port and can fall back to port 22 during bootstrap.
 
 The **broker** is the Cloudflare Worker at `crabbox-coordinator.steipete.workers.dev`. It authenticates requests with `CRABBOX_SHARED_TOKEN`, routes all fleet operations through a single Durable Object, and owns cloud-provider credentials. Local machines do not need AWS or Hetzner API keys for the normal path.
 
@@ -48,8 +48,9 @@ The normal lifecycle is:
 3. Worker creates a Hetzner server or AWS Spot instance and stores the lease.
 4. CLI waits for `crabbox-ready` over SSH.
 5. CLI rsyncs the dirty local checkout into `/work/crabbox/<lease>/<repo>`.
-6. CLI runs the command over SSH and returns the remote exit code.
-7. CLI releases the lease; the broker terminates the machine unless it was kept.
+6. CLI runs sync sanity checks and hydrates shallow Git history.
+7. CLI runs the command over SSH and returns the remote exit code.
+8. CLI releases the lease; the broker terminates the machine unless it was kept.
 
 Direct provider mode still exists for debugging. If no broker is configured, `--provider aws` uses the local AWS SDK credential chain and `--provider hetzner` uses `HCLOUD_TOKEN` or `HETZNER_TOKEN`. The brokered path is the default operational model.
 
@@ -58,18 +59,26 @@ Direct provider mode still exists for debugging. If no broker is configured, `--
 Working today:
 
 - `crabbox doctor`
+- `crabbox init`
 - `crabbox warmup`
 - `crabbox run`
+- `crabbox status`
+- `crabbox list`
+- `crabbox ssh`
+- `crabbox inspect`
 - `crabbox stop`
 - `crabbox pool list`
 - `crabbox machine cleanup`
+- `crabbox cleanup`
 - Cloudflare Worker coordinator on Workers/Durable Objects
 - bearer-token coordinator auth for automation
 - Cloudflare route for `crabbox.clawd.bot/*`
 - Hetzner server provisioning with class fallback
 - AWS EC2 Spot provisioning with class fallback
 - cloud-init bootstrap for Node 24, pnpm, Docker, Git, and rsync, with apt/corepack retries
-- rsync overlay of local dirty worktrees
+- checksum rsync overlay of local dirty worktrees
+- per-lease SSH keys under the Crabbox config directory
+- sync sanity checks for mass tracked deletions
 - shallow Git hydration for OpenClaw changed-test detection
 - SSH execution on port `2222`
 
@@ -84,8 +93,7 @@ Not yet done:
 Prerequisites:
 
 - Go 1.26+
-- `git`, `ssh`, `rsync`, and `curl`
-- SSH key at `~/.ssh/id_ed25519`, or set `CRABBOX_SSH_KEY`
+- `git`, `ssh`, `ssh-keygen`, `rsync`, and `curl`
 - broker config in `~/.config/crabbox/config.json` or `~/Library/Application Support/crabbox/config.json` on macOS
 
 Build:
@@ -116,22 +124,36 @@ Inspect broker config:
 bin/crabbox config show
 ```
 
+Onboard a repo for Crabbox:
+
+```sh
+bin/crabbox init
+```
+
 Warm a reusable OpenClaw testbox:
 
 ```sh
-bin/crabbox warmup --profile openclaw-check --class beast --keep
+bin/crabbox warmup --profile openclaw-check --class beast --idle-timeout 90m
 ```
 
 Use AWS EC2 Spot through the broker:
 
 ```sh
-bin/crabbox warmup --class beast --keep
+bin/crabbox warmup --class beast --idle-timeout 90m
 ```
 
 Run a command on an existing lease:
 
 ```sh
 CI=1 bin/crabbox run --id cbx_... -- pnpm test:changed:max
+```
+
+Inspect and connect:
+
+```sh
+bin/crabbox status --id cbx_...
+bin/crabbox ssh --id cbx_...
+bin/crabbox inspect --id cbx_... --json
 ```
 
 Stop a kept server:
@@ -312,10 +334,13 @@ Tagged pushes matching `v*` publish Go CLI archives through GoReleaser. Manual r
 ## Docs
 
 - [docs/architecture.md](docs/architecture.md)
+- [docs/orchestrator.md](docs/orchestrator.md)
 - [docs/cli.md](docs/cli.md)
+- [docs/commands/README.md](docs/commands/README.md)
 - [docs/infrastructure.md](docs/infrastructure.md)
 - [docs/mvp-plan.md](docs/mvp-plan.md)
 - [docs/security.md](docs/security.md)
+- [CHANGELOG.md](CHANGELOG.md)
 
 ## License
 

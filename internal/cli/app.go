@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -25,7 +26,15 @@ func (a App) Run(ctx context.Context, args []string) error {
 	}
 
 	switch args[0] {
-	case "-h", "--help", "help":
+	case "-h", "--help":
+		a.usage()
+		return nil
+	case "help":
+		if len(args) > 1 {
+			next := append([]string{}, args[1:]...)
+			next = append(next, "--help")
+			return a.Run(ctx, next)
+		}
 		a.usage()
 		return nil
 	case "-v", "--version", "version":
@@ -35,14 +44,26 @@ func (a App) Run(ctx context.Context, args []string) error {
 		return a.doctor(ctx, args[1:])
 	case "config":
 		return a.config(ctx, args[1:])
+	case "init":
+		return a.initProject(ctx, args[1:])
 	case "pool":
 		return a.pool(ctx, args[1:])
 	case "machine":
 		return a.machine(ctx, args[1:])
+	case "list":
+		return a.list(ctx, args[1:])
+	case "cleanup":
+		return a.cleanup(ctx, args[1:])
 	case "warmup":
 		return a.warmup(ctx, args[1:])
 	case "run":
 		return a.runCommand(ctx, args[1:])
+	case "status":
+		return a.status(ctx, args[1:])
+	case "ssh":
+		return a.ssh(ctx, args[1:])
+	case "inspect":
+		return a.inspect(ctx, args[1:])
 	case "stop", "release":
 		return a.stop(ctx, args[1:])
 	default:
@@ -51,30 +72,81 @@ func (a App) Run(ctx context.Context, args []string) error {
 }
 
 func (a App) usage() {
-	fmt.Fprintln(a.Stdout, `crabbox leases remote cloud boxes, syncs a worktree, runs commands, and cleans up.
+	fmt.Fprintln(a.Stdout, `Crabbox leases remote Linux test boxes, syncs your dirty checkout, runs commands, and cleans up.
 
 Usage:
-  crabbox --version
-  crabbox config show
-  crabbox config set-broker --url <url> --token-stdin [--provider aws|hetzner]
+  crabbox <command> [flags]
+  crabbox run [flags] -- <command...>
+
+Start Here:
   crabbox doctor
-  crabbox warmup [--provider hetzner|aws] [--profile openclaw-check] [--class beast] [--keep]
-  crabbox run [--provider hetzner|aws] [--profile openclaw-check] [--class beast] [--ttl 90m] [--keep] -- <command...>
-  crabbox pool list
-  crabbox machine cleanup [--dry-run]
-  crabbox stop <lease-or-server-id>
+      Check local tools, config, broker, and provider access.
+  crabbox init
+      Add repo-local Crabbox config, GitHub workflow, and agent skill.
+  crabbox warmup --class beast --idle-timeout 90m
+      Lease a reusable box and print a cbx_... id.
+  crabbox run --id cbx_... -- pnpm test:changed
+      Sync this checkout to the box and run a command.
+
+Commands:
+  init        Onboard the current repo for Crabbox
+  doctor      Check local and broker/provider readiness
+  warmup      Lease a box and wait until it is ready
+  run         Sync the repo, run a remote command, stream output
+  status      Show lease state; add --wait to block until ready
+  list        List Crabbox machines
+  ssh         Print the SSH command for a lease
+  inspect     Print lease/provider details; add --json for scripts
+  stop        Release a lease or delete a direct-provider machine
+  cleanup     Sweep expired direct-provider machines
+  config      Show or update user config
+
+Common Flows:
+  crabbox run --class beast -- pnpm check
+  crabbox warmup --idle-timeout 90m
+  crabbox status --id cbx_123 --wait
+  crabbox ssh --id cbx_123
+  crabbox inspect --id cbx_123 --json
+  crabbox stop cbx_123
+
+Global:
+  -h, --help     Show help
+  --version      Print version
+
+Config:
+  crabbox config path
+  crabbox config show [--json]
+  crabbox config set-broker --url <url> --token-stdin [--provider aws|hetzner]
 
 Environment:
-  HCLOUD_TOKEN or HETZNER_TOKEN
-  CRABBOX_PROVIDER, hetzner or aws
-  CRABBOX_CONFIG, optional config path
-  CRABBOX_AWS_REGION, default eu-west-1
-  CRABBOX_SSH_KEY, default ~/.ssh/id_ed25519
-  CRABBOX_DEFAULT_CLASS, default beast`)
+  CRABBOX_COORDINATOR          Broker URL
+  CRABBOX_COORDINATOR_TOKEN    Broker bearer token
+  CRABBOX_PROVIDER             hetzner or aws
+  CRABBOX_CONFIG               Optional config path
+  CRABBOX_AWS_REGION           Default eu-west-1
+  HCLOUD_TOKEN/HETZNER_TOKEN   Direct Hetzner mode
+
+Aliases:
+  crabbox release <id>         Alias for stop
+  crabbox pool list            Alias for list
+  crabbox machine cleanup      Alias for cleanup
+
+Docs:
+  docs/commands/README.md`)
 }
 
 func newFlagSet(name string, stderr io.Writer) *flag.FlagSet {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	return fs
+}
+
+func parseFlags(fs *flag.FlagSet, args []string) error {
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return ExitError{Code: 0}
+		}
+		return exit(2, "%v", err)
+	}
+	return nil
 }

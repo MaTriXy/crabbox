@@ -82,11 +82,12 @@ func newCoordinatorClient(cfg Config) (*CoordinatorClient, bool, error) {
 	}, true, nil
 }
 
-func (c *CoordinatorClient) CreateLease(ctx context.Context, cfg Config, publicKey string, keep bool) (CoordinatorLease, error) {
+func (c *CoordinatorClient) CreateLease(ctx context.Context, cfg Config, publicKey string, keep bool, leaseID string) (CoordinatorLease, error) {
 	var res struct {
 		Lease CoordinatorLease `json:"lease"`
 	}
 	err := c.do(ctx, http.MethodPost, "/v1/leases", map[string]any{
+		"leaseID":      leaseID,
 		"profile":      cfg.Profile,
 		"provider":     cfg.Provider,
 		"class":        cfg.Class,
@@ -211,5 +212,6 @@ func leaseToServerTarget(lease CoordinatorLease, cfg Config) (Server, SSHTarget,
 	server.PublicNet.IPv4.IP = lease.Host
 	server.ServerType.Name = lease.ServerType
 	target := SSHTarget{User: lease.SSHUser, Host: lease.Host, Key: cfg.SSHKey, Port: lease.SSHPort}
+	useStoredTestboxKey(&target, lease.ID)
 	return server, target, lease.ID
 }

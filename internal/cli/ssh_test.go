@@ -76,6 +76,19 @@ func TestIsBootstrapWaitError(t *testing.T) {
 	}
 }
 
+func TestServerProviderKeyUsesOnlyCrabboxLeaseKeys(t *testing.T) {
+	server := Server{Labels: map[string]string{"lease": "cbx_123456abcdef"}}
+	if got := serverProviderKey(server); got != "crabbox-cbx-123456abcdef" {
+		t.Fatalf("serverProviderKey()=%q", got)
+	}
+	if !validCrabboxProviderKey("crabbox-cbx-123456abcdef") {
+		t.Fatal("expected per-lease provider key to be valid")
+	}
+	if validCrabboxProviderKey("crabbox-steipete") {
+		t.Fatal("shared key must not be treated as per-lease cleanup key")
+	}
+}
+
 func TestServerTypeForClass(t *testing.T) {
 	tests := map[string]string{
 		"standard": "ccx33",

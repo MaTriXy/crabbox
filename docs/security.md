@@ -73,12 +73,13 @@ MVP SSH posture:
 - No password login.
 - No root login.
 - SSH listens on port 2222 in the verified direct-CLI path because port 22 was not reachable during Hetzner testing.
+- The CLI generates per-lease SSH keys under the user config directory for new leases.
+- Matching cloud SSH keys/key pairs are removed when Crabbox deletes the machine.
 - Work happens under `/work/crabbox`.
 - Machines are disposable or cleanable.
 
 MVP hardening before first shared use:
 
-- Generate or register an SSH key per lease when possible.
 - Keep long-lived maintainer keys out of machine images.
 - Restrict Hetzner firewalls to known callers when practical.
 - Redact command diagnostics before printing.

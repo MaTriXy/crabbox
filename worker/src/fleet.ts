@@ -46,7 +46,7 @@ export class FleetDurableObject implements DurableObject {
     const owner = requestOwner(request);
     const input = await readJson<LeaseRequest>(request);
     const config = leaseConfig(input);
-    const leaseID = newLeaseID();
+    const leaseID = validLeaseID(input.leaseID) ? input.leaseID : newLeaseID();
     const provider = this.provider(config.provider, config.awsRegion);
     const { server, serverType } = await provider.createServerWithFallback(config, leaseID, owner);
     const now = new Date();
@@ -60,6 +60,7 @@ export class FleetDurableObject implements DurableObject {
       serverType,
       serverID: server.id,
       serverName: server.name,
+      providerKey: config.providerKey,
       host: server.host,
       sshUser: config.sshUser,
       sshPort: config.sshPort,
@@ -192,9 +193,15 @@ export class FleetDurableObject implements DurableObject {
   private async deleteLeaseServer(lease: LeaseRecord): Promise<void> {
     if (lease.provider === "aws") {
       await this.provider("aws", lease.region).deleteServer(lease.cloudID);
+      if (validCrabboxProviderKey(lease.providerKey)) {
+        await this.provider("aws", lease.region).deleteSSHKey(lease.providerKey);
+      }
       return;
     }
     await this.provider("hetzner").deleteServer(String(lease.serverID));
+    if (validCrabboxProviderKey(lease.providerKey)) {
+      await this.provider("hetzner").deleteSSHKey(lease.providerKey);
+    }
   }
 }
 
@@ -206,6 +213,14 @@ function newLeaseID(): string {
   const bytes = new Uint8Array(6);
   crypto.getRandomValues(bytes);
   return `cbx_${[...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function validLeaseID(value: string | undefined): value is string {
+  return typeof value === "string" && /^cbx_[a-f0-9]{12}$/.test(value);
+}
+
+function validCrabboxProviderKey(value: string | undefined): value is string {
+  return typeof value === "string" && /^crabbox-cbx-[a-f0-9]{12}$/.test(value);
 }
 
 function leaseTTLSeconds(lease: LeaseRecord): number {
@@ -235,6 +250,7 @@ interface CloudProvider {
     owner: string,
   ): Promise<{ server: ProviderMachine; serverType: string }>;
   deleteServer(id: string): Promise<void>;
+  deleteSSHKey(name: string): Promise<void>;
 }
 
 class HetznerProvider implements CloudProvider {
@@ -265,6 +281,10 @@ class HetznerProvider implements CloudProvider {
   async deleteServer(id: string): Promise<void> {
     await this.client.deleteServer(Number(id));
   }
+
+  async deleteSSHKey(name: string): Promise<void> {
+    await this.client.deleteSSHKey(name);
+  }
 }
 
 class AWSProvider implements CloudProvider {
@@ -293,5 +313,9 @@ class AWSProvider implements CloudProvider {
 
   async deleteServer(id: string): Promise<void> {
     await this.client.deleteServer(id);
+  }
+
+  async deleteSSHKey(name: string): Promise<void> {
+    await this.client.deleteSSHKey(name);
   }
 }

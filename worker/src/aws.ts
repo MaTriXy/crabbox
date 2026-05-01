@@ -117,6 +117,15 @@ export class EC2SpotClient {
     await this.ec2("TerminateInstances", { "InstanceId.1": instanceID });
   }
 
+  async deleteSSHKey(name: string): Promise<void> {
+    await this.ec2("DeleteKeyPair", { KeyName: name }).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.includes("InvalidKeyPair.NotFound")) {
+        throw error;
+      }
+    });
+  }
+
   async setTags(instanceID: string, labels: Record<string, string>): Promise<void> {
     const params: Record<string, string> = { "ResourceId.1": instanceID };
     addTags(params, "Tag", labels);
@@ -161,6 +170,7 @@ export class EC2SpotClient {
       lease: leaseID,
       owner: sanitizeLabel(owner),
       profile: config.profile,
+      provider_key: config.providerKey,
       provider: "aws",
       server_type: config.serverType,
       state: "leased",

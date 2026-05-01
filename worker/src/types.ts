@@ -14,6 +14,7 @@ export interface Env {
 }
 
 export interface LeaseRequest {
+  leaseID?: string;
   provider?: Provider;
   profile?: string;
   class?: string;
@@ -48,6 +49,7 @@ export interface LeaseRecord {
   serverType: string;
   serverID: number;
   serverName: string;
+  providerKey: string;
   host: string;
   sshUser: string;
   sshPort: string;

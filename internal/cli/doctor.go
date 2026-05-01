@@ -10,12 +10,12 @@ import (
 func (a App) doctor(ctx context.Context, args []string) error {
 	fs := newFlagSet("doctor", a.Stderr)
 	provider := fs.String("provider", defaultConfig().Provider, "provider: hetzner or aws")
-	if err := fs.Parse(args); err != nil {
-		return exit(2, "%v", err)
+	if err := parseFlags(fs, args); err != nil {
+		return err
 	}
 
 	ok := true
-	for _, tool := range []string{"git", "ssh", "rsync", "curl"} {
+	for _, tool := range []string{"git", "ssh", "ssh-keygen", "rsync", "curl"} {
 		path, err := exec.LookPath(tool)
 		if err != nil {
 			fmt.Fprintf(a.Stdout, "missing %-8s\n", tool)
@@ -53,14 +53,18 @@ func (a App) doctor(ctx context.Context, args []string) error {
 		}
 	}
 
-	if _, err := os.Stat(cfg.SSHKey); err != nil {
-		fmt.Fprintf(a.Stdout, "missing ssh key %s\n", cfg.SSHKey)
-		ok = false
-	} else if _, err := publicKeyFor(cfg.SSHKey); err != nil {
-		fmt.Fprintf(a.Stdout, "missing ssh public key %s.pub\n", cfg.SSHKey)
-		ok = false
+	if os.Getenv("CRABBOX_SSH_KEY") != "" {
+		if _, err := os.Stat(cfg.SSHKey); err != nil {
+			fmt.Fprintf(a.Stdout, "missing ssh key %s\n", cfg.SSHKey)
+			ok = false
+		} else if _, err := publicKeyFor(cfg.SSHKey); err != nil {
+			fmt.Fprintf(a.Stdout, "missing ssh public key %s.pub\n", cfg.SSHKey)
+			ok = false
+		} else {
+			fmt.Fprintf(a.Stdout, "ok      ssh-key  %s\n", cfg.SSHKey)
+		}
 	} else {
-		fmt.Fprintf(a.Stdout, "ok      ssh-key  %s\n", cfg.SSHKey)
+		fmt.Fprintf(a.Stdout, "ok      ssh-key  per-lease\n")
 	}
 
 	if useCoordinator {

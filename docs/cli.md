@@ -25,14 +25,18 @@ Primary output goes to stdout. Progress, diagnostics, and errors go to stderr. J
 
 ```text
 crabbox doctor
+crabbox init [--force]
 crabbox config show [--json]
 crabbox config path
 crabbox config set-broker --url <url> --token-stdin [--provider hetzner|aws]
-crabbox pool list
-crabbox warmup [--provider hetzner|aws] [--profile <name>] [--ttl <duration>]
-crabbox run [--provider hetzner|aws] [--profile <name>] [--ttl <duration>] [--class <name>] -- <command...>
+crabbox warmup [--provider hetzner|aws] [--profile <name>] [--idle-timeout <duration>]
+crabbox run [--id <lease-id>] [--debug] -- <command...>
+crabbox status --id <lease-id> [--wait]
+crabbox list [--json]
+crabbox ssh --id <lease-id>
+crabbox inspect --id <lease-id> [--json]
 crabbox stop <lease-id>
-crabbox machine cleanup [--dry-run]
+crabbox cleanup [--dry-run]
 ```
 
 ## Common Flows
@@ -52,7 +56,7 @@ crabbox run --class beast -- pnpm check:changed
 Warm a box, then reuse it:
 
 ```sh
-crabbox warmup --profile openclaw-check --ttl 90m
+crabbox warmup --profile openclaw-check --idle-timeout 90m
 crabbox run --id cbx_123 -- pnpm test:changed
 crabbox stop cbx_123
 ```
@@ -60,15 +64,15 @@ crabbox stop cbx_123
 Inspect pool:
 
 ```sh
-crabbox pool list
-crabbox pool list --json
+crabbox list
+crabbox list --json
 ```
 
 Cleanup direct-provider leftovers:
 
 ```sh
-crabbox machine cleanup --dry-run
-crabbox machine cleanup
+crabbox cleanup --dry-run
+crabbox cleanup
 ```
 
 Cleanup is intentionally conservative: it skips kept machines and active states. When a coordinator is configured, brokered cleanup is owned by the Durable Object TTL alarm instead of provider-side sweeping.
@@ -109,9 +113,11 @@ Flags:
 --class <name>          machine class override
 --type <name>           provider server or instance type override
 --ttl <duration>        lease TTL, default from profile
+--idle-timeout <duration>
 --no-sync               run without syncing
 --sync-only             sync and exit
 --keep                  keep lease after command exits
+--debug                 print sync timing and itemized rsync output
 ```
 
 Secrets must not be accepted as flag values. Env forwarding is name-based only.
@@ -131,7 +137,7 @@ Secrets must not be accepted as flag values. Env forwarding is name-based only.
 10+ remote command exit code when available
 ```
 
-If the remote command exits with a code, `crabbox run` should return that code unless Crabbox itself failed first.
+If the remote command exits with a code, `crabbox run` returns that code unless Crabbox itself failed first.
 
 ## Config Files
 
@@ -175,7 +181,7 @@ printf '%s' "$TOKEN" | crabbox config set-broker \
   --token-stdin
 ```
 
-Planned fleet config remains YAML:
+Future fleet config may become YAML:
 
 ```yaml
 version: 1

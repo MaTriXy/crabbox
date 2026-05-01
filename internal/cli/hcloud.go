@@ -152,20 +152,38 @@ func (c *HetznerClient) EnsureSSHKey(ctx context.Context, name, publicKey string
 	return created.SSHKey, nil
 }
 
+func (c *HetznerClient) DeleteSSHKey(ctx context.Context, name string) error {
+	var list struct {
+		SSHKeys []SSHKey `json:"ssh_keys"`
+	}
+	q := url.Values{}
+	q.Set("name", name)
+	if err := c.do(ctx, http.MethodGet, "/ssh_keys?"+q.Encode(), nil, &list); err != nil {
+		return err
+	}
+	for _, key := range list.SSHKeys {
+		if key.Name == name {
+			return c.do(ctx, http.MethodDelete, fmt.Sprintf("/ssh_keys/%d", key.ID), nil, nil)
+		}
+	}
+	return nil
+}
+
 func (c *HetznerClient) CreateServer(ctx context.Context, cfg Config, publicKey, leaseID string, keep bool) (Server, error) {
 	name := strings.ReplaceAll("crabbox-"+leaseID, "_", "-")
 	now := time.Now().UTC()
 	labels := map[string]string{
-		"crabbox":     "true",
-		"profile":     cfg.Profile,
-		"class":       cfg.Class,
-		"server_type": cfg.ServerType,
-		"lease":       leaseID,
-		"state":       "leased",
-		"keep":        fmt.Sprint(keep),
-		"created_by":  "crabbox",
-		"created_at":  now.Format(time.RFC3339),
-		"expires_at":  now.Add(cfg.TTL).Format(time.RFC3339),
+		"crabbox":      "true",
+		"profile":      cfg.Profile,
+		"class":        cfg.Class,
+		"server_type":  cfg.ServerType,
+		"lease":        leaseID,
+		"state":        "leased",
+		"keep":         fmt.Sprint(keep),
+		"provider_key": cfg.ProviderKey,
+		"created_by":   "crabbox",
+		"created_at":   now.Format(time.RFC3339),
+		"expires_at":   now.Add(cfg.TTL).Format(time.RFC3339),
 	}
 	body := map[string]any{
 		"name":               name,

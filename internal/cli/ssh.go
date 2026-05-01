@@ -110,10 +110,13 @@ func sshArgs(target SSHTarget, remote string) []string {
 	}
 }
 
-func rsync(ctx context.Context, target SSHTarget, src, dst string, excludes []string, stdout, stderr io.Writer) error {
+type rsyncOptions struct {
+	Debug bool
+}
+
+func rsync(ctx context.Context, target SSHTarget, src, dst string, excludes []string, stdout, stderr io.Writer, opts rsyncOptions) error {
 	args := []string{
-		"-az", "--delete",
-		"--stats",
+		"-az", "--delete", "--checksum",
 		"-e", strings.Join([]string{
 			"ssh",
 			"-i", shellQuote(target.Key),
@@ -130,11 +133,19 @@ func rsync(ctx context.Context, target SSHTarget, src, dst string, excludes []st
 	for _, exclude := range excludes {
 		args = append(args, "--exclude", exclude)
 	}
+	if opts.Debug {
+		args = append(args, "--stats", "--itemize-changes")
+	}
 	args = append(args, ensureTrailingSlash(src), target.User+"@"+target.Host+":"+dst+"/")
+	start := time.Now()
 	cmd := exec.CommandContext(ctx, "rsync", args...)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
-	return cmd.Run()
+	err := cmd.Run()
+	if opts.Debug {
+		fmt.Fprintf(stderr, "rsync elapsed=%s checksum=true\n", time.Since(start).Round(time.Millisecond))
+	}
+	return err
 }
 
 func ensureTrailingSlash(path string) string {
@@ -185,6 +196,20 @@ func remoteGitHydrate(workdir string) string {
 	return "cd " + shellQuote(workdir) + " && " +
 		"if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git remote get-url origin >/dev/null 2>&1; then " +
 		"git fetch --quiet --unshallow origin main || git fetch --quiet --depth=1000 origin main || git fetch --quiet origin main || true; " +
+		"fi"
+}
+
+func remoteSyncSanity(workdir string, allowMassDeletions bool) string {
+	allowValue := ""
+	if allowMassDeletions {
+		allowValue = "1"
+	}
+	return "cd " + shellQuote(workdir) + " && " +
+		"if test -d .git && git status --short >/tmp/crabbox-git-status 2>/dev/null; then " +
+		"deletions=$(awk '/^ D|^D / { n++ } END { print n+0 }' /tmp/crabbox-git-status); " +
+		"if [ " + shellQuote(allowValue) + " != '1' ] && [ \"$deletions\" -ge 200 ]; then " +
+		"echo \"remote sync sanity failed: $deletions tracked deletions\" >&2; exit 66; " +
+		"fi; " +
 		"fi"
 }
 

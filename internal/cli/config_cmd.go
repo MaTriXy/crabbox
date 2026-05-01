@@ -33,8 +33,8 @@ func (a App) config(_ context.Context, args []string) error {
 func (a App) configShow(args []string) error {
 	fs := newFlagSet("config show", a.Stderr)
 	jsonOut := fs.Bool("json", false, "print JSON")
-	if err := fs.Parse(args); err != nil {
-		return exit(2, "%v", err)
+	if err := parseFlags(fs, args); err != nil {
+		return err
 	}
 	cfg, err := loadConfig()
 	if err != nil {
@@ -81,8 +81,8 @@ func (a App) configSetBroker(args []string) error {
 	url := fs.String("url", "", "broker URL")
 	provider := fs.String("provider", "", "default provider: hetzner or aws")
 	tokenStdin := fs.Bool("token-stdin", false, "read broker token from stdin")
-	if err := fs.Parse(args); err != nil {
-		return exit(2, "%v", err)
+	if err := parseFlags(fs, args); err != nil {
+		return err
 	}
 	if *url == "" {
 		return exit(2, "config set-broker requires --url")

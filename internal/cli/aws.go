@@ -74,6 +74,14 @@ func (c *AWSClient) EnsureSSHKey(ctx context.Context, name, publicKey string) er
 	return err
 }
 
+func (c *AWSClient) DeleteSSHKey(ctx context.Context, name string) error {
+	_, err := c.ec2.DeleteKeyPair(ctx, &ec2.DeleteKeyPairInput{KeyName: aws.String(name)})
+	if err != nil && strings.Contains(err.Error(), "InvalidKeyPair.NotFound") {
+		return nil
+	}
+	return err
+}
+
 func (c *AWSClient) CreateServerWithFallback(ctx context.Context, cfg Config, publicKey, leaseID string, keep bool, logf func(string, ...any)) (Server, Config, error) {
 	if cfg.ProviderKey == "" {
 		cfg.ProviderKey = "crabbox-steipete"
@@ -117,17 +125,18 @@ func (c *AWSClient) createServer(ctx context.Context, cfg Config, publicKey, lea
 	name := strings.ReplaceAll("crabbox-"+leaseID, "_", "-")
 	now := time.Now().UTC()
 	labels := map[string]string{
-		"class":       cfg.Class,
-		"crabbox":     "true",
-		"created_by":  "crabbox",
-		"keep":        fmt.Sprint(keep),
-		"lease":       leaseID,
-		"profile":     cfg.Profile,
-		"provider":    "aws",
-		"server_type": cfg.ServerType,
-		"state":       "leased",
-		"created_at":  now.Format(time.RFC3339),
-		"expires_at":  now.Add(cfg.TTL).Format(time.RFC3339),
+		"class":        cfg.Class,
+		"crabbox":      "true",
+		"created_by":   "crabbox",
+		"keep":         fmt.Sprint(keep),
+		"lease":        leaseID,
+		"profile":      cfg.Profile,
+		"provider_key": cfg.ProviderKey,
+		"provider":     "aws",
+		"server_type":  cfg.ServerType,
+		"state":        "leased",
+		"created_at":   now.Format(time.RFC3339),
+		"expires_at":   now.Add(cfg.TTL).Format(time.RFC3339),
 	}
 	userData := base64.StdEncoding.EncodeToString([]byte(cloudInit(cfg, publicKey)))
 	rootGB := cfg.AWSRootGB

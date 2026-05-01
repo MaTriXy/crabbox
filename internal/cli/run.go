@@ -17,9 +17,10 @@ func (a App) warmup(ctx context.Context, args []string) error {
 	class := fs.String("class", defaultConfig().Class, "machine class")
 	serverType := fs.String("type", getenv("CRABBOX_SERVER_TYPE", ""), "provider server/instance type")
 	ttl := fs.Duration("ttl", 90*time.Minute, "lease ttl")
+	idleTimeout := fs.Duration("idle-timeout", 0, "idle timeout")
 	keep := fs.Bool("keep", true, "keep server after warmup")
-	if err := fs.Parse(args); err != nil {
-		return exit(2, "%v", err)
+	if err := parseFlags(fs, args); err != nil {
+		return err
 	}
 	cfg, err := loadConfig()
 	if err != nil {
@@ -35,6 +36,12 @@ func (a App) warmup(ctx context.Context, args []string) error {
 		cfg.ServerType = serverTypeForProviderClass(cfg.Provider, *class)
 	}
 	cfg.TTL = *ttl
+	if flagWasSet(fs, "idle-timeout") {
+		cfg.TTL = *idleTimeout
+	}
+	if cfg.TTL <= 0 {
+		return exit(2, "idle timeout must be positive")
+	}
 
 	coord, useCoordinator, err := newCoordinatorClient(cfg)
 	if err != nil {
@@ -63,12 +70,14 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 	class := fs.String("class", defaultConfig().Class, "machine class")
 	serverType := fs.String("type", getenv("CRABBOX_SERVER_TYPE", ""), "provider server/instance type")
 	ttl := fs.Duration("ttl", 90*time.Minute, "lease ttl")
+	idleTimeout := fs.Duration("idle-timeout", 0, "idle timeout")
 	leaseIDFlag := fs.String("id", "", "existing lease or server id")
 	keep := fs.Bool("keep", false, "keep server after command")
 	noSync := fs.Bool("no-sync", false, "skip rsync")
 	syncOnly := fs.Bool("sync-only", false, "sync and exit")
-	if err := fs.Parse(args); err != nil {
-		return exit(2, "%v", err)
+	debugSync := fs.Bool("debug", false, "print detailed sync timing")
+	if err := parseFlags(fs, args); err != nil {
+		return err
 	}
 	command := fs.Args()
 	if len(command) > 0 && command[0] == "--" {
@@ -92,6 +101,12 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 		cfg.ServerType = serverTypeForProviderClass(cfg.Provider, *class)
 	}
 	cfg.TTL = *ttl
+	if flagWasSet(fs, "idle-timeout") {
+		cfg.TTL = *idleTimeout
+	}
+	if cfg.TTL <= 0 {
+		return exit(2, "idle timeout must be positive")
+	}
 
 	var server Server
 	var target SSHTarget
@@ -154,11 +169,14 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 		if err := runSSHQuiet(ctx, target, remoteMkdir(workdir)); err != nil {
 			return exit(7, "create remote workdir: %v", err)
 		}
-		if err := rsync(ctx, target, repo.Root, workdir, defaultExcludes(), a.Stdout, a.Stderr); err != nil {
+		if err := rsync(ctx, target, repo.Root, workdir, defaultExcludes(), a.Stdout, a.Stderr, rsyncOptions{Debug: *debugSync}); err != nil {
 			return exit(6, "rsync failed: %v", err)
 		}
 		if err := waitForSSHReady(ctx, &target, a.Stderr, "after sync", 2*time.Minute); err != nil {
 			return err
+		}
+		if err := runSSHQuiet(ctx, target, remoteSyncSanity(workdir, os.Getenv("OPENCLAW_TESTBOX_ALLOW_MASS_DELETIONS") == "1")); err != nil {
+			return exit(6, "remote sync sanity failed: %v", err)
 		}
 		if err := runSSHQuiet(ctx, target, remoteGitHydrate(workdir)); err != nil {
 			fmt.Fprintf(a.Stderr, "warning: remote git hydrate failed: %v\n", err)
@@ -185,12 +203,15 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 }
 
 func (a App) acquireCoordinator(ctx context.Context, cfg Config, coord *CoordinatorClient, keep bool) (Server, SSHTarget, string, error) {
-	publicKey, err := publicKeyFor(cfg.SSHKey)
+	leaseID := newLeaseID()
+	keyPath, publicKey, err := ensureTestboxKey(leaseID)
 	if err != nil {
 		return Server{}, SSHTarget{}, "", err
 	}
+	cfg.SSHKey = keyPath
+	cfg.ProviderKey = providerKeyForLease(leaseID)
 	fmt.Fprintf(a.Stderr, "coordinator lease class=%s preferred_type=%s keep=%v\n", cfg.Class, cfg.ServerType, keep)
-	lease, err := coord.CreateLease(ctx, cfg, publicKey, keep)
+	lease, err := coord.CreateLease(ctx, cfg, publicKey, keep, leaseID)
 	if err != nil {
 		return Server{}, SSHTarget{}, "", err
 	}
@@ -349,10 +370,13 @@ func (a App) acquire(ctx context.Context, cfg Config, keep bool) (Server, SSHTar
 	if err != nil {
 		return Server{}, SSHTarget{}, "", err
 	}
-	publicKey, err := publicKeyFor(cfg.SSHKey)
+	leaseID := newLeaseID()
+	keyPath, publicKey, err := ensureTestboxKey(leaseID)
 	if err != nil {
 		return Server{}, SSHTarget{}, "", err
 	}
+	cfg.SSHKey = keyPath
+	cfg.ProviderKey = providerKeyForLease(leaseID)
 	if cfg.ProviderKey != "" {
 		providerKey, err := client.EnsureSSHKey(ctx, cfg.ProviderKey, publicKey)
 		if err != nil {
@@ -360,7 +384,6 @@ func (a App) acquire(ctx context.Context, cfg Config, keep bool) (Server, SSHTar
 		}
 		cfg.ProviderKey = providerKey.Name
 	}
-	leaseID := newLeaseID()
 	fmt.Fprintf(a.Stderr, "provisioning provider=hetzner lease=%s class=%s preferred_type=%s location=%s keep=%v\n", leaseID, cfg.Class, cfg.ServerType, cfg.Location, keep)
 	server, cfg, err := client.CreateServerWithFallback(ctx, cfg, publicKey, leaseID, keep, func(format string, args ...any) {
 		fmt.Fprintf(a.Stderr, format, args...)
@@ -392,11 +415,13 @@ func (a App) acquireAWS(ctx context.Context, cfg Config, keep bool) (Server, SSH
 	if err != nil {
 		return Server{}, SSHTarget{}, "", err
 	}
-	publicKey, err := publicKeyFor(cfg.SSHKey)
+	leaseID := newLeaseID()
+	keyPath, publicKey, err := ensureTestboxKey(leaseID)
 	if err != nil {
 		return Server{}, SSHTarget{}, "", err
 	}
-	leaseID := newLeaseID()
+	cfg.SSHKey = keyPath
+	cfg.ProviderKey = providerKeyForLease(leaseID)
 	fmt.Fprintf(a.Stderr, "provisioning provider=aws lease=%s class=%s preferred_type=%s region=%s keep=%v spot=true\n", leaseID, cfg.Class, cfg.ServerType, cfg.AWSRegion, keep)
 	server, cfg, err := client.CreateServerWithFallback(ctx, cfg, publicKey, leaseID, keep, func(format string, args ...any) {
 		fmt.Fprintf(a.Stderr, format, args...)
@@ -457,7 +482,9 @@ func (a App) findLease(ctx context.Context, cfg Config, id string) (Server, SSHT
 		if leaseID == "" {
 			leaseID = id
 		}
-		return server, SSHTarget{User: cfg.SSHUser, Host: server.PublicNet.IPv4.IP, Key: cfg.SSHKey, Port: cfg.SSHPort}, leaseID, nil
+		target := SSHTarget{User: cfg.SSHUser, Host: server.PublicNet.IPv4.IP, Key: cfg.SSHKey, Port: cfg.SSHPort}
+		useStoredTestboxKey(&target, leaseID)
+		return server, target, leaseID, nil
 	}
 	servers, err := client.ListCrabboxServers(ctx)
 	if err != nil {
@@ -465,7 +492,10 @@ func (a App) findLease(ctx context.Context, cfg Config, id string) (Server, SSHT
 	}
 	for _, server := range servers {
 		if server.Labels["lease"] == id || server.Name == id {
-			return server, SSHTarget{User: cfg.SSHUser, Host: server.PublicNet.IPv4.IP, Key: cfg.SSHKey, Port: cfg.SSHPort}, server.Labels["lease"], nil
+			leaseID := server.Labels["lease"]
+			target := SSHTarget{User: cfg.SSHUser, Host: server.PublicNet.IPv4.IP, Key: cfg.SSHKey, Port: cfg.SSHPort}
+			useStoredTestboxKey(&target, leaseID)
+			return server, target, leaseID, nil
 		}
 	}
 	return Server{}, SSHTarget{}, "", exit(4, "lease/server not found: %s", id)
@@ -485,7 +515,9 @@ func (a App) findAWSLease(ctx context.Context, cfg Config, id string) (Server, S
 		if leaseID == "" {
 			leaseID = id
 		}
-		return server, SSHTarget{User: cfg.SSHUser, Host: server.PublicNet.IPv4.IP, Key: cfg.SSHKey, Port: cfg.SSHPort}, leaseID, nil
+		target := SSHTarget{User: cfg.SSHUser, Host: server.PublicNet.IPv4.IP, Key: cfg.SSHKey, Port: cfg.SSHPort}
+		useStoredTestboxKey(&target, leaseID)
+		return server, target, leaseID, nil
 	}
 	servers, err := client.ListCrabboxServers(ctx)
 	if err != nil {
@@ -493,7 +525,10 @@ func (a App) findAWSLease(ctx context.Context, cfg Config, id string) (Server, S
 	}
 	for _, server := range servers {
 		if server.Labels["lease"] == id || server.Name == id {
-			return server, SSHTarget{User: cfg.SSHUser, Host: server.PublicNet.IPv4.IP, Key: cfg.SSHKey, Port: cfg.SSHPort}, server.Labels["lease"], nil
+			leaseID := server.Labels["lease"]
+			target := SSHTarget{User: cfg.SSHUser, Host: server.PublicNet.IPv4.IP, Key: cfg.SSHKey, Port: cfg.SSHPort}
+			useStoredTestboxKey(&target, leaseID)
+			return server, target, leaseID, nil
 		}
 	}
 	return Server{}, SSHTarget{}, "", exit(4, "lease/server not found: %s", id)
@@ -502,8 +537,8 @@ func (a App) findAWSLease(ctx context.Context, cfg Config, id string) (Server, S
 func (a App) stop(ctx context.Context, args []string) error {
 	fs := newFlagSet("stop", a.Stderr)
 	provider := fs.String("provider", defaultConfig().Provider, "provider: hetzner or aws")
-	if err := fs.Parse(args); err != nil {
-		return exit(2, "%v", err)
+	if err := parseFlags(fs, args); err != nil {
+		return err
 	}
 	if fs.NArg() != 1 {
 		return exit(2, "usage: crabbox stop <lease-or-server-id>")
@@ -544,13 +579,48 @@ func deleteServer(ctx context.Context, cfg Config, server Server) error {
 		if err != nil {
 			return err
 		}
-		return client.DeleteServer(ctx, server.CloudID)
+		if err := client.DeleteServer(ctx, server.CloudID); err != nil {
+			return err
+		}
+		if keyName := serverProviderKey(server); validCrabboxProviderKey(keyName) {
+			return client.DeleteSSHKey(ctx, keyName)
+		}
+		return nil
 	}
 	client, err := newHetznerClient()
 	if err != nil {
 		return err
 	}
-	return client.DeleteServer(ctx, server.ID)
+	if err := client.DeleteServer(ctx, server.ID); err != nil {
+		return err
+	}
+	if keyName := serverProviderKey(server); validCrabboxProviderKey(keyName) {
+		return client.DeleteSSHKey(ctx, keyName)
+	}
+	return nil
+}
+
+func serverProviderKey(server Server) string {
+	if server.Labels != nil && server.Labels["provider_key"] != "" {
+		return server.Labels["provider_key"]
+	}
+	if server.Labels != nil && server.Labels["lease"] != "" {
+		return providerKeyForLease(server.Labels["lease"])
+	}
+	return ""
+}
+
+func validCrabboxProviderKey(name string) bool {
+	const prefix = "crabbox-cbx-"
+	if !strings.HasPrefix(name, prefix) || len(name) != len(prefix)+12 {
+		return false
+	}
+	for _, c := range name[len(prefix):] {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
 }
 
 func repoExists(path string) bool {

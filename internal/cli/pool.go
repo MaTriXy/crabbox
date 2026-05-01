@@ -12,11 +12,15 @@ func (a App) pool(ctx context.Context, args []string) error {
 	if len(args) == 0 || args[0] != "list" {
 		return exit(2, "usage: crabbox pool list [--json]")
 	}
-	fs := newFlagSet("pool list", a.Stderr)
+	return a.list(ctx, args[1:])
+}
+
+func (a App) list(ctx context.Context, args []string) error {
+	fs := newFlagSet("list", a.Stderr)
 	provider := fs.String("provider", defaultConfig().Provider, "provider: hetzner or aws")
 	jsonOut := fs.Bool("json", false, "print JSON")
-	if err := fs.Parse(args[1:]); err != nil {
-		return exit(2, "%v", err)
+	if err := parseFlags(fs, args); err != nil {
+		return err
 	}
 	cfg, err := loadConfig()
 	if err != nil {
@@ -91,8 +95,8 @@ func (a App) cleanup(ctx context.Context, args []string) error {
 	fs := newFlagSet("machine cleanup", a.Stderr)
 	provider := fs.String("provider", defaultConfig().Provider, "provider: hetzner or aws")
 	dryRun := fs.Bool("dry-run", false, "only print")
-	if err := fs.Parse(args); err != nil {
-		return exit(2, "%v", err)
+	if err := parseFlags(fs, args); err != nil {
+		return err
 	}
 	cfg, err := loadConfig()
 	if err != nil {
@@ -121,7 +125,7 @@ func (a App) cleanup(ctx context.Context, args []string) error {
 			}
 			fmt.Fprintf(a.Stderr, "delete server id=%s name=%s\n", s.DisplayID(), s.Name)
 			if !*dryRun {
-				if err := awsClient.DeleteServer(ctx, s.CloudID); err != nil {
+				if err := deleteServer(ctx, cfg, s); err != nil {
 					return err
 				}
 			}
@@ -144,7 +148,7 @@ func (a App) cleanup(ctx context.Context, args []string) error {
 		}
 		fmt.Fprintf(a.Stderr, "delete server id=%s name=%s\n", s.DisplayID(), s.Name)
 		if !*dryRun {
-			if err := client.DeleteServer(ctx, s.ID); err != nil {
+			if err := deleteServer(ctx, cfg, s); err != nil {
 				return err
 			}
 		}
