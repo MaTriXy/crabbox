@@ -2,6 +2,8 @@
 
 Crabbox is the testbox. Commands stay top-level rather than nested under `testbox`.
 
+Command docs live here, one file per top-level command. Keep `docs/cli.md` as the command-surface overview and link here for command details; do not add parallel command pages under `docs/cli/`.
+
 - [init](init.md)
 - [warmup](warmup.md)
 - [run](run.md)
