@@ -19,6 +19,7 @@ func (a App) warmup(ctx context.Context, args []string) error {
 	ttl := fs.Duration("ttl", 90*time.Minute, "lease ttl")
 	idleTimeout := fs.Duration("idle-timeout", 0, "idle timeout")
 	keep := fs.Bool("keep", true, "keep server after warmup")
+	actionsRunner := fs.Bool("actions-runner", false, "register this box as an ephemeral GitHub Actions runner")
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
@@ -60,6 +61,19 @@ func (a App) warmup(ctx context.Context, args []string) error {
 	}
 	fmt.Fprintf(a.Stdout, "leased %s provider=%s server=%s type=%s ip=%s\n", leaseID, cfg.Provider, server.DisplayID(), server.ServerType.Name, target.Host)
 	fmt.Fprintf(a.Stdout, "ready ssh=%s@%s:%s workroot=%s\n", target.User, target.Host, target.Port, cfg.WorkRoot)
+	if *actionsRunner {
+		repo, err := findRepo()
+		if err != nil {
+			return err
+		}
+		ghRepo, err := resolveGitHubRepo(repo, cfg.Actions.Repo)
+		if err != nil {
+			return err
+		}
+		if err := a.registerGitHubActionsRunner(ctx, cfg, target, leaseID, ghRepo, "", nil); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

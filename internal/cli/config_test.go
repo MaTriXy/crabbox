@@ -44,8 +44,15 @@ capacity:
   regions:
     - eu-west-1
 actions:
+  repo: openclaw/crabbox
   workflow: .github/workflows/crabbox.yml
   job: hydrate
+  ref: main
+  runnerLabels:
+    - crabbox
+    - linux-large
+  runnerVersion: latest
+  ephemeral: false
 ssh:
   key: ~/.ssh/crabbox
 `), 0o600); err != nil {
@@ -83,8 +90,11 @@ ssh:
 	if cfg.Capacity.Strategy != "most-available" || len(cfg.Capacity.Regions) != 1 || cfg.Capacity.Regions[0] != "eu-west-1" {
 		t.Fatalf("capacity config not loaded: %#v", cfg.Capacity)
 	}
-	if cfg.Actions.Workflow != ".github/workflows/crabbox.yml" || cfg.Actions.Job != "hydrate" {
+	if cfg.Actions.Repo != "openclaw/crabbox" || cfg.Actions.Workflow != ".github/workflows/crabbox.yml" || cfg.Actions.Job != "hydrate" || cfg.Actions.Ref != "main" {
 		t.Fatalf("actions config not loaded: %#v", cfg.Actions)
+	}
+	if cfg.Actions.Ephemeral || len(cfg.Actions.RunnerLabels) != 2 || cfg.Actions.RunnerLabels[1] != "linux-large" {
+		t.Fatalf("actions runner config not loaded: %#v", cfg.Actions)
 	}
 }
 

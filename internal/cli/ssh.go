@@ -86,6 +86,14 @@ func runSSHOutput(ctx context.Context, target SSHTarget, remote string) (string,
 	return strings.TrimSpace(string(out)), nil
 }
 
+func runSSHInputQuiet(ctx context.Context, target SSHTarget, remote, input string) error {
+	cmd := exec.CommandContext(ctx, "ssh", sshArgs(target, remote)...)
+	cmd.Stdin = strings.NewReader(input)
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	return cmd.Run()
+}
+
 func runSSHStream(ctx context.Context, target SSHTarget, remote string, stdout, stderr io.Writer) int {
 	cmd := exec.CommandContext(ctx, "ssh", sshArgs(target, remote)...)
 	cmd.Stdout = stdout

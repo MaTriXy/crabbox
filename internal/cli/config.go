@@ -56,9 +56,13 @@ type CapacityConfig struct {
 }
 
 type ActionsConfig struct {
-	Workflow string
-	Job      string
-	Ref      string
+	Repo          string
+	Workflow      string
+	Job           string
+	Ref           string
+	RunnerLabels  []string
+	RunnerVersion string
+	Ephemeral     bool
 }
 
 func defaultConfig() Config {
@@ -118,6 +122,10 @@ func baseConfig() Config {
 			Market:   "spot",
 			Strategy: "most-available",
 			Fallback: "on-demand-after-120s",
+		},
+		Actions: ActionsConfig{
+			RunnerVersion: "latest",
+			Ephemeral:     true,
 		},
 	}
 }
@@ -190,9 +198,13 @@ type fileCapacityConfig struct {
 }
 
 type fileActionsConfig struct {
-	Workflow string `yaml:"workflow,omitempty"`
-	Job      string `yaml:"job,omitempty"`
-	Ref      string `yaml:"ref,omitempty"`
+	Repo          string   `yaml:"repo,omitempty"`
+	Workflow      string   `yaml:"workflow,omitempty"`
+	Job           string   `yaml:"job,omitempty"`
+	Ref           string   `yaml:"ref,omitempty"`
+	RunnerLabels  []string `yaml:"runnerLabels,omitempty"`
+	RunnerVersion string   `yaml:"runnerVersion,omitempty"`
+	Ephemeral     *bool    `yaml:"ephemeral,omitempty"`
 }
 
 func configPaths() []string {
@@ -379,6 +391,9 @@ func applyFileConfig(cfg *Config, file fileConfig) {
 		}
 	}
 	if file.Actions != nil {
+		if file.Actions.Repo != "" {
+			cfg.Actions.Repo = file.Actions.Repo
+		}
 		if file.Actions.Workflow != "" {
 			cfg.Actions.Workflow = file.Actions.Workflow
 		}
@@ -387,6 +402,15 @@ func applyFileConfig(cfg *Config, file fileConfig) {
 		}
 		if file.Actions.Ref != "" {
 			cfg.Actions.Ref = file.Actions.Ref
+		}
+		if len(file.Actions.RunnerLabels) > 0 {
+			cfg.Actions.RunnerLabels = appendUniqueStrings(nil, file.Actions.RunnerLabels...)
+		}
+		if file.Actions.RunnerVersion != "" {
+			cfg.Actions.RunnerVersion = file.Actions.RunnerVersion
+		}
+		if file.Actions.Ephemeral != nil {
+			cfg.Actions.Ephemeral = *file.Actions.Ephemeral
 		}
 	}
 }
@@ -417,6 +441,14 @@ func applyEnv(cfg *Config) {
 	cfg.Actions.Workflow = getenv("CRABBOX_ACTIONS_WORKFLOW", cfg.Actions.Workflow)
 	cfg.Actions.Job = getenv("CRABBOX_ACTIONS_JOB", cfg.Actions.Job)
 	cfg.Actions.Ref = getenv("CRABBOX_ACTIONS_REF", cfg.Actions.Ref)
+	cfg.Actions.Repo = getenv("CRABBOX_ACTIONS_REPO", cfg.Actions.Repo)
+	cfg.Actions.RunnerVersion = getenv("CRABBOX_ACTIONS_RUNNER_VERSION", cfg.Actions.RunnerVersion)
+	if labels := os.Getenv("CRABBOX_ACTIONS_RUNNER_LABELS"); labels != "" {
+		cfg.Actions.RunnerLabels = splitCommaList(labels)
+	}
+	if value, ok := getenvBool("CRABBOX_ACTIONS_EPHEMERAL"); ok {
+		cfg.Actions.Ephemeral = value
+	}
 	if regions := os.Getenv("CRABBOX_CAPACITY_REGIONS"); regions != "" {
 		cfg.Capacity.Regions = splitCommaList(regions)
 	}

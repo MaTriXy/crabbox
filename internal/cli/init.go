@@ -56,6 +56,10 @@ capacity:
   fallback: on-demand-after-120s
 actions:
   workflow: .github/workflows/crabbox.yml
+  runnerLabels:
+    - crabbox
+  runnerVersion: latest
+  ephemeral: true
 sync:
   delete: true
   checksum: false

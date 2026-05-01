@@ -70,9 +70,13 @@ func (a App) configShow(args []string) error {
 			"availabilityZones": cfg.Capacity.AvailabilityZones,
 		},
 		"actions": map[string]any{
-			"workflow": cfg.Actions.Workflow,
-			"job":      cfg.Actions.Job,
-			"ref":      cfg.Actions.Ref,
+			"repo":          cfg.Actions.Repo,
+			"workflow":      cfg.Actions.Workflow,
+			"job":           cfg.Actions.Job,
+			"ref":           cfg.Actions.Ref,
+			"runnerLabels":  cfg.Actions.RunnerLabels,
+			"runnerVersion": cfg.Actions.RunnerVersion,
+			"ephemeral":     cfg.Actions.Ephemeral,
 		},
 		"hetzner": map[string]any{
 			"location": cfg.Location,
@@ -98,7 +102,7 @@ func (a App) configShow(args []string) error {
 	fmt.Fprintf(a.Stdout, "sync delete=%t checksum=%t git_seed=%t fingerprint=%t base_ref=%s excludes=%d\n", cfg.Sync.Delete, cfg.Sync.Checksum, cfg.Sync.GitSeed, cfg.Sync.Fingerprint, blank(cfg.Sync.BaseRef, "-"), len(configuredExcludes(cfg)))
 	fmt.Fprintf(a.Stdout, "env allow=%s\n", strings.Join(cfg.EnvAllow, ","))
 	fmt.Fprintf(a.Stdout, "capacity market=%s strategy=%s fallback=%s regions=%s\n", cfg.Capacity.Market, cfg.Capacity.Strategy, cfg.Capacity.Fallback, blank(strings.Join(cfg.Capacity.Regions, ","), "-"))
-	fmt.Fprintf(a.Stdout, "actions workflow=%s job=%s ref=%s\n", blank(cfg.Actions.Workflow, "-"), blank(cfg.Actions.Job, "-"), blank(cfg.Actions.Ref, "-"))
+	fmt.Fprintf(a.Stdout, "actions repo=%s workflow=%s job=%s ref=%s runner_version=%s ephemeral=%t labels=%s\n", blank(cfg.Actions.Repo, "-"), blank(cfg.Actions.Workflow, "-"), blank(cfg.Actions.Job, "-"), blank(cfg.Actions.Ref, "-"), cfg.Actions.RunnerVersion, cfg.Actions.Ephemeral, blank(strings.Join(cfg.Actions.RunnerLabels, ","), "-"))
 	fmt.Fprintf(a.Stdout, "aws region=%s root_gb=%d\n", cfg.AWSRegion, cfg.AWSRootGB)
 	return nil
 }

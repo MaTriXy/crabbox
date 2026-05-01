@@ -54,6 +54,8 @@ func (a App) Run(ctx context.Context, args []string) error {
 		return a.list(ctx, args[1:])
 	case "usage":
 		return a.usage(ctx, args[1:])
+	case "actions":
+		return a.actions(ctx, args[1:])
 	case "cleanup":
 		return a.cleanup(ctx, args[1:])
 	case "warmup":
@@ -98,6 +100,7 @@ Commands:
   status      Show lease state; add --wait to block until ready
   list        List Crabbox machines
   usage       Show cost and usage estimates by user, org, or fleet
+  actions     Register GitHub Actions runners or dispatch workflows
   ssh         Print the SSH command for a lease
   inspect     Print lease/provider details; add --json for scripts
   stop        Release a lease or delete a direct-provider machine
@@ -112,6 +115,8 @@ Common Flows:
   crabbox ssh --id cbx_123
   crabbox inspect --id cbx_123 --json
   crabbox usage --scope org
+  crabbox warmup --actions-runner --idle-timeout 90m
+  crabbox actions dispatch -f testbox_id=cbx_123
   crabbox stop cbx_123
 
 Global:
