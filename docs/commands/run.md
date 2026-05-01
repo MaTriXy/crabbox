@@ -7,6 +7,7 @@ crabbox run --id blue-lobster -- pnpm test:changed:max
 crabbox run --class beast -- pnpm check
 crabbox run --id blue-lobster --shell 'pnpm install --frozen-lockfile && pnpm test'
 crabbox run --id cbx_abcdef123456 --junit junit.xml -- go test ./...
+crabbox run --provider blacksmith-testbox --blacksmith-workflow .github/workflows/ci-check-testbox.yml --blacksmith-job test -- pnpm test
 ```
 
 If `--id` is omitted, Crabbox creates a fresh non-kept lease and releases it when the command exits. `--id` accepts the stable `cbx_...` ID or the active friendly slug.
@@ -50,6 +51,10 @@ Flags:
 --debug
 --junit <comma-separated remote XML paths>
 --reclaim
+--blacksmith-org <org>
+--blacksmith-workflow <file|name|id>
+--blacksmith-job <job>
+--blacksmith-ref <ref>
 ```
 
 `--idle-timeout` controls inactivity expiry, default `30m`. `--ttl` remains the maximum wall-clock lifetime, default `90m`.

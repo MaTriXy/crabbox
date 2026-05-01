@@ -34,7 +34,7 @@ crabbox config show [--json]
 crabbox config path
 crabbox config set-broker --url <url> --token-stdin [--provider hetzner|aws]
 crabbox warmup [--provider hetzner|aws|blacksmith-testbox] [--profile <name>] [--idle-timeout <duration>]
-crabbox run [--id <lease-id-or-slug>] [--shell] [--checksum] [--debug] [--force-sync-large] -- <command...>
+crabbox run [--id <lease-id-or-slug>] [--shell] [--checksum] [--debug] [--force-sync-large] [--blacksmith-workflow <workflow>] -- <command...>
 crabbox sync-plan [--limit <n>]
 crabbox history [--lease <lease-id>] [--owner <email>] [--org <name>] [--limit <n>] [--json]
 crabbox logs <run-id> [--json]
@@ -93,8 +93,9 @@ Use Blacksmith Testboxes through the same Crabbox surface:
 
 ```sh
 blacksmith auth login
-crabbox warmup --provider blacksmith-testbox
+crabbox warmup --provider blacksmith-testbox --blacksmith-workflow .github/workflows/ci-check-testbox.yml --blacksmith-job test
 crabbox run --provider blacksmith-testbox --id blue-lobster -- pnpm test:changed
+crabbox run --provider blacksmith-testbox --blacksmith-workflow .github/workflows/ci-check-testbox.yml --blacksmith-job test -- pnpm test
 crabbox stop --provider blacksmith-testbox blue-lobster
 ```
 
@@ -202,6 +203,10 @@ Flags:
 --debug                 print sync timing and itemized rsync output
 --junit <paths>         comma-separated remote JUnit XML paths to attach to run history
 --reclaim              claim an existing lease for the current repo
+--blacksmith-org <org>  Blacksmith organization
+--blacksmith-workflow <file|name|id> Blacksmith Testbox workflow
+--blacksmith-job <job>  Blacksmith Testbox workflow job
+--blacksmith-ref <ref>  Blacksmith Testbox git ref
 ```
 
 Secrets must not be accepted as flag values. Env forwarding is name-based only.

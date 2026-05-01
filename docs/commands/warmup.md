@@ -5,7 +5,7 @@
 ```sh
 crabbox warmup --class beast
 crabbox warmup --actions-runner
-crabbox warmup --provider blacksmith-testbox
+crabbox warmup --provider blacksmith-testbox --blacksmith-workflow .github/workflows/ci-check-testbox.yml --blacksmith-job test
 ```
 
 The command returns a stable `cbx_...` lease ID and a friendly slug. Reuse either for subsequent `run`, `status`, `ssh`, `inspect`, and `stop` commands; scripts should keep using the canonical ID.
@@ -26,6 +26,10 @@ Flags:
 --keep
 --actions-runner
 --reclaim
+--blacksmith-org <org>
+--blacksmith-workflow <file|name|id>
+--blacksmith-job <job>
+--blacksmith-ref <ref>
 ```
 
 `--idle-timeout` releases the lease after no touch for that duration, default `30m`. `--ttl` remains the maximum wall-clock lifetime, default `90m`.

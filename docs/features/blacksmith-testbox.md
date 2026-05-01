@@ -26,28 +26,33 @@ crabbox stop --provider blacksmith-testbox blue-lobster
 
 That path only needs Blacksmith auth and a reachable Testbox. Crabbox resolves the ID or slug, preserves the local repo claim, forwards the command to `blacksmith testbox run`, and prints `sync=delegated` in the final summary.
 
-To create a fresh Testbox without YAML, provide the workflow details through environment variables:
+To create a fresh Testbox without YAML, provide the workflow details as flags:
 
 ```sh
-CRABBOX_BLACKSMITH_WORKFLOW=.github/workflows/ci-check-testbox.yml \
-CRABBOX_BLACKSMITH_JOB=test \
-CRABBOX_BLACKSMITH_REF=main \
-crabbox warmup --provider blacksmith-testbox --idle-timeout 90m
+crabbox warmup \
+  --provider blacksmith-testbox \
+  --blacksmith-org openclaw \
+  --blacksmith-workflow .github/workflows/ci-check-testbox.yml \
+  --blacksmith-job test \
+  --blacksmith-ref main \
+  --idle-timeout 90m
 ```
 
-The same env vars work for one-shot `run` when no `--id` is supplied:
+The same flags work for one-shot `run` when no `--id` is supplied:
 
 ```sh
-CRABBOX_BLACKSMITH_WORKFLOW=.github/workflows/ci-check-testbox.yml \
-CRABBOX_BLACKSMITH_JOB=test \
-crabbox run --provider blacksmith-testbox -- pnpm test
+crabbox run \
+  --provider blacksmith-testbox \
+  --blacksmith-workflow .github/workflows/ci-check-testbox.yml \
+  --blacksmith-job test \
+  -- pnpm test
 ```
 
-YAML is a convenience, not a requirement, when the command line or environment already tells Crabbox which backend and workflow to use.
+YAML is a convenience, not a requirement, when the command line already tells Crabbox which backend and workflow to use. Environment variables such as `CRABBOX_BLACKSMITH_WORKFLOW`, `CRABBOX_BLACKSMITH_JOB`, `CRABBOX_BLACKSMITH_REF`, and `CRABBOX_BLACKSMITH_ORG` are also supported for shell defaults or scripts.
 
 ## Repo Config
 
-Use repo config when every agent or maintainer should get the same Blacksmith defaults without repeating env vars:
+Use repo config when every agent or maintainer should get the same Blacksmith defaults without repeating flags:
 
 ```yaml
 provider: blacksmith-testbox
@@ -96,7 +101,7 @@ Use the one-liner when:
 
 - you already have `tbx_...`;
 - you are trying Blacksmith on one command;
-- an agent can pass provider and workflow via env vars.
+- an agent can pass provider and workflow directly as flags.
 
 Use repo YAML when:
 

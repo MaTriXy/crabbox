@@ -23,6 +23,7 @@ func (a App) warmup(ctx context.Context, args []string) error {
 	keep := fs.Bool("keep", true, "keep server after warmup")
 	actionsRunner := fs.Bool("actions-runner", false, "register this box as an ephemeral GitHub Actions runner")
 	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
+	blacksmithFlags := registerBlacksmithFlags(fs, defaults)
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
@@ -45,6 +46,7 @@ func (a App) warmup(ctx context.Context, args []string) error {
 	if flagWasSet(fs, "idle-timeout") {
 		cfg.IdleTimeout = *idleTimeout
 	}
+	applyBlacksmithFlagOverrides(&cfg, fs, blacksmithFlags)
 	if cfg.TTL <= 0 {
 		return exit(2, "ttl must be positive")
 	}
@@ -115,6 +117,7 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 	forceSyncLarge := fs.Bool("force-sync-large", false, "allow unusually large sync candidates")
 	junitResults := fs.String("junit", "", "comma-separated remote JUnit XML paths to record")
 	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
+	blacksmithFlags := registerBlacksmithFlags(fs, defaults)
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
@@ -151,6 +154,7 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 	if *junitResults != "" {
 		cfg.Results.JUnit = splitCommaList(*junitResults)
 	}
+	applyBlacksmithFlagOverrides(&cfg, fs, blacksmithFlags)
 	if cfg.TTL <= 0 {
 		return exit(2, "ttl must be positive")
 	}

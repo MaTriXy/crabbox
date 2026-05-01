@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"flag"
 	"fmt"
 	"io"
 	"os/exec"
@@ -29,8 +30,39 @@ type blacksmithRunOptions struct {
 	IdleTimeout time.Duration
 }
 
+type blacksmithFlagValues struct {
+	Org      *string
+	Workflow *string
+	Job      *string
+	Ref      *string
+}
+
 func isBlacksmithProvider(provider string) bool {
 	return provider == blacksmithTestboxProvider || provider == "blacksmith"
+}
+
+func registerBlacksmithFlags(fs *flag.FlagSet, defaults Config) blacksmithFlagValues {
+	return blacksmithFlagValues{
+		Org:      fs.String("blacksmith-org", defaults.Blacksmith.Org, "Blacksmith organization"),
+		Workflow: fs.String("blacksmith-workflow", defaults.Blacksmith.Workflow, "Blacksmith Testbox workflow file, name, or id"),
+		Job:      fs.String("blacksmith-job", defaults.Blacksmith.Job, "Blacksmith Testbox workflow job"),
+		Ref:      fs.String("blacksmith-ref", defaults.Blacksmith.Ref, "Blacksmith Testbox git ref"),
+	}
+}
+
+func applyBlacksmithFlagOverrides(cfg *Config, fs *flag.FlagSet, values blacksmithFlagValues) {
+	if flagWasSet(fs, "blacksmith-org") {
+		cfg.Blacksmith.Org = *values.Org
+	}
+	if flagWasSet(fs, "blacksmith-workflow") {
+		cfg.Blacksmith.Workflow = *values.Workflow
+	}
+	if flagWasSet(fs, "blacksmith-job") {
+		cfg.Blacksmith.Job = *values.Job
+	}
+	if flagWasSet(fs, "blacksmith-ref") {
+		cfg.Blacksmith.Ref = *values.Ref
+	}
 }
 
 func (a App) blacksmithWarmup(ctx context.Context, cfg Config, repo Repo, keep, reclaim bool) error {

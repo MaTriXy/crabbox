@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"io"
 	"reflect"
 	"strings"
 	"testing"
@@ -54,6 +55,31 @@ func TestBlacksmithWarmupArgsRequiresWorkflow(t *testing.T) {
 	_, err := blacksmithWarmupArgs(cfg, "")
 	if err == nil || !strings.Contains(err.Error(), "requires blacksmith.workflow") {
 		t.Fatalf("expected workflow error, got %v", err)
+	}
+}
+
+func TestApplyBlacksmithFlagOverrides(t *testing.T) {
+	defaults := baseConfig()
+	defaults.Blacksmith = BlacksmithConfig{
+		Org:      "default-org",
+		Workflow: "default.yml",
+		Job:      "default-job",
+		Ref:      "main",
+	}
+	cfg := Config{}
+	fs := newFlagSet("test", io.Discard)
+	values := registerBlacksmithFlags(fs, defaults)
+	if err := parseFlags(fs, []string{
+		"--blacksmith-org", "openclaw",
+		"--blacksmith-workflow", ".github/workflows/testbox.yml",
+		"--blacksmith-job", "test",
+		"--blacksmith-ref", "feature",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	applyBlacksmithFlagOverrides(&cfg, fs, values)
+	if cfg.Blacksmith.Org != "openclaw" || cfg.Blacksmith.Workflow != ".github/workflows/testbox.yml" || cfg.Blacksmith.Job != "test" || cfg.Blacksmith.Ref != "feature" {
+		t.Fatalf("blacksmith flags not applied: %#v", cfg.Blacksmith)
 	}
 }
 
