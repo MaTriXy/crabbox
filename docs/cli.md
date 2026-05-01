@@ -34,6 +34,7 @@ crabbox config path
 crabbox config set-broker --url <url> --token-stdin [--provider hetzner|aws]
 crabbox warmup [--provider hetzner|aws] [--profile <name>] [--idle-timeout <duration>]
 crabbox run [--id <lease-id>] [--shell] [--checksum] [--debug] [--force-sync-large] -- <command...>
+crabbox sync-plan [--limit <n>]
 crabbox history [--lease <lease-id>] [--owner <email>] [--org <name>] [--limit <n>] [--json]
 crabbox logs <run-id> [--json]
 crabbox results <run-id> [--json]
@@ -92,6 +93,13 @@ Inspect pool:
 ```sh
 crabbox list
 crabbox list --json
+```
+
+Inspect local sync size:
+
+```sh
+crabbox sync-plan
+crabbox sync-plan --limit 10
 ```
 
 Inspect usage and estimated cost:

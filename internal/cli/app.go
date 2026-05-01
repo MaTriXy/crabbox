@@ -78,6 +78,8 @@ func (a App) Run(ctx context.Context, args []string) error {
 		return a.warmup(ctx, args[1:])
 	case "run":
 		return a.runCommand(ctx, args[1:])
+	case "sync-plan":
+		return a.syncPlan(ctx, args[1:])
 	case "status":
 		return a.status(ctx, args[1:])
 	case "ssh":
@@ -116,6 +118,7 @@ Commands:
   doctor      Check local and broker/provider readiness
   warmup      Lease a box and wait until it is ready
   run         Sync the repo, run a remote command, stream output
+  sync-plan   Show local sync manifest size hotspots
   history     List recorded remote runs
   logs        Print recorded run logs
   results     Show recorded test result summaries

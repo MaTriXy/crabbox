@@ -30,6 +30,8 @@ Sync flow:
 
 The remote manifest deletion step only removes paths Crabbox previously synced. It does not delete workflow-created state, package caches, `.git`, or other local runner files outside the managed file list.
 
+In remote Git worktrees, Crabbox stores its sync metadata under `.git/crabbox` so repository status stays clean. Crabbox does not delete files under the worktree `.crabbox/` directory; that path remains available for repository-owned files and config.
+
 Important controls:
 
 ```text
@@ -61,10 +63,13 @@ sync:
 
 `crabbox run --force-sync-large` bypasses the fail thresholds for one run. `--debug` adds rsync progress/stat output; normal syncs still print a heartbeat when rsync is quiet for a while.
 
+Use `crabbox sync-plan` to inspect the local manifest before leasing a box. It prints the candidate file count, total bytes, and the largest files/directories using the same excludes as `run`.
+
 Repo-local config should hold project-specific excludes and env allowlists. Secrets must not be passed as command-line arguments or broad env globs.
 
 Related docs:
 
 - [CLI](../cli.md)
 - [run command](../commands/run.md)
+- [sync-plan command](../commands/sync-plan.md)
 - [Repository onboarding](repository-onboarding.md)

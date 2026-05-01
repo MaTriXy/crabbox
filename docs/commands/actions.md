@@ -10,6 +10,8 @@ It uses GitHub's runner and workflow APIs:
 
 For `actions hydrate`, Crabbox inspects the selected workflow's `workflow_dispatch.inputs` when the workflow path is available under `.github/workflows/`. It only sends declared inputs, requires `crabbox_id`, `crabbox_runner_label`, and `crabbox_keep_alive_minutes`, and treats `crabbox_job` as optional. If GitHub still rejects `crabbox_job` as an unexpected input, Crabbox retries once without it so older workflow refs remain usable.
 
+On success, `actions hydrate` prints a concise total duration line.
+
 ```sh
 crabbox warmup --actions-runner --idle-timeout 90m
 crabbox actions hydrate --id cbx_123

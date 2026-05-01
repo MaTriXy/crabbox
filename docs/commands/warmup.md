@@ -9,6 +9,8 @@ crabbox warmup --actions-runner --idle-timeout 90m
 
 The command returns a `cbx_...` lease ID. Reuse that ID for subsequent `run`, `status`, `ssh`, `inspect`, and `stop` commands.
 
+On success, `warmup` prints a concise total duration line.
+
 Flags:
 
 ```text

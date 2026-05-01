@@ -44,6 +44,7 @@ func (a App) actions(ctx context.Context, args []string) error {
 }
 
 func (a App) actionsHydrate(ctx context.Context, args []string) error {
+	started := time.Now()
 	fs := newFlagSet("actions hydrate", a.Stderr)
 	leaseIDFlag := fs.String("id", "", "existing lease id")
 	repoFlag := fs.String("repo", "", "GitHub repository owner/name")
@@ -133,6 +134,7 @@ func (a App) actionsHydrate(ctx context.Context, args []string) error {
 		return err
 	}
 	fmt.Fprintf(a.Stdout, "actions hydrated id=%s workspace=%s run_id=%s\n", leaseID, state.Workspace, blank(state.RunID, "-"))
+	fmt.Fprintf(a.Stdout, "actions hydrate complete total=%s\n", time.Since(started).Round(time.Millisecond))
 	return nil
 }
 

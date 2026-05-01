@@ -11,6 +11,7 @@ import (
 )
 
 func (a App) warmup(ctx context.Context, args []string) error {
+	started := time.Now()
 	fs := newFlagSet("warmup", a.Stderr)
 	provider := fs.String("provider", defaultConfig().Provider, "provider: hetzner or aws")
 	profile := fs.String("profile", defaultConfig().Profile, "profile")
@@ -74,6 +75,7 @@ func (a App) warmup(ctx context.Context, args []string) error {
 			return err
 		}
 	}
+	fmt.Fprintf(a.Stdout, "warmup complete total=%s\n", time.Since(started).Round(time.Millisecond))
 	return nil
 }
 
@@ -221,6 +223,7 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 				remoteFingerprint, err := runSSHOutput(ctx, target, remoteReadSyncFingerprint(workdir))
 				if err == nil && remoteFingerprint == fingerprint {
 					timings.sync = time.Since(syncStart)
+					timings.syncSkipped = true
 					fmt.Fprintf(a.Stderr, "No changes detected, skipping sync (%s)\n", timings.sync.Round(time.Millisecond))
 					goto afterSync
 				}
@@ -266,6 +269,7 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 afterSync:
 	if *syncOnly {
 		fmt.Fprintf(a.Stdout, "synced %s\n", workdir)
+		fmt.Fprintln(a.Stderr, formatRunSummary(timings, time.Since(timings.started), 0))
 		return nil
 	}
 
@@ -311,7 +315,9 @@ afterSync:
 			fmt.Fprintf(a.Stderr, "warning: run history finish failed for %s: %v\n", runID, err)
 		}
 	}
-	fmt.Fprintf(a.Stderr, "command complete in %s total=%s\n", timings.command.Round(time.Millisecond), time.Since(timings.started).Round(time.Millisecond))
+	total := time.Since(timings.started)
+	fmt.Fprintf(a.Stderr, "command complete in %s total=%s\n", timings.command.Round(time.Millisecond), total.Round(time.Millisecond))
+	fmt.Fprintln(a.Stderr, formatRunSummary(timings, total, code))
 	if code != 0 {
 		return ExitError{Code: code, Message: fmt.Sprintf("remote command exited %d", code)}
 	}
@@ -319,9 +325,20 @@ afterSync:
 }
 
 type runTimings struct {
-	started time.Time
-	sync    time.Duration
-	command time.Duration
+	started     time.Time
+	sync        time.Duration
+	command     time.Duration
+	syncSkipped bool
+}
+
+func formatRunSummary(timings runTimings, total time.Duration, exitCode int) string {
+	return fmt.Sprintf("run summary sync=%s command=%s total=%s sync_skipped=%t exit=%d",
+		timings.sync.Round(time.Millisecond),
+		timings.command.Round(time.Millisecond),
+		total.Round(time.Millisecond),
+		timings.syncSkipped,
+		exitCode,
+	)
 }
 
 func shouldUseShell(command []string) bool {

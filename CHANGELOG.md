@@ -18,6 +18,7 @@ Initial Crabbox release.
 - JUnit test-result summaries via `run --junit` and `results`.
 - Cache controls via `cache stats`, `cache warm`, and `cache purge`.
 - Usage command for estimated cost and runtime reporting by user, org, or fleet.
+- Sync inspection via `sync-plan`, showing local sync candidates, largest files, and largest directories without leasing a box.
 - GitHub Actions bridge with `actions register`, `actions dispatch`, and `actions hydrate` for running project-owned workflow setup on leased boxes.
 - Hydrated workspace detection so `crabbox run --id <lease>` syncs local dirty work into the workflow's `$GITHUB_WORKSPACE`.
 - Git-based sync manifests so Crabbox transfers tracked files plus nonignored untracked files instead of the full local tree.
@@ -45,6 +46,7 @@ Initial Crabbox release.
 - Local per-lease SSH keys move with coordinator-renamed lease IDs.
 - Cache stats and purge honor repo cache-kind toggles.
 - Stored test-result summaries are bounded before run history persistence.
+- `run`, `warmup`, and `actions hydrate` print concise completion timing summaries for faster live-test comparisons.
 
 ### Fixed
 
@@ -52,3 +54,4 @@ Initial Crabbox release.
 - Boolean flags for `logs` and admin lease actions work after positional IDs, such as `crabbox logs run_... --json`.
 - `actions hydrate` retries without optional `crabbox_job` when an older workflow ref rejects the input.
 - `cache warm` uses the hydrated GitHub Actions workspace and env handoff when a lease was prepared by `actions hydrate`.
+- Remote Git worktrees store sync metadata under `.git/crabbox` so repository status stays clean without using the worktree `.crabbox/` directory.

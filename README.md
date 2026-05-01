@@ -81,6 +81,7 @@ Working today:
 - [`crabbox init`](docs/commands/init.md)
 - [`crabbox warmup`](docs/commands/warmup.md)
 - [`crabbox run`](docs/commands/run.md)
+- [`crabbox sync-plan`](docs/commands/sync-plan.md)
 - [`crabbox history`](docs/commands/history.md)
 - [`crabbox logs`](docs/commands/logs.md)
 - [`crabbox results`](docs/commands/results.md)
