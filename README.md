@@ -1,4 +1,6 @@
-# Crabbox
+# 🦀 Crabbox
+
+**Warm a box, sync the diff, run the suite.**
 
 Crabbox is an open source remote testbox runner for maintainers and agents. It gives a fast local loop on owned cloud capacity: provision or reuse a warm Linux box, sync the current dirty checkout, run a command remotely, stream output, and clean up.
 
@@ -17,6 +19,11 @@ Latest release: `0.1.0`.
 
 ```sh
 brew install openclaw/tap/crabbox
+```
+
+Verify the installed binary:
+
+```sh
 crabbox --version
 ```
 
@@ -430,7 +437,7 @@ CI runs the same checks on pushes and pull requests.
 
 Tagged pushes matching `v*` publish Go CLI archives through GoReleaser. Manual reruns can use the `release` workflow with a tag input.
 
-GoReleaser also updates the Homebrew formula in `https://github.com/openclaw/homebrew-tap`, published to users as:
+Homebrew users install the published formula from `https://github.com/openclaw/homebrew-tap` with one command:
 
 ```sh
 brew install openclaw/tap/crabbox

@@ -1,4 +1,6 @@
-# Crabbox Docs
+# 🦀 Crabbox Docs
+
+**Warm a box, sync the diff, run the suite.**
 
 ## What Crabbox is
 
@@ -29,6 +31,14 @@ The CLI is a Go binary. The broker is a Cloudflare Worker plus a single Durable 
 6. CLI releases the lease unless `--keep` is set; kept leases still auto-release after idle timeout, and the broker frees reserved cost when the lease closes.
 
 See [How Crabbox Works](how-it-works.md) for the full picture, including warm-machine reuse and the brokered vs direct provider paths. See [Source Map](source-map.md) when you need to trace a documented behavior back to code.
+
+## Install
+
+```sh
+brew install openclaw/tap/crabbox
+```
+
+Verify with `crabbox --version`.
 
 ## Quick start
 
