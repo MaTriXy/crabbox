@@ -406,7 +406,7 @@ main{min-width:0;padding:28px clamp(20px,4.5vw,60px) 72px;max-width:1180px;margi
 /* layout: doc + toc */
 .doc-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:36px;margin-top:30px}
 .doc-grid-home{margin-top:14px}
-.doc-home{background:transparent;box-shadow:none;border:0;padding:8px 0 0;max-width:74ch;margin-inline:auto;width:100%}
+.doc-home{background:transparent;box-shadow:none;border:0;padding:8px clamp(18px,3vw,30px) 0;max-width:74ch;margin-inline:auto;width:100%}
 .doc-home>:first-child{margin-top:0}
 @media(min-width:1180px){.doc-grid{grid-template-columns:minmax(0,74ch) 200px;justify-content:start}.doc-grid-home{grid-template-columns:minmax(0,1fr)}}
 .doc{min-width:0;max-width:74ch;background:rgba(255,251,244,.78);box-shadow:var(--shadow);border:1px solid var(--line-soft);border-radius:10px;padding:clamp(22px,3.6vw,44px);overflow-wrap:break-word}
@@ -483,13 +483,14 @@ main{min-width:0;padding:28px clamp(20px,4.5vw,60px) 72px;max-width:1180px;margi
   .hero-snippet{font-size:.78rem;padding:16px 16px}
   .features{grid-template-columns:1fr;margin-top:22px}
   .doc{padding:20px;border-radius:8px}
-  .doc-home{padding:0}
+  .doc-home{padding:0 18px}
   .doc-grid{margin-top:22px;gap:24px}
   .doc :is(h2,h3,h4) .anchor{display:none}
 }
 @media(max-width:520px){
   main{padding:60px 14px 48px}
   .doc{padding:18px 16px}
+  .doc-home{padding-inline:16px}
   .doc pre{margin-left:-16px;margin-right:-16px;border-radius:0;border-left:0;border-right:0}
 }
 `;

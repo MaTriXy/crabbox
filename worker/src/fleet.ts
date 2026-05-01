@@ -10,7 +10,9 @@ import type {
   LeaseRecord,
   LeaseRequest,
   Provider,
+  ProviderImage,
   ProviderMachine,
+  PromotedImageRecord,
   RunCreateRequest,
   RunFinishRequest,
   RunRecord,
@@ -71,6 +73,18 @@ export class FleetDurableObject implements DurableObject {
       if (parts[0] === "v1" && parts[1] === "runs" && parts[2]) {
         return await this.runRoute(request, parts[2], parts[3]);
       }
+      if (method === "POST" && parts.join("/") === "v1/images") {
+        if (!isAdminRequest(request)) {
+          return json({ error: "forbidden", message: "admin token required" }, { status: 403 });
+        }
+        return await this.createImage(request);
+      }
+      if (parts[0] === "v1" && parts[1] === "images" && parts[2]) {
+        if (!isAdminRequest(request)) {
+          return json({ error: "forbidden", message: "admin token required" }, { status: 403 });
+        }
+        return await this.imageRoute(request, parts[2], parts[3]);
+      }
       if (method === "GET" && parts.join("/") === "v1/leases") {
         return await this.listLeases(request);
       }
@@ -98,6 +112,9 @@ export class FleetDurableObject implements DurableObject {
     const config = leaseConfig(input);
     if (config.provider === "aws" && config.awsSSHCIDRs.length === 0) {
       config.awsSSHCIDRs = requestSourceCIDRs(request);
+    }
+    if (config.provider === "aws" && !config.awsAMI) {
+      config.awsAMI = (await this.promotedAWSImage())?.id ?? "";
     }
     const leaseID = validLeaseID(input.leaseID) ? input.leaseID : newLeaseID();
     const leases = await this.leaseRecords();
@@ -456,6 +473,63 @@ export class FleetDurableObject implements DurableObject {
     return json({ usage, limits: costLimits(this.env) });
   }
 
+  private async createImage(request: Request): Promise<Response> {
+    const input = await readJson<{
+      leaseID?: string;
+      id?: string;
+      name?: string;
+      noReboot?: boolean;
+    }>(request);
+    const leaseID = input.leaseID ?? input.id ?? "";
+    const name = input.name ?? "";
+    if (!validLeaseID(leaseID)) {
+      return json({ error: "invalid_lease_id" }, { status: 400 });
+    }
+    if (!validImageName(name)) {
+      return json({ error: "invalid_image_name" }, { status: 400 });
+    }
+    const lease = await this.resolveLease(leaseID, request, true);
+    if (!lease) {
+      return notFound();
+    }
+    if (lease.provider !== "aws" || !lease.cloudID) {
+      return json(
+        { error: "unsupported_provider", message: "only AWS leases can be imaged" },
+        { status: 400 },
+      );
+    }
+    const image = await this.provider("aws", lease.region).createImage(
+      lease.cloudID,
+      name,
+      input.noReboot ?? true,
+    );
+    return json({ image }, { status: 201 });
+  }
+
+  private async imageRoute(request: Request, imageID: string, action?: string): Promise<Response> {
+    const method = request.method.toUpperCase();
+    if (!validImageID(imageID)) {
+      return json({ error: "invalid_image_id" }, { status: 400 });
+    }
+    if (method === "GET" && action === undefined) {
+      const image = await this.provider("aws").getImage(imageID);
+      return json({ image });
+    }
+    if (method === "POST" && action === "promote") {
+      const image = await this.provider("aws").getImage(imageID);
+      if (image.state !== "available") {
+        return json(
+          { error: "image_not_available", message: `image ${imageID} is ${image.state}` },
+          { status: 409 },
+        );
+      }
+      const promoted: PromotedImageRecord = { ...image, promotedAt: new Date().toISOString() };
+      await this.state.storage.put(promotedAWSImageKey(), promoted);
+      return json({ image: promoted });
+    }
+    return json({ error: "not_found" }, { status: 404 });
+  }
+
   private async expireLeases(): Promise<void> {
     const leases = await this.state.storage.list<LeaseRecord>({ prefix: "lease:" });
     const now = Date.now();
@@ -560,6 +634,10 @@ export class FleetDurableObject implements DurableObject {
     await this.state.storage.put(leaseKey(lease.id), lease);
   }
 
+  private async promotedAWSImage(): Promise<PromotedImageRecord | undefined> {
+    return this.state.storage.get<PromotedImageRecord>(promotedAWSImageKey());
+  }
+
   private async getRun(runID: string): Promise<RunRecord | undefined> {
     return this.state.storage.get<RunRecord>(runKey(runID));
   }
@@ -606,6 +684,10 @@ function runLogKey(runID: string): string {
   return `runlog:${runID}`;
 }
 
+function promotedAWSImageKey(): string {
+  return "image:aws:promoted";
+}
+
 function newLeaseID(): string {
   const bytes = new Uint8Array(6);
   crypto.getRandomValues(bytes);
@@ -620,6 +702,14 @@ function newRunID(): string {
 
 function validLeaseID(value: string | undefined): value is string {
   return typeof value === "string" && /^cbx_[a-f0-9]{12}$/.test(value);
+}
+
+function validImageID(value: string | undefined): value is string {
+  return typeof value === "string" && /^ami-[a-f0-9]{8,32}$/.test(value);
+}
+
+function validImageName(value: string): boolean {
+  return /^[A-Za-z0-9()[\]./_ -]{3,128}$/.test(value);
 }
 
 function validCrabboxProviderKey(value: string | undefined): value is string {
@@ -807,6 +897,8 @@ interface CloudProvider {
     owner: string,
   ): Promise<{ server: ProviderMachine; serverType: string }>;
   deleteServer(id: string): Promise<void>;
+  createImage(instanceID: string, name: string, noReboot: boolean): Promise<ProviderImage>;
+  getImage(imageID: string): Promise<ProviderImage>;
   deleteSSHKey(name: string): Promise<void>;
   hourlyPriceUSD(
     serverType: string,
@@ -843,6 +935,14 @@ class HetznerProvider implements CloudProvider {
 
   async deleteServer(id: string): Promise<void> {
     await this.client.deleteServer(Number(id));
+  }
+
+  createImage(): Promise<ProviderImage> {
+    throw new Error("hetzner images are not supported");
+  }
+
+  getImage(): Promise<ProviderImage> {
+    throw new Error("hetzner images are not supported");
   }
 
   async deleteSSHKey(name: string): Promise<void> {
@@ -885,6 +985,14 @@ class AWSProvider implements CloudProvider {
 
   async deleteServer(id: string): Promise<void> {
     await this.client.deleteServer(id);
+  }
+
+  createImage(instanceID: string, name: string, noReboot: boolean): Promise<ProviderImage> {
+    return this.client.createImage(instanceID, name, noReboot);
+  }
+
+  getImage(imageID: string): Promise<ProviderImage> {
+    return this.client.getImage(imageID);
   }
 
   async deleteSSHKey(name: string): Promise<void> {

@@ -62,6 +62,8 @@ func (a App) Run(ctx context.Context, args []string) error {
 		return a.config(ctx, args[1:])
 	case "init":
 		return a.initProject(ctx, args[1:])
+	case "image":
+		return a.image(ctx, args[1:])
 	case "pool":
 		return a.pool(ctx, args[1:])
 	case "machine":
@@ -127,6 +129,7 @@ Commands:
   cache       Inspect, purge, or warm remote caches
   status      Show lease state; add --wait to block until ready
   list        List Crabbox machines
+  image       Create or promote brokered AWS runner images
   usage       Show cost and usage estimates by user, org, or fleet
   admin       Lease admin controls for trusted operators
   actions     Register GitHub Actions runners or dispatch workflows

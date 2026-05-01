@@ -164,6 +164,13 @@ crabbox admin release blue-lobster
 crabbox admin delete cbx_abcdef123456 --force
 ```
 
+Trusted operator image controls:
+
+```sh
+crabbox image create --id cbx_abcdef123456 --name openclaw-crabbox-20260501-1246 --wait
+crabbox image promote ami-1234567890abcdef0
+```
+
 ## `run`
 
 `crabbox run` is the main command.

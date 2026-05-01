@@ -292,6 +292,52 @@ describe("fleet lease identity and idle", () => {
     );
     expect(allowed.status).toBe(200);
   });
+
+  it("creates, waits, and promotes AWS images through admin routes", async () => {
+    const storage = new MemoryStorage();
+    const fleet = testFleet(storage, {
+      aws: fakeProvider(),
+    });
+    storage.seed(
+      "lease:cbx_000000000001",
+      testLease({
+        id: "cbx_000000000001",
+        provider: "aws",
+        cloudID: "i-123",
+        region: "eu-west-1",
+      }),
+    );
+
+    const denied = await fleet.fetch(
+      request("POST", "/v1/images", {
+        body: { leaseID: "cbx_000000000001", name: "openclaw-crabbox-test" },
+      }),
+    );
+    expect(denied.status).toBe(403);
+
+    const created = await fleet.fetch(
+      request("POST", "/v1/images", {
+        headers: { "x-crabbox-admin": "true" },
+        body: { leaseID: "cbx_000000000001", name: "openclaw-crabbox-test" },
+      }),
+    );
+    expect(created.status).toBe(201);
+    const createdBody = (await created.json()) as { image: { id: string; state: string } };
+    expect(createdBody.image).toEqual(
+      expect.objectContaining({ id: "ami-000000000001", state: "pending" }),
+    );
+
+    const promoted = await fleet.fetch(
+      request("POST", "/v1/images/ami-000000000001/promote", {
+        headers: { "x-crabbox-admin": "true" },
+        body: {},
+      }),
+    );
+    expect(promoted.status).toBe(200);
+    expect(storage.value("image:aws:promoted")).toEqual(
+      expect.objectContaining({ id: "ami-000000000001", state: "available" }),
+    );
+  });
 });
 
 describe("fleet run history", () => {
@@ -739,6 +785,17 @@ function fakeProvider(onCreate?: (config: { awsSSHCIDRs: string[] }) => void) {
       };
     },
     async deleteServer() {},
+    async createImage(_instanceID: string, name: string) {
+      return { id: "ami-000000000001", name, state: "pending", region: "eu-west-1" };
+    },
+    async getImage(imageID: string) {
+      return {
+        id: imageID,
+        name: "openclaw-crabbox-test",
+        state: "available",
+        region: "eu-west-1",
+      };
+    },
     async deleteSSHKey() {},
     async hourlyPriceUSD() {
       return 0.1;

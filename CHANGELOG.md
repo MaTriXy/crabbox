@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0 - Unreleased
+
+### Added
+
+- Added trusted-operator `crabbox image create` and `crabbox image promote` commands for baking AWS leases into AMIs and promoting a broker default image.
+
+### Fixed
+
+- Added responsive padding to the generated docs-site frontpage body content.
+
 ## 0.2.0 - 2026-05-01
 
 Crabbox 0.2.0 hardens the brokered runner path after real AWS and Blacksmith Testbox use: browser login is safer, AWS SSH ingress is no longer world-open by default, SSH readiness waits for the Crabbox bootstrap marker, and fallback SSH ports are configurable instead of being hidden port-22 magic.

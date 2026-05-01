@@ -99,6 +99,17 @@ export interface LeaseRecord {
   endedAt?: string;
 }
 
+export interface ProviderImage {
+  id: string;
+  name: string;
+  state: string;
+  region?: string;
+}
+
+export interface PromotedImageRecord extends ProviderImage {
+  promotedAt: string;
+}
+
 export interface RunRecord {
   id: string;
   leaseID: string;

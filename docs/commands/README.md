@@ -18,6 +18,7 @@ Command docs live here, one file per top-level command. Keep `docs/cli.md` as th
 - [status](status.md)
 - [list](list.md)
 - [usage](usage.md)
+- [image](image.md)
 - [admin](admin.md)
 - [ssh](ssh.md)
 - [inspect](inspect.md)

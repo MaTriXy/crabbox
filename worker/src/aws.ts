@@ -10,7 +10,7 @@ import {
 } from "./config";
 import { leaseProviderLabels } from "./provider-labels";
 import { leaseProviderName } from "./slug";
-import type { Env, ProviderMachine } from "./types";
+import type { Env, ProviderImage, ProviderMachine } from "./types";
 
 const awsUbuntuOwner = "099720109477";
 const ec2Version = "2016-11-15";
@@ -157,6 +157,44 @@ export class EC2SpotClient {
 
   async deleteServer(instanceID: string): Promise<void> {
     await this.ec2("TerminateInstances", { "InstanceId.1": instanceID });
+  }
+
+  async createImage(instanceID: string, name: string, noReboot: boolean): Promise<ProviderImage> {
+    const params: Record<string, string> = {
+      InstanceId: instanceID,
+      Name: name,
+      NoReboot: noReboot ? "true" : "false",
+      "TagSpecification.1.ResourceType": "image",
+      "TagSpecification.1.Tag.1.Key": "crabbox",
+      "TagSpecification.1.Tag.1.Value": "true",
+      "TagSpecification.1.Tag.2.Key": "created_by",
+      "TagSpecification.1.Tag.2.Value": "crabbox",
+      "TagSpecification.1.Tag.3.Key": "Name",
+      "TagSpecification.1.Tag.3.Value": name,
+    };
+    const root = await this.ec2("CreateImage", params);
+    const imageID = asString(root["imageId"]);
+    if (!imageID) {
+      throw new Error("aws returned no image id");
+    }
+    return { id: imageID, name, state: "pending", region: this.region };
+  }
+
+  async getImage(imageID: string): Promise<ProviderImage> {
+    const root = await this.ec2("DescribeImages", {
+      "ImageId.1": imageID,
+    });
+    const image = record(items(record(root["imagesSet"])["item"])[0]);
+    const id = asString(image["imageId"]);
+    if (!id) {
+      throw new Error(`aws image not found: ${imageID}`);
+    }
+    return {
+      id,
+      name: asString(image["name"]),
+      state: asString(image["imageState"]),
+      region: this.region,
+    };
   }
 
   async deleteSSHKey(name: string): Promise<void> {

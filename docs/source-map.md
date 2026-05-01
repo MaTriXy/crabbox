@@ -16,6 +16,7 @@ This page maps user-facing behavior back to implementation files. Keep docs desc
 - `crabbox init` generated repo files: `internal/cli/init.go`
 - Login/logout/whoami/config commands: `internal/cli/auth.go`, `internal/cli/config_cmd.go`
 - Doctor checks: `internal/cli/doctor.go`
+- AWS image bake/promote commands: `internal/cli/image.go`, `internal/cli/coordinator.go`
 
 ## Leases, Slugs, Claims, And Expiry
 
@@ -34,6 +35,7 @@ This page maps user-facing behavior back to implementation files. Keep docs desc
 - Blacksmith Testbox CLI wrapper: `internal/cli/blacksmith.go`
 - Worker Hetzner provider: `worker/src/hetzner.ts`
 - Worker AWS EC2 Spot provider: `worker/src/aws.ts`
+- Worker AWS AMI create/read/promote routes: `worker/src/fleet.ts`, `worker/src/aws.ts`
 - CLI cloud-init bootstrap: `internal/cli/bootstrap.go`
 - Worker cloud-init bootstrap: `worker/src/bootstrap.ts`
 

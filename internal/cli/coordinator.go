@@ -72,6 +72,14 @@ type CoordinatorWhoami struct {
 	Auth  string `json:"auth"`
 }
 
+type CoordinatorImage struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	State      string `json:"state"`
+	Region     string `json:"region,omitempty"`
+	PromotedAt string `json:"promotedAt,omitempty"`
+}
+
 type CoordinatorGitHubLoginStart struct {
 	LoginID   string `json:"loginID"`
 	URL       string `json:"url"`
@@ -403,6 +411,34 @@ func (c *CoordinatorClient) AdminDeleteLease(ctx context.Context, id string) (Co
 	}
 	err := c.do(ctx, http.MethodPost, "/v1/admin/leases/"+url.PathEscape(id)+"/delete", map[string]any{}, &res)
 	return res.Lease, err
+}
+
+func (c *CoordinatorClient) CreateImage(ctx context.Context, leaseID, name string, noReboot bool) (CoordinatorImage, error) {
+	var res struct {
+		Image CoordinatorImage `json:"image"`
+	}
+	err := c.do(ctx, http.MethodPost, "/v1/images", map[string]any{
+		"leaseID":  leaseID,
+		"name":     name,
+		"noReboot": noReboot,
+	}, &res)
+	return res.Image, err
+}
+
+func (c *CoordinatorClient) Image(ctx context.Context, imageID string) (CoordinatorImage, error) {
+	var res struct {
+		Image CoordinatorImage `json:"image"`
+	}
+	err := c.do(ctx, http.MethodGet, "/v1/images/"+url.PathEscape(imageID), nil, &res)
+	return res.Image, err
+}
+
+func (c *CoordinatorClient) PromoteImage(ctx context.Context, imageID string) (CoordinatorImage, error) {
+	var res struct {
+		Image CoordinatorImage `json:"image"`
+	}
+	err := c.do(ctx, http.MethodPost, "/v1/images/"+url.PathEscape(imageID)+"/promote", map[string]any{}, &res)
+	return res.Image, err
 }
 
 func (c *CoordinatorClient) CreateRun(ctx context.Context, leaseID string, cfg Config, command []string) (CoordinatorRun, error) {

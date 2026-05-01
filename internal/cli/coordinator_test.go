@@ -149,6 +149,52 @@ func TestCoordinatorCreateLeaseSendsAWSSSHCIDRs(t *testing.T) {
 	}
 }
 
+func TestCoordinatorImageCreateAndPromote(t *testing.T) {
+	var createBody struct {
+		LeaseID  string `json:"leaseID"`
+		Name     string `json:"name"`
+		NoReboot bool   `json:"noReboot"`
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/images":
+			if r.Method != http.MethodPost {
+				t.Fatalf("method=%s", r.Method)
+			}
+			if err := json.NewDecoder(r.Body).Decode(&createBody); err != nil {
+				t.Fatal(err)
+			}
+			_, _ = w.Write([]byte(`{"image":{"id":"ami-12345678","name":"openclaw-crabbox-test","state":"pending","region":"eu-west-1"}}`))
+		case "/v1/images/ami-12345678":
+			_, _ = w.Write([]byte(`{"image":{"id":"ami-12345678","name":"openclaw-crabbox-test","state":"available","region":"eu-west-1"}}`))
+		case "/v1/images/ami-12345678/promote":
+			if r.Method != http.MethodPost {
+				t.Fatalf("method=%s", r.Method)
+			}
+			_, _ = w.Write([]byte(`{"image":{"id":"ami-12345678","name":"openclaw-crabbox-test","state":"available","region":"eu-west-1","promotedAt":"2026-05-01T12:46:00Z"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := CoordinatorClient{BaseURL: server.URL, Client: server.Client()}
+	created, err := client.CreateImage(context.Background(), "cbx_123", "openclaw-crabbox-test", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.ID != "ami-12345678" || createBody.LeaseID != "cbx_123" || createBody.Name != "openclaw-crabbox-test" || !createBody.NoReboot {
+		t.Fatalf("created=%#v body=%#v", created, createBody)
+	}
+	if image, err := client.Image(context.Background(), "ami-12345678"); err != nil || image.State != "available" {
+		t.Fatalf("image=%#v err=%v", image, err)
+	}
+	if promoted, err := client.PromoteImage(context.Background(), "ami-12345678"); err != nil || promoted.PromotedAt == "" {
+		t.Fatalf("promoted=%#v err=%v", promoted, err)
+	}
+}
+
 func TestLeaseStatusRequiresSSHReadiness(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/v1/leases/cbx_123" {
