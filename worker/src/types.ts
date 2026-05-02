@@ -83,6 +83,8 @@ export interface LeaseRecord {
   profile: string;
   class: string;
   serverType: string;
+  requestedServerType?: string;
+  provisioningAttempts?: ProvisioningAttempt[];
   serverID: number;
   serverName: string;
   providerKey: string;
@@ -103,6 +105,13 @@ export interface LeaseRecord {
   expiresAt: string;
   releasedAt?: string;
   endedAt?: string;
+}
+
+export interface ProvisioningAttempt {
+  serverType: string;
+  market?: string;
+  category?: string;
+  message: string;
 }
 
 export interface ProviderImage {

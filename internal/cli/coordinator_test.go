@@ -252,6 +252,41 @@ func TestCoordinatorCreateLeaseSendsAWSSSHCIDRs(t *testing.T) {
 	}
 }
 
+func TestCoordinatorLeaseDecodesProvisioningAttempts(t *testing.T) {
+	var lease CoordinatorLease
+	if err := json.Unmarshal([]byte(`{
+		"id":"cbx_123",
+		"provider":"aws",
+		"serverType":"c7i.24xlarge",
+		"requestedServerType":"c7a.48xlarge",
+		"provisioningAttempts":[{"serverType":"c7a.48xlarge","market":"spot","category":"policy","message":"not eligible"}]
+	}`), &lease); err != nil {
+		t.Fatal(err)
+	}
+	if lease.RequestedServerType != "c7a.48xlarge" || lease.ServerType != "c7i.24xlarge" {
+		t.Fatalf("lease=%#v", lease)
+	}
+	if len(lease.ProvisioningAttempts) != 1 || lease.ProvisioningAttempts[0].Category != "policy" {
+		t.Fatalf("attempts=%#v", lease.ProvisioningAttempts)
+	}
+}
+
+func TestCoordinatorFallbackSummary(t *testing.T) {
+	summary := coordinatorFallbackSummary(CoordinatorLease{
+		RequestedServerType: "c7a.48xlarge",
+		ServerType:          "c7i.24xlarge",
+		ProvisioningAttempts: []ProvisioningAttempt{{
+			ServerType: "c7a.48xlarge",
+			Market:     "spot",
+			Category:   "policy",
+			Message:    "not eligible",
+		}},
+	})
+	if !strings.Contains(summary, "requested_type=c7a.48xlarge") || !strings.Contains(summary, "attempts=c7a.48xlarge:policy") {
+		t.Fatalf("summary=%q", summary)
+	}
+}
+
 func TestCoordinatorImageCreateAndPromote(t *testing.T) {
 	var createBody struct {
 		LeaseID  string `json:"leaseID"`

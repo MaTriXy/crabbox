@@ -10,7 +10,7 @@ import {
 } from "./config";
 import { leaseProviderLabels } from "./provider-labels";
 import { leaseProviderName } from "./slug";
-import type { Env, ProviderImage, ProviderMachine } from "./types";
+import type { Env, ProviderImage, ProviderMachine, ProvisioningAttempt } from "./types";
 
 const awsUbuntuOwner = "099720109477";
 const ec2Version = "2016-11-15";
@@ -79,12 +79,13 @@ export class EC2SpotClient {
     leaseID: string,
     slug: string,
     owner: string,
-  ): Promise<{ server: ProviderMachine; serverType: string }> {
+  ): Promise<{ server: ProviderMachine; serverType: string; attempts?: ProvisioningAttempt[] }> {
     await this.ensureSSHKey(config.providerKey, config.sshPublicKey);
     const imageID = await this.resolveAMI(config);
     const securityGroupID = await this.ensureSecurityGroup(config);
     const candidates = awsLaunchCandidates(config);
     const failures: string[] = [];
+    const attempts: ProvisioningAttempt[] = [];
     for (const serverType of candidates) {
       try {
         // oxlint-disable-next-line eslint/no-await-in-loop -- instance-type fallback must stay sequential.
@@ -96,9 +97,23 @@ export class EC2SpotClient {
           imageID,
           securityGroupID,
         );
-        return { server, serverType };
+        const result: {
+          server: ProviderMachine;
+          serverType: string;
+          attempts?: ProvisioningAttempt[];
+        } = { server, serverType };
+        if (attempts.length > 0) {
+          result.attempts = attempts;
+        }
+        return result;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        attempts.push({
+          serverType,
+          market: config.capacityMarket,
+          category: awsProvisioningErrorCategory(message) || "fatal",
+          message: conciseAWSProvisioningMessage(message),
+        });
         failures.push(`${serverType}: ${message}`);
         if (!isRetryableAWSProvisioningError(message)) {
           break;
@@ -117,9 +132,23 @@ export class EC2SpotClient {
             imageID,
             securityGroupID,
           );
-          return { server, serverType };
+          const result: {
+            server: ProviderMachine;
+            serverType: string;
+            attempts?: ProvisioningAttempt[];
+          } = { server, serverType };
+          if (attempts.length > 0) {
+            result.attempts = attempts;
+          }
+          return result;
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
+          attempts.push({
+            serverType,
+            market: "on-demand",
+            category: awsProvisioningErrorCategory(message) || "fatal",
+            message: conciseAWSProvisioningMessage(message),
+          });
           failures.push(`on-demand ${serverType}: ${message}`);
           if (!isRetryableAWSProvisioningError(message)) {
             break;
@@ -593,6 +622,15 @@ function isRetryableAWSProvisioningError(message: string): boolean {
 
 function trimBody(text: string): string {
   return text.length > 500 ? `${text.slice(0, 500)}...` : text;
+}
+
+function conciseAWSProvisioningMessage(message: string): string {
+  const code = /<Code>([^<]+)<\/Code>/.exec(message)?.[1] ?? "";
+  const detail = /<Message>([^<]+)<\/Message>/.exec(message)?.[1] ?? "";
+  if (code && detail) {
+    return `${code}: ${detail}`;
+  }
+  return trimBody(message).replace(/\s+/g, " ");
 }
 
 function sleep(ms: number): Promise<void> {

@@ -25,30 +25,39 @@ type CoordinatorClient struct {
 }
 
 type CoordinatorLease struct {
-	ID                 string   `json:"id"`
-	Slug               string   `json:"slug,omitempty"`
-	Provider           string   `json:"provider"`
-	Owner              string   `json:"owner"`
-	Org                string   `json:"org"`
-	Profile            string   `json:"profile"`
-	Class              string   `json:"class"`
-	ServerType         string   `json:"serverType"`
-	ServerID           int64    `json:"serverID"`
-	CloudID            string   `json:"cloudID"`
-	ServerName         string   `json:"serverName"`
-	Host               string   `json:"host"`
-	SSHUser            string   `json:"sshUser"`
-	SSHPort            string   `json:"sshPort"`
-	SSHFallbackPorts   []string `json:"sshFallbackPorts,omitempty"`
-	WorkRoot           string   `json:"workRoot"`
-	Keep               bool     `json:"keep"`
-	State              string   `json:"state"`
-	TTLSeconds         int      `json:"ttlSeconds,omitempty"`
-	IdleTimeoutSeconds int      `json:"idleTimeoutSeconds,omitempty"`
-	CreatedAt          string   `json:"createdAt,omitempty"`
-	UpdatedAt          string   `json:"updatedAt,omitempty"`
-	LastTouchedAt      string   `json:"lastTouchedAt,omitempty"`
-	ExpiresAt          string   `json:"expiresAt"`
+	ID                   string                `json:"id"`
+	Slug                 string                `json:"slug,omitempty"`
+	Provider             string                `json:"provider"`
+	Owner                string                `json:"owner"`
+	Org                  string                `json:"org"`
+	Profile              string                `json:"profile"`
+	Class                string                `json:"class"`
+	ServerType           string                `json:"serverType"`
+	RequestedServerType  string                `json:"requestedServerType,omitempty"`
+	ProvisioningAttempts []ProvisioningAttempt `json:"provisioningAttempts,omitempty"`
+	ServerID             int64                 `json:"serverID"`
+	CloudID              string                `json:"cloudID"`
+	ServerName           string                `json:"serverName"`
+	Host                 string                `json:"host"`
+	SSHUser              string                `json:"sshUser"`
+	SSHPort              string                `json:"sshPort"`
+	SSHFallbackPorts     []string              `json:"sshFallbackPorts,omitempty"`
+	WorkRoot             string                `json:"workRoot"`
+	Keep                 bool                  `json:"keep"`
+	State                string                `json:"state"`
+	TTLSeconds           int                   `json:"ttlSeconds,omitempty"`
+	IdleTimeoutSeconds   int                   `json:"idleTimeoutSeconds,omitempty"`
+	CreatedAt            string                `json:"createdAt,omitempty"`
+	UpdatedAt            string                `json:"updatedAt,omitempty"`
+	LastTouchedAt        string                `json:"lastTouchedAt,omitempty"`
+	ExpiresAt            string                `json:"expiresAt"`
+}
+
+type ProvisioningAttempt struct {
+	ServerType string `json:"serverType"`
+	Market     string `json:"market,omitempty"`
+	Category   string `json:"category,omitempty"`
+	Message    string `json:"message"`
 }
 
 type CoordinatorMachine struct {

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { FleetDurableObject } from "../src/fleet";
-import type { Env, LeaseRecord, RunRecord } from "../src/types";
+import type { Env, LeaseRecord, ProvisioningAttempt, RunRecord } from "../src/types";
 
 class MemoryStorage {
   private readonly values = new Map<string, unknown>();
@@ -146,6 +146,47 @@ describe("fleet lease identity and idle", () => {
     );
     expect(create.status).toBe(201);
     expect(awsCIDRs).toEqual(["198.51.100.0/24"]);
+  });
+
+  it("records requested type and provider fallback attempts on resolved leases", async () => {
+    const attempts: ProvisioningAttempt[] = [
+      {
+        serverType: "c7a.48xlarge",
+        market: "spot",
+        category: "policy",
+        message: "InvalidParameterCombination: not eligible",
+      },
+    ];
+    const fleet = testFleet(new MemoryStorage(), {
+      aws: fakeProvider(undefined, {
+        provider: "aws",
+        serverType: "c7i.24xlarge",
+        cloudID: "i-123",
+        attempts,
+      }),
+    });
+    const create = await fleet.fetch(
+      request("POST", "/v1/leases", {
+        headers: {
+          "x-crabbox-owner": "peter@example.com",
+          "x-crabbox-org": "openclaw",
+        },
+        body: {
+          leaseID: "cbx_abcdef123456",
+          provider: "aws",
+          class: "beast",
+          serverType: "c7a.48xlarge",
+          ttlSeconds: 1200,
+          idleTimeoutSeconds: 360,
+          sshPublicKey: "ssh-ed25519 test",
+        },
+      }),
+    );
+    expect(create.status).toBe(201);
+    const { lease } = (await create.json()) as { lease: LeaseRecord };
+    expect(lease.requestedServerType).toBe("c7a.48xlarge");
+    expect(lease.serverType).toBe("c7i.24xlarge");
+    expect(lease.provisioningAttempts).toEqual(attempts);
   });
 
   it("scopes non-admin usage to the current owner", async () => {
@@ -404,6 +445,42 @@ describe("fleet run history", () => {
       request("GET", `/v1/runs/${run.id}/logs`, { headers: ownerHeaders }),
     );
     expect(await logs.text()).toBe("ok\n");
+  });
+
+  it("records resolved lease metadata instead of caller-supplied fallback guesses", async () => {
+    const storage = new MemoryStorage();
+    const fleet = testFleet(storage);
+    storage.seed(
+      "lease:cbx_000000000001",
+      testLease({
+        id: "cbx_000000000001",
+        provider: "aws",
+        class: "beast",
+        serverType: "c7i.24xlarge",
+        owner: "peter@example.com",
+        org: "openclaw",
+      }),
+    );
+    const create = await fleet.fetch(
+      request("POST", "/v1/runs", {
+        headers: {
+          "x-crabbox-owner": "peter@example.com",
+          "x-crabbox-org": "openclaw",
+        },
+        body: {
+          leaseID: "cbx_000000000001",
+          provider: "aws",
+          class: "beast",
+          serverType: "c7a.48xlarge",
+          command: ["go", "test", "./..."],
+        },
+      }),
+    );
+    expect(create.status).toBe(201);
+    const { run } = (await create.json()) as { run: RunRecord };
+    expect(run.provider).toBe("aws");
+    expect(run.class).toBe("beast");
+    expect(run.serverType).toBe("c7i.24xlarge");
   });
 
   it("hides run records and logs from other non-admin users", async () => {
@@ -835,7 +912,15 @@ function testFleet(storage = new MemoryStorage(), providers = {}): FleetDurableO
   );
 }
 
-function fakeProvider(onCreate?: (config: { awsSSHCIDRs: string[] }) => void) {
+function fakeProvider(
+  onCreate?: (config: { awsSSHCIDRs: string[] }) => void,
+  result: {
+    provider?: "hetzner" | "aws";
+    serverType?: string;
+    cloudID?: string;
+    attempts?: ProvisioningAttempt[];
+  } = {},
+) {
   return {
     async listCrabboxServers() {
       return [];
@@ -848,16 +933,17 @@ function fakeProvider(onCreate?: (config: { awsSSHCIDRs: string[] }) => void) {
       onCreate?.(config);
       return {
         server: {
-          provider: "hetzner",
+          provider: result.provider ?? "hetzner",
           id: 123,
-          cloudID: "123",
+          cloudID: result.cloudID ?? "123",
           name: `crabbox-${slug}`,
           status: "running",
-          serverType: "cpx62",
+          serverType: result.serverType ?? "cpx62",
           host: "192.0.2.10",
           labels: {},
         },
-        serverType: "cpx62",
+        serverType: result.serverType ?? "cpx62",
+        attempts: result.attempts,
       };
     },
     async deleteServer() {},

@@ -20,11 +20,14 @@ Crabbox 0.3.0 adds the first trusted-operator image lifecycle for AWS runners: o
 - Added `npm run docs:check` with internal Markdown link validation plus docs-site generation, and wired it into CI.
 - Added `scripts/live-smoke.sh` for opt-in AWS, Hetzner, and Blacksmith Testbox live smoke coverage from a real repository checkout.
 - Added `scripts/live-auth-smoke.sh` for opt-in live proof that shared tokens cannot call admin routes, admin tokens can, Access edge auth works, and raw Access identity headers are ignored.
+- Added `scripts/deploy-worker-smoke.sh` to run the Worker gate, deploy the coordinator, verify public health routes, and optionally include a short AWS lease smoke.
 
 ### Changed
 
 - Brokered AWS class requests now fall back through provider candidates, account-policy launch rejections, and a small burstable fallback instead of failing on the first Free Tier-ineligible high-core type.
+- Brokered lease records now keep the requested AWS instance type plus concise provisioning-attempt metadata when fallback chooses a different type.
 - Hydrated runs now skip the expensive Git base-ref hydration fetch when the remote base is already current enough for the local base SHA.
+- Coordinator run history now records the resolved lease provider/class/type when a lease exists, avoiding stale requested-type entries after fallback.
 - Brokered AWS lease creation now uses the promoted AWS image when no explicit `awsAMI` or `CRABBOX_AWS_AMI` override is supplied.
 - Image route validation now rejects noncanonical lease IDs, invalid AMI IDs, invalid AMI names, non-AWS leases, and promotion attempts before an image reaches `available`.
 - Moved the deployed coordinator route to the OpenClaw Cloudflare account at `https://crabbox.openclaw.ai` and scoped default broker org/auth settings to `openclaw`.

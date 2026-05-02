@@ -81,6 +81,7 @@ func (a App) warmup(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	applyResolvedServerConfig(&cfg, server)
 	if err := claimLeaseForRepo(leaseID, serverSlug(server), repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
 		a.releaseAcquiredLeaseBestEffort(ctx, cfg, coord, useCoordinator, server, target, leaseID)
 		return err
@@ -234,6 +235,7 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	applyResolvedServerConfig(&cfg, server)
 	if err := claimLeaseForRepo(leaseID, serverSlug(server), repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
 		if acquired && !*keep {
 			a.releaseAcquiredLeaseBestEffort(ctx, cfg, coord, useCoordinator, server, target, leaseID)
@@ -610,6 +612,9 @@ func (a App) acquireCoordinator(ctx context.Context, cfg Config, coord *Coordina
 	}
 	server, target, leaseID := leaseToServerTarget(lease, cfg)
 	fmt.Fprintf(a.Stderr, "leased %s slug=%s server=%d type=%s ip=%s via coordinator\n", leaseID, blank(lease.Slug, "-"), server.ID, server.ServerType.Name, target.Host)
+	if summary := coordinatorFallbackSummary(lease); summary != "" {
+		fmt.Fprintf(a.Stderr, "fallback resolved %s\n", summary)
+	}
 	waitCtx, cancelWait := context.WithCancelCause(ctx)
 	defer cancelWait(nil)
 	stopHeartbeat := startCoordinatorHeartbeat(waitCtx, coord, leaseID, cfg.IdleTimeout, nil, a.Stderr)
@@ -625,6 +630,36 @@ func (a App) acquireCoordinator(ctx context.Context, cfg Config, coord *Coordina
 		return Server{}, SSHTarget{}, "", err
 	}
 	return server, target, leaseID, nil
+}
+
+func applyResolvedServerConfig(cfg *Config, server Server) {
+	if server.Provider != "" {
+		cfg.Provider = server.Provider
+	}
+	if server.ServerType.Name != "" {
+		cfg.ServerType = server.ServerType.Name
+	}
+}
+
+func coordinatorFallbackSummary(lease CoordinatorLease) string {
+	if lease.RequestedServerType == "" {
+		return ""
+	}
+	if lease.RequestedServerType == lease.ServerType && len(lease.ProvisioningAttempts) == 0 {
+		return ""
+	}
+	attempts := make([]string, 0, len(lease.ProvisioningAttempts))
+	for _, attempt := range lease.ProvisioningAttempts {
+		label := attempt.ServerType
+		if attempt.Market != "" && attempt.Market != "spot" {
+			label = attempt.Market + "/" + label
+		}
+		if attempt.Category != "" {
+			label += ":" + attempt.Category
+		}
+		attempts = append(attempts, label)
+	}
+	return fmt.Sprintf("requested_type=%s actual_type=%s attempts=%s", lease.RequestedServerType, lease.ServerType, blank(strings.Join(attempts, ","), "-"))
 }
 
 func (a App) acquireCoordinatorWithRetry(ctx context.Context, cfg Config, coord *CoordinatorClient, keep bool) (Server, SSHTarget, string, error) {

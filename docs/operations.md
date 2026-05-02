@@ -74,6 +74,20 @@ npm run build --prefix worker
 npx wrangler deploy --config worker/wrangler.jsonc
 ```
 
+The repeatable deploy proof is:
+
+```sh
+scripts/deploy-worker-smoke.sh
+```
+
+It runs Worker format, lint, typecheck, tests, dry-run build, deploy, and public
+health checks for `crabbox.openclaw.ai` plus the workers.dev fallback. To include
+a short AWS lease smoke after deploy:
+
+```sh
+CRABBOX_DEPLOY_SMOKE_AWS=1 CRABBOX_LIVE_REPO=/path/to/openclaw scripts/deploy-worker-smoke.sh
+```
+
 Required Worker secrets:
 
 ```text

@@ -12,6 +12,7 @@ import type {
   Provider,
   ProviderImage,
   ProviderMachine,
+  ProvisioningAttempt,
   PromotedImageRecord,
   RunCreateRequest,
   RunFinishRequest,
@@ -147,6 +148,7 @@ export class FleetDurableObject implements DurableObject {
       profile: config.profile,
       class: config.class,
       serverType: config.serverType,
+      requestedServerType: config.serverType,
       serverID: 0,
       serverName: "",
       providerKey: config.providerKey,
@@ -175,7 +177,7 @@ export class FleetDurableObject implements DurableObject {
     if (limitError) {
       return json({ error: "cost_limit_exceeded", message: limitError }, { status: 429 });
     }
-    const { server, serverType } = await provider.createServerWithFallback(
+    const { server, serverType, attempts } = await provider.createServerWithFallback(
       config,
       leaseID,
       slug,
@@ -183,6 +185,9 @@ export class FleetDurableObject implements DurableObject {
     );
     record.cloudID = server.cloudID;
     record.serverType = serverType;
+    if (attempts && attempts.length > 0) {
+      record.provisioningAttempts = attempts;
+    }
     record.serverID = server.id;
     record.serverName = server.name;
     record.host = server.host;
@@ -361,9 +366,9 @@ export class FleetDurableObject implements DurableObject {
       leaseID: input.leaseID,
       owner,
       org,
-      provider: input.provider ?? lease?.provider ?? "hetzner",
-      class: input.class ?? lease?.class ?? "",
-      serverType: input.serverType ?? lease?.serverType ?? "",
+      provider: lease?.provider ?? input.provider ?? "hetzner",
+      class: lease?.class ?? input.class ?? "",
+      serverType: lease?.serverType ?? input.serverType ?? "",
       command: Array.isArray(input.command) ? input.command.map(String) : [],
       state: "running",
       logBytes: 0,
@@ -895,7 +900,7 @@ interface CloudProvider {
     leaseID: string,
     slug: string,
     owner: string,
-  ): Promise<{ server: ProviderMachine; serverType: string }>;
+  ): Promise<{ server: ProviderMachine; serverType: string; attempts?: ProvisioningAttempt[] }>;
   deleteServer(id: string): Promise<void>;
   createImage(instanceID: string, name: string, noReboot: boolean): Promise<ProviderImage>;
   getImage(imageID: string): Promise<ProviderImage>;
@@ -923,7 +928,7 @@ class HetznerProvider implements CloudProvider {
     leaseID: string,
     slug: string,
     owner: string,
-  ): Promise<{ server: ProviderMachine; serverType: string }> {
+  ): Promise<{ server: ProviderMachine; serverType: string; attempts?: ProvisioningAttempt[] }> {
     const { server, serverType } = await this.client.createServerWithFallback(
       config,
       leaseID,
@@ -973,14 +978,22 @@ class AWSProvider implements CloudProvider {
     leaseID: string,
     slug: string,
     owner: string,
-  ): Promise<{ server: ProviderMachine; serverType: string }> {
-    const { server, serverType } = await this.client.createServerWithFallback(
+  ): Promise<{ server: ProviderMachine; serverType: string; attempts?: ProvisioningAttempt[] }> {
+    const { server, serverType, attempts } = await this.client.createServerWithFallback(
       config,
       leaseID,
       slug,
       owner,
     );
-    return { server: await this.client.waitForServerIP(server.cloudID), serverType };
+    const result: {
+      server: ProviderMachine;
+      serverType: string;
+      attempts?: ProvisioningAttempt[];
+    } = { server: await this.client.waitForServerIP(server.cloudID), serverType };
+    if (attempts && attempts.length > 0) {
+      result.attempts = attempts;
+    }
+    return result;
   }
 
   async deleteServer(id: string): Promise<void> {
