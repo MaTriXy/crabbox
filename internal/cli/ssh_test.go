@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestVersion(t *testing.T) {
@@ -129,6 +130,25 @@ func TestSSHControlPathIsScopedByKey(t *testing.T) {
 	}
 	if !strings.HasPrefix(filepath.Base(left), "crabbox-ssh-") || !strings.HasSuffix(left, "-%C") {
 		t.Fatalf("unexpected control path %q", left)
+	}
+}
+
+func TestSSHWaitProgressIncludesElapsedAndRemaining(t *testing.T) {
+	got := sshWaitProgressMessage(
+		&SSHTarget{Host: "203.0.113.10", Port: "2222"},
+		"bootstrap",
+		"2222",
+		95*time.Second,
+		10*time.Minute,
+	)
+	for _, want := range []string{
+		"waiting for 203.0.113.10:2222 bootstrap toolchain...",
+		"elapsed=1m35s",
+		"remaining=10m0s",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("progress message missing %q in %q", want, got)
+		}
 	}
 }
 

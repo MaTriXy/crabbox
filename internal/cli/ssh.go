@@ -50,10 +50,11 @@ func waitForSSH(ctx context.Context, target *SSHTarget, stderr io.Writer) error 
 }
 
 func waitForSSHReady(ctx context.Context, target *SSHTarget, stderr io.Writer, phase string, timeout time.Duration) error {
+	start := time.Now()
 	deadline := time.Now().Add(timeout)
 	for {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return context.Cause(ctx)
 		}
 		if time.Now().After(deadline) {
 			return exit(5, "timed out waiting for SSH on %s during %s", target.Host, phase)
@@ -78,13 +79,21 @@ func waitForSSHReady(ctx context.Context, target *SSHTarget, stderr io.Writer, p
 				return nil
 			}
 		}
-		if reachablePort != "" {
-			fmt.Fprintf(stderr, "waiting for %s:%s %s toolchain...\n", target.Host, reachablePort, phase)
-		} else {
-			fmt.Fprintf(stderr, "waiting for %s:%s %s...\n", target.Host, target.Port, phase)
-		}
+		fmt.Fprintln(stderr, sshWaitProgressMessage(target, phase, reachablePort, time.Since(start), time.Until(deadline)))
 		time.Sleep(10 * time.Second)
 	}
+}
+
+func sshWaitProgressMessage(target *SSHTarget, phase, reachablePort string, elapsed, remaining time.Duration) string {
+	if remaining < 0 {
+		remaining = 0
+	}
+	elapsed = elapsed.Round(time.Second)
+	remaining = remaining.Round(time.Second)
+	if reachablePort != "" {
+		return fmt.Sprintf("waiting for %s:%s %s toolchain... elapsed=%s remaining=%s", target.Host, reachablePort, phase, elapsed, remaining)
+	}
+	return fmt.Sprintf("waiting for %s:%s %s... elapsed=%s remaining=%s", target.Host, target.Port, phase, elapsed, remaining)
 }
 
 func probeSSHReady(ctx context.Context, target *SSHTarget, timeout time.Duration) bool {

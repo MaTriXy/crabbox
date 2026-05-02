@@ -520,9 +520,13 @@ func (a App) acquireCoordinator(ctx context.Context, cfg Config, coord *Coordina
 	}
 	server, target, leaseID := leaseToServerTarget(lease, cfg)
 	fmt.Fprintf(a.Stderr, "leased %s slug=%s server=%d type=%s ip=%s via coordinator\n", leaseID, blank(lease.Slug, "-"), server.ID, server.ServerType.Name, target.Host)
-	stopHeartbeat := startCoordinatorHeartbeat(ctx, coord, leaseID, cfg.IdleTimeout, nil, a.Stderr)
+	waitCtx, cancelWait := context.WithCancelCause(ctx)
+	defer cancelWait(nil)
+	stopHeartbeat := startCoordinatorHeartbeat(waitCtx, coord, leaseID, cfg.IdleTimeout, nil, a.Stderr)
 	defer stopHeartbeat()
-	if err := waitForSSH(ctx, &target, a.Stderr); err != nil {
+	stopLeaseWatch := startCoordinatorLeaseWatch(waitCtx, coord, leaseID, cancelWait, a.Stderr)
+	defer stopLeaseWatch()
+	if err := waitForSSH(waitCtx, &target, a.Stderr); err != nil {
 		if !keep {
 			if releaseErr := releaseCoordinatorLease(context.Background(), coord, leaseID); releaseErr != nil {
 				fmt.Fprintf(a.Stderr, "warning: release failed after bootstrap error for %s: %v\n", leaseID, releaseErr)
@@ -643,6 +647,61 @@ func startCoordinatorHeartbeat(ctx context.Context, coord *CoordinatorClient, le
 		cancel()
 		<-done
 	}
+}
+
+var coordinatorLeaseWatchInterval = 10 * time.Second
+
+func startCoordinatorLeaseWatch(ctx context.Context, coord *CoordinatorClient, leaseID string, cancel context.CancelCauseFunc, stderr io.Writer) func() {
+	watchCtx, stop := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(coordinatorLeaseWatchInterval)
+		defer ticker.Stop()
+		for {
+			if !coordinatorLeaseStillActive(watchCtx, coord, leaseID, cancel, stderr) {
+				return
+			}
+			select {
+			case <-ticker.C:
+			case <-watchCtx.Done():
+				return
+			}
+		}
+	}()
+	return func() {
+		stop()
+		<-done
+	}
+}
+
+func coordinatorLeaseStillActive(ctx context.Context, coord *CoordinatorClient, leaseID string, cancel context.CancelCauseFunc, stderr io.Writer) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	callCtx, callCancel := context.WithTimeout(ctx, 10*time.Second)
+	lease, err := coord.GetLease(callCtx, leaseID)
+	callCancel()
+	if err != nil {
+		if isCoordinatorNotFoundError(err) {
+			cancel(exit(5, "lease %s disappeared while waiting for SSH; another process may have released it", leaseID))
+			return false
+		}
+		if ctx.Err() == nil {
+			fmt.Fprintf(stderr, "warning: lease watch failed for %s: %v\n", leaseID, err)
+		}
+		return true
+	}
+	if lease.State != "" && lease.State != "active" {
+		cancel(exit(5, "lease %s became %s while waiting for SSH; another process may have released it", leaseID, lease.State))
+		return false
+	}
+	return true
+}
+
+func isCoordinatorNotFoundError(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "http 404") || strings.Contains(msg, "not_found")
 }
 
 func heartbeatInterval(ttl time.Duration) time.Duration {

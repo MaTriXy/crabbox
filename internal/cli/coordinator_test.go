@@ -182,6 +182,36 @@ func TestCoordinatorHeartbeatTouchesImmediately(t *testing.T) {
 	}
 }
 
+func TestCoordinatorLeaseWatchCancelsWhenLeaseReleased(t *testing.T) {
+	oldInterval := coordinatorLeaseWatchInterval
+	coordinatorLeaseWatchInterval = 10 * time.Millisecond
+	defer func() { coordinatorLeaseWatchInterval = oldInterval }()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/leases/cbx_123" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"lease":{"id":"cbx_123","provider":"aws","state":"released","expiresAt":"2026-05-01T00:30:00Z"}}`))
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	client := CoordinatorClient{BaseURL: server.URL, Client: server.Client()}
+	stop := startCoordinatorLeaseWatch(ctx, &client, "cbx_123", cancel, io.Discard)
+	defer stop()
+
+	select {
+	case <-ctx.Done():
+		if cause := context.Cause(ctx); cause == nil || !strings.Contains(cause.Error(), "became released") {
+			t.Fatalf("cause=%v, want released lease cause", cause)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("lease watcher did not cancel after release")
+	}
+}
+
 func TestCoordinatorCreateLeaseSendsAWSSSHCIDRs(t *testing.T) {
 	var body struct {
 		AWSSSHCIDRs      []string `json:"awsSSHCIDRs"`
