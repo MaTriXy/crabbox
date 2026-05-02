@@ -253,7 +253,7 @@ function layout({ page, html, toc, prev, next, sectionName }) {
 </head>
 <body${isHome ? ' class="home"' : ""}>
   <button class="nav-toggle" type="button" aria-label="Toggle navigation" aria-expanded="false">
-    <span></span><span></span><span></span>
+    <span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span>
   </button>
   <div class="shell">
     <aside class="sidebar">
@@ -465,8 +465,8 @@ main{min-width:0;padding:28px clamp(20px,4.5vw,60px) 72px;max-width:1180px;margi
 .page-nav-prev:only-child{grid-column:1}
 
 /* mobile nav toggle */
-.nav-toggle{display:none;position:fixed;top:14px;right:14px;z-index:20;width:40px;height:40px;border-radius:9px;background:var(--paper);border:1px solid var(--line);cursor:pointer;padding:10px 9px;flex-direction:column;justify-content:space-between;box-shadow:0 6px 18px rgba(18,33,31,.12)}
-.nav-toggle span{display:block;height:2px;background:var(--ink);border-radius:2px;transition:transform .2s,opacity .2s}
+.nav-toggle{display:none;position:fixed;top:14px;right:14px;top:calc(14px + env(safe-area-inset-top, 0px));right:calc(14px + env(safe-area-inset-right, 0px));z-index:20;width:40px;height:40px;border-radius:9px;background:var(--paper);border:1px solid var(--line);color:var(--ink);cursor:pointer;padding:10px 9px;flex-direction:column;align-items:stretch;justify-content:space-between;box-shadow:0 6px 18px rgba(18,33,31,.12)}
+.nav-toggle span{display:block;width:100%;height:2px;flex:0 0 2px;background:currentColor;border-radius:2px;transition:transform .2s,opacity .2s}
 .nav-toggle[aria-expanded="true"] span:nth-child(1){transform:translateY(8px) rotate(45deg)}
 .nav-toggle[aria-expanded="true"] span:nth-child(2){opacity:0}
 .nav-toggle[aria-expanded="true"] span:nth-child(3){transform:translateY(-8px) rotate(-45deg)}
