@@ -39,6 +39,7 @@ Crabbox 0.3.0 adds the first trusted-operator image lifecycle for AWS runners: o
 
 ### Fixed
 
+- Fixed the generated docs-site mobile menu icon so the hamburger bars remain visible on narrow iOS/Safari viewports.
 - Preserved explicit AWS `--type` requests as exact instance-type requests; Crabbox now fails clearly instead of silently falling back when the user asked for a specific type.
 - Fixed AWS On-Demand launches by omitting Spot request tag specifications when no Spot request is created.
 - Fixed Blacksmith Testbox JSON list output so the CLI returns an empty array when Blacksmith reports no active testboxes.
