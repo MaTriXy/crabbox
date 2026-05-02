@@ -4,13 +4,9 @@
 
 ### Added
 
-- Added OpenClaw plugin tools for run history, events, attach, logs, results, and usage inspection. Thanks @stainlu.
-
 ### Changed
 
 ### Fixed
-
-- Fixed the OpenClaw plugin provider schema so plugin tools can accept `blacksmith-testbox`.
 
 ## 0.3.0 - 2026-05-02
 

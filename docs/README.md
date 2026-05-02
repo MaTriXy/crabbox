@@ -67,14 +67,8 @@ The repository root is also a native OpenClaw plugin package. Once installed in 
 - `crabbox_status`
 - `crabbox_list`
 - `crabbox_stop`
-- `crabbox_history`
-- `crabbox_events`
-- `crabbox_attach`
-- `crabbox_logs`
-- `crabbox_results`
-- `crabbox_usage`
 
-The plugin shells out to the configured `crabbox` binary with argv arrays, so local Crabbox config, broker login, repo claims, sync behavior, and coordinator authorization stay owned by the CLI. Configure `plugins.entries.crabbox.config.binary` if the binary is not on `PATH`. Set `plugins.entries.crabbox.config.allowInspection: false` to disable the read-only history, event, attach, log, result, and usage tools.
+The plugin shells out to the configured `crabbox` binary with argv arrays, so local Crabbox config, broker login, repo claims, and sync behavior stay owned by the CLI. Configure `plugins.entries.crabbox.config.binary` if the binary is not on `PATH`.
 
 ## Where to read next
 

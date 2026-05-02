@@ -43,27 +43,7 @@ test("registers the Crabbox tool surface", () => {
   const tools = registerWithConfig({});
   assert.deepEqual(
     tools.map((tool) => tool.name).sort(),
-    [
-      "crabbox_attach",
-      "crabbox_events",
-      "crabbox_history",
-      "crabbox_list",
-      "crabbox_logs",
-      "crabbox_results",
-      "crabbox_run",
-      "crabbox_status",
-      "crabbox_stop",
-      "crabbox_usage",
-      "crabbox_warmup",
-    ],
-  );
-});
-
-test("provider parameters accept blacksmith testboxes", () => {
-  const tools = registerWithConfig({});
-  assert.deepEqual(
-    getTool(tools, "crabbox_list").parameters.properties.provider.enum,
-    ["aws", "hetzner", "blacksmith-testbox"],
+    ["crabbox_list", "crabbox_run", "crabbox_status", "crabbox_stop", "crabbox_warmup"],
   );
 });
 
@@ -108,120 +88,6 @@ test("crabbox_status includes optional flags", async () => {
   ]);
 });
 
-test("crabbox_history includes run filters", async () => {
-  const fake = createFakeCrabbox();
-  const tools = registerWithConfig({ binary: fake.file });
-  const result = await getTool(tools, "crabbox_history").execute("call-1", {
-    lease: "cbx_abcdef123456",
-    owner: "peter@example.com",
-    org: "openclaw",
-    state: "failed",
-    limit: 25,
-    json: true,
-  });
-  assert.deepEqual(JSON.parse(result.details.stdout).argv, [
-    "history",
-    "--lease",
-    "cbx_abcdef123456",
-    "--owner",
-    "peter@example.com",
-    "--org",
-    "openclaw",
-    "--state",
-    "failed",
-    "--limit",
-    "25",
-    "--json",
-  ]);
-});
-
-test("crabbox_events includes pagination flags", async () => {
-  const fake = createFakeCrabbox();
-  const tools = registerWithConfig({ binary: fake.file });
-  const result = await getTool(tools, "crabbox_events").execute("call-1", {
-    id: "run_abcdef123456",
-    after: 42,
-    limit: 100,
-    json: true,
-  });
-  assert.deepEqual(JSON.parse(result.details.stdout).argv, [
-    "events",
-    "--id",
-    "run_abcdef123456",
-    "--after",
-    "42",
-    "--limit",
-    "100",
-    "--json",
-  ]);
-});
-
-test("crabbox_attach includes resume flags", async () => {
-  const fake = createFakeCrabbox();
-  const tools = registerWithConfig({ binary: fake.file });
-  const result = await getTool(tools, "crabbox_attach").execute("call-1", {
-    id: "run_abcdef123456",
-    after: 42,
-    poll: "2s",
-  });
-  assert.deepEqual(JSON.parse(result.details.stdout).argv, [
-    "attach",
-    "--id",
-    "run_abcdef123456",
-    "--after",
-    "42",
-    "--poll",
-    "2s",
-  ]);
-});
-
-test("crabbox_logs and results pass run IDs", async () => {
-  const fake = createFakeCrabbox();
-  const tools = registerWithConfig({ binary: fake.file });
-  const logs = await getTool(tools, "crabbox_logs").execute("call-1", {
-    id: "run_abcdef123456",
-    json: true,
-  });
-  assert.deepEqual(JSON.parse(logs.details.stdout).argv, [
-    "logs",
-    "--id",
-    "run_abcdef123456",
-    "--json",
-  ]);
-
-  const results = await getTool(tools, "crabbox_results").execute("call-2", {
-    id: "run_abcdef123456",
-    json: true,
-  });
-  assert.deepEqual(JSON.parse(results.details.stdout).argv, [
-    "results",
-    "--id",
-    "run_abcdef123456",
-    "--json",
-  ]);
-});
-
-test("crabbox_usage includes scope filters", async () => {
-  const fake = createFakeCrabbox();
-  const tools = registerWithConfig({ binary: fake.file });
-  const result = await getTool(tools, "crabbox_usage").execute("call-1", {
-    scope: "org",
-    org: "openclaw",
-    month: "2026-05",
-    json: true,
-  });
-  assert.deepEqual(JSON.parse(result.details.stdout).argv, [
-    "usage",
-    "--scope",
-    "org",
-    "--org",
-    "openclaw",
-    "--month",
-    "2026-05",
-    "--json",
-  ]);
-});
-
 test("disabled run tool fails before invoking crabbox", async () => {
   const fake = createFakeCrabbox();
   const tools = registerWithConfig({ binary: fake.file, allowRun: false });
@@ -231,28 +97,5 @@ test("disabled run tool fails before invoking crabbox", async () => {
       command: ["go", "test", "./..."],
     }),
     /disabled/,
-  );
-});
-
-test("disabled inspection tool fails before invoking crabbox", async () => {
-  const fake = createFakeCrabbox();
-  const tools = registerWithConfig({ binary: fake.file, allowInspection: false });
-  await assert.rejects(
-    getTool(tools, "crabbox_logs").execute("call-1", {
-      id: "run_abcdef123456",
-    }),
-    /disabled/,
-  );
-});
-
-test("invalid inspection pagination fails before invoking crabbox", async () => {
-  const fake = createFakeCrabbox();
-  const tools = registerWithConfig({ binary: fake.file });
-  await assert.rejects(
-    getTool(tools, "crabbox_events").execute("call-1", {
-      id: "run_abcdef123456",
-      after: -1,
-    }),
-    /non-negative/,
   );
 });
