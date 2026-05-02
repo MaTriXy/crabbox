@@ -80,6 +80,39 @@ crabbox usage --scope org
 CRABBOX_LIVE=1 CRABBOX_LIVE_REPO=/path/to/openclaw scripts/live-smoke.sh
 ```
 
+## Run Inspection Workflow
+
+Use the CLI for durable run inspection; do not expect extra OpenClaw plugin
+tools for this surface.
+
+Find recent runs:
+
+```sh
+crabbox history --limit 20
+crabbox history --lease <id-or-slug> --limit 20
+```
+
+Follow an active run:
+
+```sh
+crabbox attach <run_id>
+crabbox attach <run_id> --after <seq>
+```
+
+Page through recorded events:
+
+```sh
+crabbox events <run_id> --after <seq> --limit 100
+crabbox events <run_id> --json
+```
+
+Inspect completed output and structured test summaries:
+
+```sh
+crabbox logs <run_id>
+crabbox results <run_id>
+```
+
 Use `--debug` on `run` when measuring sync timing.
 Use `--timing-json` on `warmup`, `actions hydrate`, and `run` when a stable
 machine-readable timing record is needed.

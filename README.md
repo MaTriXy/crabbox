@@ -81,7 +81,7 @@ For the full mental model, see [How Crabbox Works](docs/how-it-works.md). For th
 - **Cost guardrails.** Per-lease and monthly spend caps. Live pricing from EC2 Spot history or Hetzner server-type prices, with static fallbacks. `crabbox usage` summarizes spend by user, org, provider, and type.
 - **GitHub Actions hydration.** `crabbox actions hydrate` registers a leased box as an ephemeral Actions runner, so the repo's own workflow installs runtimes, services, and secrets. Crabbox does not parse Actions YAML.
 - **Hardened coordinator auth.** GitHub browser login, owner-scoped leases, admin-only routes, optional GitHub team allowlists, Cloudflare Access JWT verification, and service-token support keep normal use and operator automation separate.
-- **OpenClaw plugin.** The repo root is a native OpenClaw plugin. Agents drive Crabbox through `crabbox_run`, `crabbox_warmup`, `crabbox_status`, `crabbox_list`, and `crabbox_stop` instead of shelling out.
+- **OpenClaw plugin.** The repo root is a native OpenClaw plugin for box lifecycle operations: `crabbox_run`, `crabbox_warmup`, `crabbox_status`, `crabbox_list`, and `crabbox_stop`. Run inspection stays in the CLI and Crabbox skill.
 - **Operator surface.** `doctor`, `init`, `status`, `inspect`, `list`, `usage`, `history`, `logs`, `results`, `cache`, `admin`, `cleanup`, plus `--json` output where it matters.
 
 ## Machine classes
@@ -152,6 +152,8 @@ The repo root is a native OpenClaw plugin package. Once installed, it exposes Cr
 - `crabbox_run`, `crabbox_warmup`, `crabbox_status`, `crabbox_list`, `crabbox_stop`
 
 The plugin shells out to the configured `crabbox` binary, so local config, broker login, repo claims, and sync behavior stay owned by the CLI. Set `plugins.entries.crabbox.config.binary` if `crabbox` is not on `PATH`.
+
+Durable run inspection is intentionally CLI/skill-led instead of additional plugin tools: use `crabbox history`, `crabbox events --after --limit`, `crabbox attach`, `crabbox logs`, `crabbox results`, and `crabbox usage` from a shell-capable agent.
 
 ## Development
 
