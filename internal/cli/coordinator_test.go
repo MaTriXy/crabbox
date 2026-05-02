@@ -70,6 +70,12 @@ func TestCoordinatorRunEvents(t *testing.T) {
 			}
 			_, _ = w.Write([]byte(`{"event":{"runID":"run_123","seq":2,"type":"sync.started","phase":"sync","createdAt":"2026-05-02T00:00:01Z"}}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/runs/run_123/events":
+			if got := r.URL.Query().Get("after"); got != "4" {
+				t.Fatalf("after query=%q", got)
+			}
+			if got := r.URL.Query().Get("limit"); got != "25" {
+				t.Fatalf("limit query=%q", got)
+			}
 			_, _ = w.Write([]byte(`{"events":[{"runID":"run_123","seq":1,"type":"run.started","phase":"starting","createdAt":"2026-05-02T00:00:00Z"}]}`))
 		default:
 			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
@@ -101,7 +107,7 @@ func TestCoordinatorRunEvents(t *testing.T) {
 	if got, ok := eventBody["type"].(string); !ok || got != "sync.started" {
 		t.Fatalf("event body=%#v", eventBody)
 	}
-	events, err := client.RunEvents(context.Background(), run.ID)
+	events, err := client.RunEvents(context.Background(), run.ID, 4, 25)
 	if err != nil {
 		t.Fatal(err)
 	}

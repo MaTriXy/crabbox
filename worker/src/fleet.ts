@@ -410,7 +410,10 @@ export class FleetDurableObject implements DurableObject {
       if (!run || !this.runVisibleToRequest(run, request)) {
         return notFound();
       }
-      return json({ events: await this.runEvents(runID) });
+      const url = new URL(request.url);
+      const after = finiteQueryNumber(url.searchParams.get("after")) ?? 0;
+      const limit = clampLimit(url.searchParams.get("limit"), 500);
+      return json({ events: await this.runEvents(runID, after, limit) });
     }
     if (method === "POST" && action === "events") {
       const run = await this.getRun(runID);
@@ -642,11 +645,14 @@ export class FleetDurableObject implements DurableObject {
     return [...runs.values()];
   }
 
-  private async runEvents(runID: string): Promise<RunEventRecord[]> {
+  private async runEvents(runID: string, after = 0, limit = 500): Promise<RunEventRecord[]> {
     const events = await this.state.storage.list<RunEventRecord>({
       prefix: runEventPrefix(runID),
     });
-    return [...events.values()].toSorted((a, b) => a.seq - b.seq);
+    return [...events.values()]
+      .toSorted((a, b) => a.seq - b.seq)
+      .filter((event) => event.seq > after)
+      .slice(0, limit);
   }
 
   private filterLeasesForRequest(leases: LeaseRecord[], request: Request): LeaseRecord[] {
@@ -803,6 +809,11 @@ function requestSourceCIDRs(request: Request): string[] {
 
 function finiteNumber(value: number | undefined): number | undefined {
   return Number.isFinite(value) ? value : undefined;
+}
+
+function finiteQueryNumber(value: string | null): number | undefined {
+  const parsed = Number(value ?? "");
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : undefined;
 }
 
 const MAX_RESULT_FILES = 50;

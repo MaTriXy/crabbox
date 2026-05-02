@@ -58,14 +58,16 @@ bin/crabbox history
 bin/crabbox history --lease cbx_...
 bin/crabbox history --owner steipete@gmail.com --json
 bin/crabbox events run_...
+bin/crabbox attach run_...
 bin/crabbox logs run_...
 bin/crabbox results run_...
 ```
 
 History is for command debugging, not unlimited log archival. Events are ordered
-phase and output chunks for reconnect/inspection. Logs are bounded tails of
-remote stdout/stderr. Test results are stored as structured summaries when
-`--junit` or `results.junit` is configured.
+phase and output chunks for reconnect/inspection, and `attach` can follow those
+events while the original CLI is still alive. Logs are bounded tails of remote
+stdout/stderr. Test results are stored as structured summaries when `--junit`
+or `results.junit` is configured.
 
 ## Remote Debugging
 

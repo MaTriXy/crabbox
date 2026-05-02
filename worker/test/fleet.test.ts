@@ -468,6 +468,20 @@ describe("fleet run history", () => {
       "command.finished",
     ]);
     expect(eventsBody.events.map((event) => event.seq)).toEqual([1, 2, 3, 4]);
+
+    const pagedEvents = await fleet.fetch(
+      request("GET", `/v1/runs/${run.id}/events?after=1&limit=2`, {
+        headers: ownerHeaders,
+      }),
+    );
+    expect(pagedEvents.status).toBe(200);
+    const pagedEventsBody = (await pagedEvents.json()) as {
+      events: Array<{ seq: number; type: string }>;
+    };
+    expect(pagedEventsBody.events.map((event) => [event.seq, event.type])).toEqual([
+      [2, "lease.created"],
+      [3, "stdout"],
+    ]);
   });
 
   it("records finished runs and serves logs", async () => {

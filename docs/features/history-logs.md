@@ -27,18 +27,21 @@ Use:
 crabbox history
 crabbox history --lease cbx_...
 crabbox events run_...
+crabbox attach run_...
 crabbox logs run_...
 ```
 
 History records and run events live in the Fleet Durable Object. Log text is
 stored separately from run metadata and intentionally capped to the latest tail
 so noisy commands cannot exhaust storage. Event output capture is also bounded;
-use `crabbox logs` for the retained command output tail.
+use `crabbox attach` for active run previews and `crabbox logs` for the retained
+command output tail.
 
 Direct-provider mode does not have central history. Use shell output or local terminal logs there.
 
 Related docs:
 
 - [history command](../commands/history.md)
+- [attach command](../commands/attach.md)
 - [logs command](../commands/logs.md)
 - [Observability](../observability.md)

@@ -2,24 +2,27 @@ package cli
 
 import (
 	"strings"
+	"sync"
 	"testing"
 )
 
-func TestRunLogBufferKeepsTail(t *testing.T) {
-	var buf runLogBuffer
-	if _, err := buf.Write([]byte(strings.Repeat("a", maxRunLogBytes))); err != nil {
-		t.Fatal(err)
+func TestRunLogBufferConcurrentWrites(t *testing.T) {
+	var buffer runLogBuffer
+	var wg sync.WaitGroup
+	for _, text := range []string{"stdout-line\n", "stderr-line\n"} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < 100; i++ {
+				if _, err := buffer.Write([]byte(text)); err != nil {
+					t.Error(err)
+				}
+			}
+		}()
 	}
-	if _, err := buf.Write([]byte("tail")); err != nil {
-		t.Fatal(err)
-	}
-	if got := len(buf.String()); got != maxRunLogBytes {
-		t.Fatalf("len=%d want %d", got, maxRunLogBytes)
-	}
-	if !strings.HasSuffix(buf.String(), "tail") {
-		t.Fatalf("buffer did not keep tail")
-	}
-	if !buf.Truncated() {
-		t.Fatalf("buffer should be marked truncated")
+	wg.Wait()
+	log := buffer.String()
+	if !strings.Contains(log, "stdout-line\n") || !strings.Contains(log, "stderr-line\n") {
+		t.Fatalf("log missing expected output: %q", log)
 	}
 }

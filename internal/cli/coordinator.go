@@ -526,9 +526,20 @@ func (c *CoordinatorClient) AppendRunEvent(ctx context.Context, runID string, in
 	return res.Event, err
 }
 
-func (c *CoordinatorClient) RunEvents(ctx context.Context, runID string) ([]CoordinatorRunEvent, error) {
+func (c *CoordinatorClient) RunEvents(ctx context.Context, runID string, after, limit int) ([]CoordinatorRunEvent, error) {
 	var res CoordinatorRunEventsResponse
-	err := c.do(ctx, http.MethodGet, "/v1/runs/"+url.PathEscape(runID)+"/events", nil, &res)
+	values := url.Values{}
+	if after > 0 {
+		values.Set("after", strconv.Itoa(after))
+	}
+	if limit > 0 {
+		values.Set("limit", strconv.Itoa(limit))
+	}
+	path := "/v1/runs/" + url.PathEscape(runID) + "/events"
+	if encoded := values.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+	err := c.do(ctx, http.MethodGet, path, nil, &res)
 	return res.Events, err
 }
 

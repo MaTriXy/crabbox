@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 )
@@ -76,7 +77,10 @@ func (a App) logs(ctx context.Context, args []string) error {
 func (a App) events(ctx context.Context, args []string) error {
 	args, jsonAnywhere := extractBoolFlag(args, "json")
 	fs := newFlagSet("events", a.Stderr)
-	runID := fs.String("id", "", "run id")
+	runIDValue, args := popLeadingRunID(args)
+	runID := fs.String("id", runIDValue, "run id")
+	after := fs.Int("after", 0, "only show events after this sequence")
+	limit := fs.Int("limit", 500, "maximum events")
 	jsonOut := fs.Bool("json", false, "print JSON")
 	if err := parseFlags(fs, args); err != nil {
 		return err
@@ -90,11 +94,17 @@ func (a App) events(ctx context.Context, args []string) error {
 	if jsonAnywhere {
 		*jsonOut = true
 	}
+	if *after < 0 {
+		return exit(2, "after must be >= 0")
+	}
+	if *limit <= 0 {
+		return exit(2, "limit must be positive")
+	}
 	coord, err := configuredCoordinator()
 	if err != nil {
 		return err
 	}
-	events, err := coord.RunEvents(ctx, *runID)
+	events, err := coord.RunEvents(ctx, *runID, *after, *limit)
 	if err != nil {
 		return err
 	}
@@ -110,6 +120,94 @@ func (a App) events(ctx context.Context, args []string) error {
 			event.Seq, event.Type, blank(event.Phase, "-"), blank(event.Stream, "-"), event.CreatedAt, text)
 	}
 	return nil
+}
+
+func (a App) attach(ctx context.Context, args []string) error {
+	fs := newFlagSet("attach", a.Stderr)
+	runIDValue, args := popLeadingRunID(args)
+	runID := fs.String("id", runIDValue, "run id")
+	after := fs.Int("after", 0, "resume after this event sequence")
+	poll := fs.Duration("poll", time.Second, "poll interval")
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
+	if *runID == "" && fs.NArg() > 0 {
+		*runID = fs.Arg(0)
+	}
+	if *runID == "" {
+		return exit(2, "usage: crabbox attach <run-id>")
+	}
+	if *after < 0 {
+		return exit(2, "after must be >= 0")
+	}
+	if *poll <= 0 {
+		return exit(2, "poll must be positive")
+	}
+	coord, err := configuredCoordinator()
+	if err != nil {
+		return err
+	}
+	nextAfter := *after
+	for {
+		events, err := coord.RunEvents(ctx, *runID, nextAfter, 100)
+		if err != nil {
+			return err
+		}
+		for _, event := range events {
+			if event.Seq > nextAfter {
+				nextAfter = event.Seq
+			}
+			printAttachEvent(a.Stdout, a.Stderr, event)
+		}
+		if len(events) == 0 {
+			run, err := coord.Run(ctx, *runID)
+			if err != nil {
+				return err
+			}
+			if run.State != "running" {
+				return nil
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(*poll):
+		}
+	}
+}
+
+func printAttachEvent(stdout, stderr io.Writer, event CoordinatorRunEvent) {
+	stream := event.Stream
+	if stream == "" && (event.Type == "stdout" || event.Type == "stderr") {
+		stream = event.Type
+	}
+	switch stream {
+	case "stdout":
+		fmt.Fprint(stdout, outputEventText(event))
+	case "stderr":
+		fmt.Fprint(stderr, outputEventText(event))
+	default:
+		text := event.Message
+		if text == "" {
+			text = strings.TrimSpace(event.Data)
+		}
+		fmt.Fprintf(stderr, "%04d %-18s phase=%s at=%s %s\n",
+			event.Seq, event.Type, blank(event.Phase, "-"), event.CreatedAt, text)
+	}
+}
+
+func outputEventText(event CoordinatorRunEvent) string {
+	if event.Data != "" {
+		return event.Data
+	}
+	return event.Message
+}
+
+func popLeadingRunID(args []string) (string, []string) {
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		return "", args
+	}
+	return args[0], args[1:]
 }
 
 func formatRunExit(code *int) string {

@@ -38,7 +38,8 @@ crabbox run [--id <lease-id-or-slug>] [--shell] [--checksum] [--debug] [--force-
 crabbox sync-plan [--limit <n>]
 crabbox history [--lease <lease-id>] [--owner <email>] [--org <name>] [--limit <n>] [--json]
 crabbox logs <run-id> [--json]
-crabbox events <run-id> [--json]
+crabbox events <run-id> [--after <seq>] [--limit <n>] [--json]
+crabbox attach <run-id> [--after <seq>] [--poll <duration>]
 crabbox results <run-id> [--json]
 crabbox cache stats --id <lease-id-or-slug> [--json]
 crabbox cache purge --id <lease-id-or-slug> --kind pnpm|npm|docker|git|all --force
@@ -147,6 +148,7 @@ crabbox run --id blue-lobster --junit junit.xml -- go test ./...
 crabbox history --lease cbx_abcdef123456
 crabbox logs run_123
 crabbox events run_123
+crabbox attach run_123
 crabbox results run_123
 ```
 

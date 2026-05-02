@@ -26,6 +26,7 @@ Crabbox 0.3.0 adds trusted AWS image lifecycle, stable timing JSON, durable run 
 - Added `scripts/live-smoke.sh` for opt-in AWS, Hetzner, and Blacksmith Testbox live smoke coverage from a real repository checkout.
 - Added `scripts/live-auth-smoke.sh` for opt-in live proof that shared tokens cannot call admin routes, admin tokens can, Access edge auth works, and raw Access identity headers are ignored.
 - Added early durable run session handles and append-only run events, plus `crabbox events <run-id>` for inspecting the coordinator event log.
+- Added `crabbox attach <run-id>` for following recorded events from active runs, plus `--after` and `--limit` pagination for `crabbox events`. Thanks @stainlu.
 - Added `scripts/deploy-worker-smoke.sh` to run the Worker gate, deploy the coordinator, verify public health routes, and optionally include a short AWS lease smoke.
 
 ### Changed

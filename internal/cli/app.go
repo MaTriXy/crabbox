@@ -56,6 +56,8 @@ func (a App) Run(ctx context.Context, args []string) error {
 		return a.logs(ctx, args[1:])
 	case "events":
 		return a.events(ctx, args[1:])
+	case "attach":
+		return a.attach(ctx, args[1:])
 	case "results":
 		return a.results(ctx, args[1:])
 	case "cache":
@@ -128,6 +130,7 @@ Commands:
   history     List recorded remote runs
   logs        Print recorded run logs
   events      Print recorded run events
+  attach      Follow recorded events for an active run
   results     Show recorded test result summaries
   cache       Inspect, purge, or warm remote caches
   status      Show lease state; add --wait to block until ready
@@ -152,6 +155,7 @@ Common Flows:
   crabbox history --lease cbx_abcdef123456
   crabbox logs run_123
   crabbox events run_123
+  crabbox attach run_123
   crabbox results run_123
   crabbox cache stats --id blue-lobster
   crabbox usage --scope org

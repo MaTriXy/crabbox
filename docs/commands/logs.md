@@ -16,4 +16,5 @@ Related docs:
 
 - [history](history.md)
 - [events](events.md)
+- [attach](attach.md)
 - [History and logs](../features/history-logs.md)

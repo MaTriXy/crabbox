@@ -50,7 +50,7 @@ Bootstrap is intentionally tiny: OpenSSH, CA certificates, curl, Git, rsync, jq,
 - Per-lease SSH known_hosts and ControlMaster config: `internal/cli/ssh.go`
 - GitHub Actions hydrate/register/dispatch bridge: `internal/cli/actions.go`
 - Cache stats/purge/warm commands: `internal/cli/cache.go`
-- Run history/event/log commands and retained run logs: `internal/cli/history.go`, `internal/cli/run_recorder.go`, `internal/cli/runlog.go`
+- Run history/event/attach/log commands and retained run logs: `internal/cli/history.go`, `internal/cli/run_recorder.go`, `internal/cli/run_output_events.go`, `internal/cli/runlog.go`
 - JUnit result parsing and remote markers: `internal/cli/results.go`, `internal/cli/results_parse.go`, `internal/cli/results_remote.go`
 
 ## Worker API, Cost, And Operations

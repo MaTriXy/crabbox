@@ -70,6 +70,8 @@ crabbox status --id <id-or-slug> --wait
 crabbox inspect --id <id-or-slug> --json
 crabbox sync-plan
 crabbox history --lease <id-or-slug>
+crabbox events <run_id> --json
+crabbox attach <run_id>
 crabbox logs <run_id>
 crabbox results <run_id>
 crabbox cache stats --id <id-or-slug>
@@ -83,6 +85,16 @@ Use `--timing-json` on `warmup`, `actions hydrate`, and `run` when a stable
 machine-readable timing record is needed.
 Use `--market spot|on-demand` on AWS `warmup` or one-shot `run` when account
 quota or capacity testing needs a temporary market override.
+
+## Run Handles
+
+Coordinator-backed `crabbox run` prints `recording run run_...` before leasing
+starts. Keep that run ID in status updates. Use `crabbox events run_...` for
+ordered lifecycle/output events, `crabbox attach run_...` to follow an active
+run, and `crabbox logs run_...` or `crabbox results run_...` after completion.
+
+Output events are a capped preview, not unlimited logs. Use `logs` for the
+retained command output tail when debugging noisy runs.
 
 ## Hydration Boundary
 
