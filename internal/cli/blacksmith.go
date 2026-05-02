@@ -326,10 +326,13 @@ func blacksmithListArgs(cfg Config) []string {
 }
 
 func parseBlacksmithList(output string) []blacksmithListItem {
-	var items []blacksmithListItem
+	items := []blacksmithListItem{}
 	for _, line := range strings.Split(output, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 7 || fields[0] == "ID" {
+			continue
+		}
+		if !blacksmithIDPattern.MatchString(fields[0]) {
 			continue
 		}
 		items = append(items, blacksmithListItem{

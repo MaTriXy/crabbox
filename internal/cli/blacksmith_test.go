@@ -173,6 +173,16 @@ tbx_01kqk105g69sp8kcx31h5bgn0e  ready   openclaw  .github/workflows/ci-check-tes
 	}
 }
 
+func TestParseBlacksmithListIgnoresEmptyMessage(t *testing.T) {
+	got := parseBlacksmithList("No active testboxes (use --all to show all org testboxes)")
+	if len(got) != 0 {
+		t.Fatalf("items=%d want 0: %#v", len(got), got)
+	}
+	if got == nil {
+		t.Fatal("items=nil want empty slice for JSON []")
+	}
+}
+
 func TestBlacksmithRunArgs(t *testing.T) {
 	cfg := baseConfig()
 	cfg.Blacksmith.Org = "openclaw"
