@@ -23,6 +23,7 @@ Crabbox 0.3.0 adds the first trusted-operator image lifecycle for AWS runners: o
 - Added `npm run docs:check` with internal Markdown link validation plus docs-site generation, and wired it into CI.
 - Added `scripts/live-smoke.sh` for opt-in AWS, Hetzner, and Blacksmith Testbox live smoke coverage from a real repository checkout.
 - Added `scripts/live-auth-smoke.sh` for opt-in live proof that shared tokens cannot call admin routes, admin tokens can, Access edge auth works, and raw Access identity headers are ignored.
+- Added early durable run session handles and append-only run events, plus `crabbox events <run-id>` for inspecting the coordinator event log.
 - Added `scripts/deploy-worker-smoke.sh` to run the Worker gate, deploy the coordinator, verify public health routes, and optionally include a short AWS lease smoke.
 
 ### Changed

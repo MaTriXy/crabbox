@@ -125,6 +125,7 @@ type CoordinatorRun struct {
 	ServerType   string             `json:"serverType"`
 	Command      []string           `json:"command"`
 	State        string             `json:"state"`
+	Phase        string             `json:"phase,omitempty"`
 	ExitCode     *int               `json:"exitCode,omitempty"`
 	SyncMs       int64              `json:"syncMs,omitempty"`
 	CommandMs    int64              `json:"commandMs,omitempty"`
@@ -133,7 +134,48 @@ type CoordinatorRun struct {
 	LogTruncated bool               `json:"logTruncated"`
 	Results      *TestResultSummary `json:"results,omitempty"`
 	StartedAt    string             `json:"startedAt"`
+	LastEventAt  string             `json:"lastEventAt,omitempty"`
+	EventCount   int                `json:"eventCount,omitempty"`
 	EndedAt      string             `json:"endedAt,omitempty"`
+}
+
+type CoordinatorRunEventsResponse struct {
+	Events []CoordinatorRunEvent `json:"events"`
+}
+
+type CoordinatorRunEventResponse struct {
+	Event CoordinatorRunEvent `json:"event"`
+}
+
+type CoordinatorRunEvent struct {
+	RunID      string `json:"runID"`
+	Seq        int    `json:"seq"`
+	Type       string `json:"type"`
+	Phase      string `json:"phase,omitempty"`
+	Stream     string `json:"stream,omitempty"`
+	Message    string `json:"message,omitempty"`
+	Data       string `json:"data,omitempty"`
+	LeaseID    string `json:"leaseID,omitempty"`
+	Slug       string `json:"slug,omitempty"`
+	Provider   string `json:"provider,omitempty"`
+	Class      string `json:"class,omitempty"`
+	ServerType string `json:"serverType,omitempty"`
+	ExitCode   *int   `json:"exitCode,omitempty"`
+	CreatedAt  string `json:"createdAt"`
+}
+
+type CoordinatorRunEventInput struct {
+	Type       string `json:"type,omitempty"`
+	Phase      string `json:"phase,omitempty"`
+	Stream     string `json:"stream,omitempty"`
+	Message    string `json:"message,omitempty"`
+	Data       string `json:"data,omitempty"`
+	LeaseID    string `json:"leaseID,omitempty"`
+	Slug       string `json:"slug,omitempty"`
+	Provider   string `json:"provider,omitempty"`
+	Class      string `json:"class,omitempty"`
+	ServerType string `json:"serverType,omitempty"`
+	ExitCode   *int   `json:"exitCode,omitempty"`
 }
 
 type TestResultSummary struct {
@@ -476,6 +518,18 @@ func (c *CoordinatorClient) FinishRun(ctx context.Context, runID string, exitCod
 		"results":      results,
 	}, &res)
 	return res.Run, err
+}
+
+func (c *CoordinatorClient) AppendRunEvent(ctx context.Context, runID string, input CoordinatorRunEventInput) (CoordinatorRunEvent, error) {
+	var res CoordinatorRunEventResponse
+	err := c.do(ctx, http.MethodPost, "/v1/runs/"+url.PathEscape(runID)+"/events", input, &res)
+	return res.Event, err
+}
+
+func (c *CoordinatorClient) RunEvents(ctx context.Context, runID string) ([]CoordinatorRunEvent, error) {
+	var res CoordinatorRunEventsResponse
+	err := c.do(ctx, http.MethodGet, "/v1/runs/"+url.PathEscape(runID)+"/events", nil, &res)
+	return res.Events, err
 }
 
 func (c *CoordinatorClient) Runs(ctx context.Context, leaseID, owner, org, state string, limit int) ([]CoordinatorRun, error) {

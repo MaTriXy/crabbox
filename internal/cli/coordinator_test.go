@@ -54,6 +54,62 @@ func TestDecodeCoordinatorResponseCanReadTextBody(t *testing.T) {
 	}
 }
 
+func TestCoordinatorRunEvents(t *testing.T) {
+	var createBody map[string]any
+	var eventBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/runs":
+			if err := json.NewDecoder(r.Body).Decode(&createBody); err != nil {
+				t.Fatal(err)
+			}
+			_, _ = w.Write([]byte(`{"run":{"id":"run_123","leaseID":"","owner":"peter@example.com","org":"openclaw","provider":"aws","class":"standard","serverType":"t3.small","command":["pnpm","test"],"state":"running","phase":"starting","logBytes":0,"logTruncated":false,"startedAt":"2026-05-02T00:00:00Z"}}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/runs/run_123/events":
+			if err := json.NewDecoder(r.Body).Decode(&eventBody); err != nil {
+				t.Fatal(err)
+			}
+			_, _ = w.Write([]byte(`{"event":{"runID":"run_123","seq":2,"type":"sync.started","phase":"sync","createdAt":"2026-05-02T00:00:01Z"}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/runs/run_123/events":
+			_, _ = w.Write([]byte(`{"events":[{"runID":"run_123","seq":1,"type":"run.started","phase":"starting","createdAt":"2026-05-02T00:00:00Z"}]}`))
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	client := CoordinatorClient{BaseURL: server.URL, Client: server.Client()}
+	run, err := client.CreateRun(context.Background(), "", Config{
+		Provider:   "aws",
+		Class:      "standard",
+		ServerType: "t3.small",
+	}, []string{"pnpm", "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.ID != "run_123" || run.Phase != "starting" {
+		t.Fatalf("run=%#v", run)
+	}
+	if got, ok := createBody["leaseID"].(string); !ok || got != "" {
+		t.Fatalf("leaseID body=%#v", createBody["leaseID"])
+	}
+	event, err := client.AppendRunEvent(context.Background(), run.ID, CoordinatorRunEventInput{Type: "sync.started", Phase: "sync"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if event.Type != "sync.started" || event.Seq != 2 {
+		t.Fatalf("event=%#v", event)
+	}
+	if got, ok := eventBody["type"].(string); !ok || got != "sync.started" {
+		t.Fatalf("event body=%#v", eventBody)
+	}
+	events, err := client.RunEvents(context.Background(), run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Type != "run.started" {
+		t.Fatalf("events=%#v", events)
+	}
+}
+
 func TestCurlConfigKeepsBearerTokenInConfig(t *testing.T) {
 	client := CoordinatorClient{
 		BaseURL: "https://example.test",

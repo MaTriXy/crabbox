@@ -382,6 +382,94 @@ describe("fleet lease identity and idle", () => {
 });
 
 describe("fleet run history", () => {
+  it("creates early run sessions and appends durable events", async () => {
+    const storage = new MemoryStorage();
+    const fleet = testFleet(storage);
+    storage.seed(
+      "lease:cbx_000000000001",
+      testLease({
+        id: "cbx_000000000001",
+        slug: "blue-lobster",
+        owner: "peter@example.com",
+        org: "openclaw",
+        provider: "aws",
+        serverType: "t3.small",
+      }),
+    );
+    const ownerHeaders = {
+      "x-crabbox-owner": "peter@example.com",
+      "x-crabbox-org": "openclaw",
+    };
+    const create = await fleet.fetch(
+      request("POST", "/v1/runs", {
+        headers: ownerHeaders,
+        body: {
+          provider: "aws",
+          class: "standard",
+          serverType: "t3.small",
+          command: ["pnpm", "test"],
+        },
+      }),
+    );
+    expect(create.status).toBe(201);
+    const { run } = (await create.json()) as { run: { id: string; phase: string } };
+    expect(run.phase).toBe("starting");
+
+    const attached = await fleet.fetch(
+      request("POST", `/v1/runs/${run.id}/events`, {
+        headers: ownerHeaders,
+        body: {
+          type: "lease.created",
+          leaseID: "cbx_000000000001",
+          slug: "blue-lobster",
+          provider: "aws",
+          class: "standard",
+          serverType: "t3.small",
+        },
+      }),
+    );
+    expect(attached.status).toBe(201);
+
+    const stdout = await fleet.fetch(
+      request("POST", `/v1/runs/${run.id}/events`, {
+        headers: ownerHeaders,
+        body: { type: "stdout", stream: "stdout", data: "ok\n" },
+      }),
+    );
+    expect(stdout.status).toBe(201);
+
+    const read = await fleet.fetch(request("GET", `/v1/runs/${run.id}`, { headers: ownerHeaders }));
+    const readBody = (await read.json()) as {
+      run: { leaseID: string; slug: string; phase: string; eventCount: number };
+    };
+    expect(readBody.run.leaseID).toBe("cbx_000000000001");
+    expect(readBody.run.slug).toBe("blue-lobster");
+    expect(readBody.run.phase).toBe("command");
+    expect(readBody.run.eventCount).toBe(3);
+
+    const finish = await fleet.fetch(
+      request("POST", `/v1/runs/${run.id}/finish`, {
+        headers: ownerHeaders,
+        body: { exitCode: 0, log: "ok\n" },
+      }),
+    );
+    expect(finish.status).toBe(200);
+
+    const events = await fleet.fetch(
+      request("GET", `/v1/runs/${run.id}/events`, { headers: ownerHeaders }),
+    );
+    const eventsBody = (await events.json()) as {
+      events: Array<{ seq: number; type: string; data?: string }>;
+    };
+    expect(eventsBody.events.map((event) => event.type)).toEqual([
+      "run.started",
+      "lease.created",
+      "stdout",
+      "command.finished",
+    ]);
+    expect(eventsBody.events.map((event) => event.seq)).toEqual([1, 2, 3, 4]);
+  });
+
   it("records finished runs and serves logs", async () => {
     const fleet = testFleet();
     const ownerHeaders = {

@@ -15,4 +15,5 @@ Logs are bounded tails of remote stdout/stderr. They are for debugging recent ru
 Related docs:
 
 - [history](history.md)
+- [events](events.md)
 - [History and logs](../features/history-logs.md)

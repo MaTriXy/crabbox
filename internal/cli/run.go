@@ -131,7 +131,7 @@ func (a App) warmup(ctx context.Context, args []string) error {
 	return nil
 }
 
-func (a App) runCommand(ctx context.Context, args []string) error {
+func (a App) runCommand(ctx context.Context, args []string) (err error) {
 	defaults := defaultConfig()
 	fs := newFlagSet("run", a.Stderr)
 	provider := fs.String("provider", defaults.Provider, "provider: hetzner, aws, or blacksmith-testbox")
@@ -226,6 +226,16 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	recorder := &runRecorder{}
+	if useCoordinator {
+		recorder = newRunRecorder(ctx, coord, cfg, command, a.Stderr)
+		defer func() {
+			if err != nil {
+				recorder.Failed(err)
+			}
+		}()
+		recorder.Event("leasing.started", "leasing", "")
+	}
 	if *leaseIDFlag != "" {
 		if useCoordinator {
 			var lease CoordinatorLease
@@ -258,6 +268,9 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 		return err
 	}
 	applyResolvedServerConfig(&cfg, server)
+	if useCoordinator {
+		recorder.AttachLease(leaseID, serverSlug(server), cfg)
+	}
 	if err := claimLeaseForRepo(leaseID, serverSlug(server), repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
 		if acquired && !*keep {
 			a.releaseAcquiredLeaseBestEffort(ctx, cfg, coord, useCoordinator, server, target, leaseID)
@@ -271,6 +284,7 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 		defer func() {
 			if !*keep {
 				a.releaseAcquiredLeaseBestEffort(context.Background(), cfg, coord, useCoordinator, server, target, leaseID)
+				recorder.Event("lease.released", "released", "")
 			}
 		}()
 	}
@@ -307,9 +321,11 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 		syncStart := time.Now()
 		fmt.Fprintf(a.Stderr, "syncing %s -> %s:%s\n", repo.Root, target.Host, workdir)
 		stepStart := time.Now()
+		recorder.Event("bootstrap.waiting", "bootstrap", "waiting for SSH before sync")
 		if err := waitForSSHReady(ctx, &target, a.Stderr, "before sync", 2*time.Minute); err != nil {
 			return err
 		}
+		recorder.Event("sync.started", "sync", "")
 		timings.syncSteps.sshReady = time.Since(stepStart)
 		stepStart = time.Now()
 		if err := runSSHQuiet(ctx, target, remoteMkdir(workdir)); err != nil {
@@ -342,6 +358,7 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 					timings.sync = time.Since(syncStart)
 					timings.syncSkipped = true
 					fmt.Fprintf(a.Stderr, "No changes detected, skipping sync (%s)\n", timings.sync.Round(time.Millisecond))
+					recorder.Event("sync.finished", "synced", fmt.Sprintf("duration=%s skipped=true", timings.sync.Round(time.Millisecond)))
 					goto afterSync
 				}
 			}
@@ -419,6 +436,9 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 		}
 		timings.sync = time.Since(syncStart)
 		fmt.Fprintf(a.Stderr, "sync complete in %s\n", timings.sync.Round(time.Millisecond))
+		recorder.Event("sync.finished", "synced", fmt.Sprintf("duration=%s skipped=false", timings.sync.Round(time.Millisecond)))
+	} else {
+		recorder.Event("sync.finished", "synced", "skipped by --no-sync")
 	}
 afterSync:
 	if *syncOnly {
@@ -430,10 +450,12 @@ afterSync:
 				return err
 			}
 		}
+		recorder.Finish(0, timings.sync, 0, "", false, nil)
 		return nil
 	}
 
 	commandStart := time.Now()
+	recorder.Event("bootstrap.waiting", "bootstrap", "waiting for SSH before command")
 	if err := waitForSSHReady(ctx, &target, a.Stderr, "before command", 2*time.Minute); err != nil {
 		return err
 	}
@@ -449,24 +471,19 @@ afterSync:
 		}()
 	}
 	fmt.Fprintf(a.Stderr, "running on %s %s\n", target.Host, strings.Join(command, " "))
-	var runID string
-	if useCoordinator && leaseID != "" && coord != nil {
-		run, err := coord.CreateRun(ctx, leaseID, cfg, command)
-		if err != nil {
-			fmt.Fprintf(a.Stderr, "warning: run history create failed: %v\n", err)
-		} else {
-			runID = run.ID
-			fmt.Fprintf(a.Stderr, "recording run %s\n", runID)
-		}
-	}
+	recorder.Event("command.started", "command", strings.Join(command, " "))
 	remote := remoteCommandWithEnvFile(workdir, allowedEnv(cfg.EnvAllow), actionsEnvFile, command)
 	if *shellMode || shouldUseShell(command) {
 		remote = remoteShellCommandWithEnvFile(workdir, allowedEnv(cfg.EnvAllow), actionsEnvFile, strings.Join(command, " "))
 	}
 	var logBuffer runLogBuffer
-	stdout := io.MultiWriter(a.Stdout, &logBuffer)
-	stderr := io.MultiWriter(a.Stderr, &logBuffer)
+	stdoutEvents := recorder.StreamWriter("stdout")
+	stderrEvents := recorder.StreamWriter("stderr")
+	stdout := io.MultiWriter(a.Stdout, &logBuffer, stdoutEvents)
+	stderr := io.MultiWriter(a.Stderr, &logBuffer, stderrEvents)
 	code := runSSHStream(ctx, target, remote, stdout, stderr)
+	stdoutEvents.Flush()
+	stderrEvents.Flush()
 	timings.command = time.Since(commandStart)
 	var results *TestResultSummary
 	if len(cfg.Results.JUnit) > 0 {
@@ -477,11 +494,7 @@ afterSync:
 			fmt.Fprintln(a.Stderr, line)
 		}
 	}
-	if runID != "" {
-		if _, err := coord.FinishRun(context.Background(), runID, code, timings.sync, timings.command, logBuffer.String(), logBuffer.Truncated(), results); err != nil {
-			fmt.Fprintf(a.Stderr, "warning: run history finish failed for %s: %v\n", runID, err)
-		}
-	}
+	recorder.Finish(code, timings.sync, timings.command, logBuffer.String(), logBuffer.Truncated(), results)
 	total := time.Since(timings.started)
 	fmt.Fprintf(a.Stderr, "command complete in %s total=%s\n", timings.command.Round(time.Millisecond), total.Round(time.Millisecond))
 	fmt.Fprintln(a.Stderr, formatRunSummary(timings, total, code))

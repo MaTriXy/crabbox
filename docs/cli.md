@@ -38,6 +38,7 @@ crabbox run [--id <lease-id-or-slug>] [--shell] [--checksum] [--debug] [--force-
 crabbox sync-plan [--limit <n>]
 crabbox history [--lease <lease-id>] [--owner <email>] [--org <name>] [--limit <n>] [--json]
 crabbox logs <run-id> [--json]
+crabbox events <run-id> [--json]
 crabbox results <run-id> [--json]
 crabbox cache stats --id <lease-id-or-slug> [--json]
 crabbox cache purge --id <lease-id-or-slug> --kind pnpm|npm|docker|git|all --force
@@ -145,6 +146,7 @@ Inspect recorded runs:
 crabbox run --id blue-lobster --junit junit.xml -- go test ./...
 crabbox history --lease cbx_abcdef123456
 crabbox logs run_123
+crabbox events run_123
 crabbox results run_123
 ```
 
@@ -178,16 +180,17 @@ crabbox image promote ami-1234567890abcdef0
 Behavior:
 
 1. Load config.
-2. Acquire a lease unless `--id` is provided.
-3. Verify SSH readiness.
-4. Use the GitHub Actions workspace when the lease has a hydration marker.
-5. Sync current repo, unless a matching sync fingerprint lets Crabbox skip rsync.
-6. Seed remote Git from the configured origin/base ref before first sync when possible.
-7. Run command over SSH.
-8. Stream remote output and retain the latest log tail in coordinator history.
-9. Heartbeat coordinator leases in the background.
-10. Release lease unless `--keep` is set.
-11. Exit with the remote command exit code.
+2. Create a durable `run_...` handle when a coordinator is configured.
+3. Acquire a lease unless `--id` is provided.
+4. Verify SSH readiness.
+5. Use the GitHub Actions workspace when the lease has a hydration marker.
+6. Sync current repo, unless a matching sync fingerprint lets Crabbox skip rsync.
+7. Seed remote Git from the configured origin/base ref before first sync when possible.
+8. Run command over SSH.
+9. Stream remote output, append run events, and retain the latest log tail in coordinator history.
+10. Heartbeat coordinator leases in the background.
+11. Release lease unless `--keep` is set.
+12. Exit with the remote command exit code.
 
 Fresh non-kept leases retry once with a new machine when bootstrap never reaches SSH readiness. Existing leases and `--keep` runs are not retried automatically, so commands are not duplicated on a machine the user asked to keep. Runner bootstrap retries apt and installs only Crabbox plumbing before `crabbox-ready` is allowed to pass.
 

@@ -15,6 +15,8 @@ import type {
   ProvisioningAttempt,
   PromotedImageRecord,
   RunCreateRequest,
+  RunEventRecord,
+  RunEventRequest,
   RunFinishRequest,
   RunRecord,
   TestFailure,
@@ -353,17 +355,18 @@ export class FleetDurableObject implements DurableObject {
     const owner = requestOwner(request);
     const org = requestOrg(request, this.env);
     const input = await readJson<RunCreateRequest>(request);
-    if (!validLeaseID(input.leaseID)) {
+    const leaseID = input.leaseID ?? "";
+    if (leaseID && !validLeaseID(leaseID)) {
       return json({ error: "invalid_lease_id" }, { status: 400 });
     }
-    const lease = await this.getLease(input.leaseID);
+    const lease = leaseID ? await this.getLease(leaseID) : undefined;
     if (lease && !this.leaseVisibleToRequest(lease, request, false)) {
       return json({ error: "not_found" }, { status: 404 });
     }
     const now = new Date().toISOString();
     const run: RunRecord = {
       id: newRunID(),
-      leaseID: input.leaseID,
+      leaseID,
       owner,
       org,
       provider: lease?.provider ?? input.provider ?? "hetzner",
@@ -371,14 +374,18 @@ export class FleetDurableObject implements DurableObject {
       serverType: lease?.serverType ?? input.serverType ?? "",
       command: Array.isArray(input.command) ? input.command.map(String) : [],
       state: "running",
+      phase: "starting",
       logBytes: 0,
       logTruncated: false,
       startedAt: now,
+      lastEventAt: now,
+      eventCount: 0,
     };
     if (lease?.slug) {
       run.slug = lease.slug;
     }
     await this.putRun(run);
+    await this.appendRunEventRecord(run, { type: "run.started", phase: "starting" });
     return json({ run }, { status: 201 });
   }
 
@@ -397,6 +404,22 @@ export class FleetDurableObject implements DurableObject {
       return new Response(log, {
         headers: { "content-type": "text/plain; charset=utf-8" },
       });
+    }
+    if (method === "GET" && action === "events") {
+      const run = await this.getRun(runID);
+      if (!run || !this.runVisibleToRequest(run, request)) {
+        return notFound();
+      }
+      return json({ events: await this.runEvents(runID) });
+    }
+    if (method === "POST" && action === "events") {
+      const run = await this.getRun(runID);
+      if (!run || !this.runVisibleToRequest(run, request)) {
+        return notFound();
+      }
+      const input = await readJson<RunEventRequest>(request);
+      const event = await this.appendRunEventRecord(run, input);
+      return json({ event }, { status: 201 });
     }
     if (method === "POST" && action === "finish") {
       return this.finishRun(request, runID);
@@ -425,6 +448,7 @@ export class FleetDurableObject implements DurableObject {
       run.durationMs = now.getTime() - started;
     }
     run.state = run.exitCode === 0 ? "succeeded" : "failed";
+    run.phase = run.state;
     run.endedAt = now.toISOString();
     const log = input.log ?? "";
     run.logBytes = new TextEncoder().encode(log).byteLength;
@@ -434,6 +458,11 @@ export class FleetDurableObject implements DurableObject {
     }
     await this.state.storage.put(runLogKey(runID), log);
     await this.putRun(run);
+    await this.appendRunEventRecord(run, {
+      type: "command.finished",
+      phase: run.state,
+      exitCode: run.exitCode,
+    });
     return json({ run });
   }
 
@@ -613,6 +642,13 @@ export class FleetDurableObject implements DurableObject {
     return [...runs.values()];
   }
 
+  private async runEvents(runID: string): Promise<RunEventRecord[]> {
+    const events = await this.state.storage.list<RunEventRecord>({
+      prefix: runEventPrefix(runID),
+    });
+    return [...events.values()].toSorted((a, b) => a.seq - b.seq);
+  }
+
   private filterLeasesForRequest(leases: LeaseRecord[], request: Request): LeaseRecord[] {
     const owner = requestOwner(request);
     const org = requestOrg(request, this.env);
@@ -651,6 +687,21 @@ export class FleetDurableObject implements DurableObject {
     await this.state.storage.put(runKey(run.id), run);
   }
 
+  private async appendRunEventRecord(
+    run: RunRecord,
+    input: RunEventRequest,
+  ): Promise<RunEventRecord> {
+    const now = new Date().toISOString();
+    const seq = (run.eventCount ?? 0) + 1;
+    const event = boundedRunEvent(run.id, seq, now, input);
+    applyRunEventSummary(run, event);
+    run.eventCount = seq;
+    run.lastEventAt = now;
+    await this.state.storage.put(runEventKey(run.id, seq), event);
+    await this.putRun(run);
+    return event;
+  }
+
   private provider(provider: Provider, region = "eu-west-1"): CloudProvider {
     const testProvider = this.testProviders[provider];
     if (testProvider) {
@@ -687,6 +738,14 @@ function runKey(runID: string): string {
 
 function runLogKey(runID: string): string {
   return `runlog:${runID}`;
+}
+
+function runEventPrefix(runID: string): string {
+  return `runevent:${runID}:`;
+}
+
+function runEventKey(runID: string, seq: number): string {
+  return `${runEventPrefix(runID)}${String(seq).padStart(12, "0")}`;
 }
 
 function promotedAWSImageKey(): string {
@@ -749,6 +808,108 @@ function finiteNumber(value: number | undefined): number | undefined {
 const MAX_RESULT_FILES = 50;
 const MAX_RESULT_FAILURES = 100;
 const MAX_RESULT_STRING_BYTES = 4096;
+const MAX_EVENT_STRING_BYTES = 16 * 1024;
+
+function boundedRunEvent(
+  runID: string,
+  seq: number,
+  createdAt: string,
+  input: RunEventRequest,
+): RunEventRecord {
+  const type = input.type && input.type.trim() ? input.type.trim() : "event";
+  const event: RunEventRecord = {
+    runID,
+    seq,
+    type: truncateString(type, 128),
+    createdAt,
+  };
+  if (input.phase) {
+    event.phase = truncateString(input.phase, 128);
+  }
+  if (input.stream === "stdout" || input.stream === "stderr") {
+    event.stream = input.stream;
+  }
+  if (input.message) {
+    event.message = truncateString(input.message, MAX_EVENT_STRING_BYTES);
+  }
+  if (input.data) {
+    event.data = truncateString(input.data, MAX_EVENT_STRING_BYTES);
+  }
+  if (input.leaseID && validLeaseID(input.leaseID)) {
+    event.leaseID = input.leaseID;
+  }
+  if (input.slug) {
+    event.slug = truncateString(input.slug, 128);
+  }
+  if (input.provider === "aws" || input.provider === "hetzner") {
+    event.provider = input.provider;
+  }
+  if (input.class) {
+    event.class = truncateString(input.class, 128);
+  }
+  if (input.serverType) {
+    event.serverType = truncateString(input.serverType, 128);
+  }
+  const exitCode = input.exitCode;
+  if (typeof exitCode === "number" && Number.isFinite(exitCode)) {
+    event.exitCode = exitCode;
+  }
+  return event;
+}
+
+function applyRunEventSummary(run: RunRecord, event: RunEventRecord): void {
+  if (event.phase) {
+    run.phase = event.phase;
+  } else {
+    const phase = phaseForRunEvent(event);
+    if (phase) {
+      run.phase = phase;
+    }
+  }
+  if (event.leaseID) {
+    run.leaseID = event.leaseID;
+  }
+  if (event.slug) {
+    run.slug = event.slug;
+  }
+  if (event.provider) {
+    run.provider = event.provider;
+  }
+  if (event.class) {
+    run.class = event.class;
+  }
+  if (event.serverType) {
+    run.serverType = event.serverType;
+  }
+  if (event.type === "run.failed") {
+    run.state = "failed";
+    run.phase = "failed";
+    run.endedAt = event.createdAt;
+  }
+}
+
+function phaseForRunEvent(event: RunEventRecord): string {
+  switch (event.type) {
+    case "leasing.started":
+      return "leasing";
+    case "lease.created":
+      return "leased";
+    case "bootstrap.waiting":
+      return "bootstrap";
+    case "sync.started":
+      return "sync";
+    case "sync.finished":
+      return "synced";
+    case "command.started":
+    case "stdout":
+    case "stderr":
+      return "command";
+    case "lease.released":
+      return "released";
+    default:
+      return "";
+  }
+}
 
 function boundedTestResults(results: TestResultSummary): TestResultSummary {
   return {

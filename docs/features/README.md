@@ -19,7 +19,7 @@ Core features:
 - [Actions hydration](actions-hydration.md): let GitHub Actions prepare a runner, then sync local work into that workspace.
 - [SSH keys](ssh-keys.md): per-lease keys, provider key cleanup, and local storage.
 - [Cost and usage](cost-usage.md): guardrails, provider-backed pricing, and reporting.
-- [History and logs](history-logs.md): coordinator run records and retained remote output tails.
+- [History and logs](history-logs.md): coordinator run records, events, and retained remote output tails.
 - [Test results](test-results.md): JUnit summaries attached to recorded runs.
 - [Cache controls](cache.md): inspect, purge, and warm remote package/build caches.
 - [Auth and admin](auth-admin.md): login/logout/whoami and trusted operator controls.

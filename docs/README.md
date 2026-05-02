@@ -27,7 +27,7 @@ The CLI is a Go binary. The broker is a Cloudflare Worker plus a single Durable 
 2. CLI mints a per-lease SSH key and slug, then calls `POST /v1/leases` on the broker.
 3. Worker checks active-lease and monthly spend caps, reserves worst-case TTL cost, provisions a server, returns host / port / user / workdir / expiry / slug.
 4. CLI waits for `crabbox-ready`, seeds remote Git when possible, rsyncs the Git file-list manifest, runs sync guardrails and sanity checks, hydrates the configured base ref.
-5. CLI runs the command over SSH, streams output, sends heartbeats/touches.
+5. CLI runs the command over SSH, streams output, records run events, sends heartbeats/touches.
 6. CLI releases the lease unless `--keep` is set; kept leases still auto-release after idle timeout, and the broker frees reserved cost when the lease closes.
 
 See [How Crabbox Works](how-it-works.md) for the full picture, including warm-machine reuse and the brokered vs direct provider paths. See [Source Map](source-map.md) when you need to trace a documented behavior back to code.

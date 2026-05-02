@@ -20,9 +20,11 @@ Flags:
 --json                  print JSON
 ```
 
-Human output includes run ID, lease ID, state, exit code, duration, start time, and command. Use the run ID with [logs](logs.md).
+Human output includes run ID, lease ID, state, phase, exit code, duration, start
+time, and command. Use the run ID with [events](events.md) or [logs](logs.md).
 
 Related docs:
 
+- [events](events.md)
 - [logs](logs.md)
 - [History and logs](../features/history-logs.md)
