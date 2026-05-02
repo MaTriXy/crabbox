@@ -7,15 +7,14 @@
   "preview_urls": false,
   "vars": {
     "CRABBOX_PUBLIC_URL": "https://crabbox.openclaw.ai",
+    "CRABBOX_DEFAULT_ORG": "openclaw",
+    "CRABBOX_GITHUB_ALLOWED_ORG": "openclaw",
+    "CRABBOX_AWS_REGION": "eu-west-1",
   },
   "routes": [
     {
       "pattern": "crabbox.openclaw.ai/*",
       "zone_name": "openclaw.ai",
-    },
-    {
-      "pattern": "crabbox.clawd.bot/*",
-      "zone_name": "clawd.bot",
     },
   ],
   "durable_objects": {

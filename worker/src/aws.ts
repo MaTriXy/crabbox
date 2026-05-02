@@ -15,6 +15,21 @@ import type { Env, ProviderImage, ProviderMachine } from "./types";
 const awsUbuntuOwner = "099720109477";
 const ec2Version = "2016-11-15";
 
+export function createSecurityGroupParams(name: string, vpcID: string): Record<string, string> {
+  return {
+    GroupDescription: "Crabbox ephemeral test runners",
+    GroupName: name,
+    VpcId: vpcID,
+    "TagSpecification.1.ResourceType": "security-group",
+    "TagSpecification.1.Tag.1.Key": "Name",
+    "TagSpecification.1.Tag.1.Value": name,
+    "TagSpecification.1.Tag.2.Key": "crabbox",
+    "TagSpecification.1.Tag.2.Value": "true",
+    "TagSpecification.1.Tag.3.Key": "created_by",
+    "TagSpecification.1.Tag.3.Value": "crabbox",
+  };
+}
+
 export class EC2SpotClient {
   private readonly aws: AwsClient;
   private readonly endpoint: string;
@@ -334,18 +349,7 @@ export class EC2SpotClient {
     const group = items(record(existing["securityGroupInfo"])["item"])[0];
     let groupID = asString(record(group)["groupId"]);
     if (!groupID) {
-      const created = await this.ec2("CreateSecurityGroup", {
-        Description: "Crabbox ephemeral test runners",
-        GroupName: name,
-        VpcId: vpcID,
-        "TagSpecification.1.ResourceType": "security-group",
-        "TagSpecification.1.Tag.1.Key": "Name",
-        "TagSpecification.1.Tag.1.Value": name,
-        "TagSpecification.1.Tag.2.Key": "crabbox",
-        "TagSpecification.1.Tag.2.Value": "true",
-        "TagSpecification.1.Tag.3.Key": "created_by",
-        "TagSpecification.1.Tag.3.Value": "crabbox",
-      });
+      const created = await this.ec2("CreateSecurityGroup", createSecurityGroupParams(name, vpcID));
       groupID = asString(record(created)["groupId"]);
     }
     if (!groupID) {

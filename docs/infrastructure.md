@@ -55,19 +55,12 @@ CRABBOX_GITHUB_ALLOWED_ORG
 CRABBOX_GITHUB_ALLOWED_ORGS
 ```
 
-GitHub IdP needs a GitHub OAuth app:
+Crabbox browser login needs a GitHub OAuth app owned by the `openclaw` org:
 
 ```text
 GitHub org: openclaw
 App name: Crabbox Access
 Homepage URL: https://crabbox.openclaw.ai
-Callback URL: https://openclaw-crabbox.cloudflareaccess.com/cdn-cgi/access/callback
-```
-
-Crabbox browser login also needs a coordinator OAuth callback on the same or a second GitHub OAuth app:
-
-```text
-Homepage URL: https://github.com/openclaw/crabbox
 Callback URL: https://crabbox.openclaw.ai/v1/auth/github/callback
 ```
 
@@ -87,11 +80,9 @@ Current local status:
 - Core Cloudflare, Hetzner, and GitHub tokens are present in local `~/.profile`.
 - The Crabbox Cloudflare token is mirrored to MacBook Pro `~/.profile`.
 - `CRABBOX_COORDINATOR` and `CRABBOX_COORDINATOR_TOKEN` are present in local and MacBook Pro `~/.profile`.
-- Cloudflare Access GitHub OAuth client ID and secret may be stored locally as `CRABBOX_GITHUB_OAUTH_*`.
+- The GitHub OAuth client ID and secret may be stored locally as `CRABBOX_GITHUB_OAUTH_*` and deployed to the Worker as `CRABBOX_GITHUB_CLIENT_*`.
 - Crabbox browser-login OAuth secrets are deployed as Worker secrets `CRABBOX_GITHUB_CLIENT_ID`, `CRABBOX_GITHUB_CLIENT_SECRET`, and `CRABBOX_SESSION_SECRET`.
-- Cloudflare Access GitHub IdP is created.
 - Worker route is attached for `crabbox.openclaw.ai/*`.
-- Cloudflare Access fallback app is created for `crabbox.clawd.bot`.
 - `CRABBOX_COORDINATOR`, `CRABBOX_PROFILE`, `CRABBOX_CONFIG`, `CRABBOX_FLEET_CONFIG`, `CRABBOX_SSH_KEY`, `CRABBOX_NO_COLOR`, and `CRABBOX_LOG` are optional CLI defaults and are not required to build the MVP.
 
 The Cloudflare token `crabbox-deploy` is scoped to `Steipete@gmail.com's Account` and the Crabbox zones. It verifies access to Workers scripts, Access applications, Access identity providers, Access keys, DNS records, and zone Worker routes from both the local machine and MacBook Pro.

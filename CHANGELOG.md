@@ -17,10 +17,12 @@ Crabbox 0.3.0 adds the first trusted-operator image lifecycle for AWS runners: o
 
 - Brokered AWS lease creation now uses the promoted AWS image when no explicit `awsAMI` or `CRABBOX_AWS_AMI` override is supplied.
 - Image route validation now rejects noncanonical lease IDs, invalid AMI IDs, invalid AMI names, non-AWS leases, and promotion attempts before an image reaches `available`.
+- Moved the deployed coordinator route to the OpenClaw Cloudflare account at `https://crabbox.openclaw.ai` and scoped default broker org/auth settings to `openclaw`.
 
 ### Fixed
 
 - Fixed responsive padding on the generated docs-site frontpage body content.
+- Fixed brokered AWS security-group creation by sending EC2's required `GroupDescription` parameter, restoring first-run AWS provisioning in fresh accounts.
 
 ## 0.2.0 - 2026-05-01
 
