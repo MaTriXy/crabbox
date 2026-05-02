@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  addRunInstancesTagSpecifications,
+  awsInstanceTypeVCPUs,
   awsLaunchCandidates,
   awsProvisioningErrorCategory,
+  awsQuotaCodeForMarket,
+  awsQuotaPreflightAttempt,
   createSecurityGroupParams,
 } from "../src/aws";
 
@@ -23,6 +27,23 @@ describe("aws provider", () => {
       "TagSpecification.1.Tag.3.Value": "crabbox",
     });
     expect(params).not.toHaveProperty("Description");
+  });
+
+  it("does not tag Spot request resources for On-Demand launches", () => {
+    const spotParams: Record<string, string> = {};
+    addRunInstancesTagSpecifications(spotParams, { crabbox: "true", Name: "crabbox-cbx" }, "spot");
+    expect(spotParams["TagSpecification.3.ResourceType"]).toBe("spot-instances-request");
+
+    const onDemandParams: Record<string, string> = {};
+    addRunInstancesTagSpecifications(
+      onDemandParams,
+      { crabbox: "true", Name: "crabbox-cbx" },
+      "on-demand",
+    );
+    expect(onDemandParams["TagSpecification.1.ResourceType"]).toBe("instance");
+    expect(onDemandParams["TagSpecification.2.ResourceType"]).toBe("volume");
+    expect(onDemandParams).not.toHaveProperty("TagSpecification.3.ResourceType");
+    expect(onDemandParams).not.toHaveProperty("TagSpecification.3.Tag.1.Key");
   });
 
   it("classifies account policy launch failures as fallback candidates", () => {
@@ -50,5 +71,25 @@ describe("aws provider", () => {
         serverTypeExplicit: true,
       }),
     ).toEqual(["t3.small"]);
+  });
+
+  it("maps AWS instance types to vCPU quota units", () => {
+    expect(awsInstanceTypeVCPUs("c7a.48xlarge")).toBe(192);
+    expect(awsInstanceTypeVCPUs("c7a.xlarge")).toBe(4);
+    expect(awsInstanceTypeVCPUs("t3.small")).toBe(2);
+    expect(awsInstanceTypeVCPUs("c7gn.metal")).toBeUndefined();
+  });
+
+  it("builds quota preflight attempts when applied quota is too low", () => {
+    expect(awsQuotaCodeForMarket("spot")).toBe("L-34B43A08");
+    expect(awsQuotaCodeForMarket("on-demand")).toBe("L-1216C47A");
+    expect(awsQuotaPreflightAttempt("c7a.48xlarge", "on-demand", "eu-west-1", 32)).toEqual({
+      serverType: "c7a.48xlarge",
+      market: "on-demand",
+      category: "quota",
+      message: "quota L-1216C47A in eu-west-1 is 32 vCPUs; c7a.48xlarge needs 192 vCPUs",
+    });
+    expect(awsQuotaPreflightAttempt("t3.small", "on-demand", "eu-west-1", 32)).toBeUndefined();
+    expect(awsQuotaPreflightAttempt("c7gn.metal", "spot", "eu-west-1", 32)).toBeUndefined();
   });
 });

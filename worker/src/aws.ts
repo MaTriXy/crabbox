@@ -14,6 +14,8 @@ import type { Env, ProviderImage, ProviderMachine, ProvisioningAttempt } from ".
 
 const awsUbuntuOwner = "099720109477";
 const ec2Version = "2016-11-15";
+const awsSpotQuotaCode = "L-34B43A08";
+const awsOnDemandQuotaCode = "L-1216C47A";
 
 export function createSecurityGroupParams(name: string, vpcID: string): Record<string, string> {
   return {
@@ -32,7 +34,9 @@ export function createSecurityGroupParams(name: string, vpcID: string): Record<s
 
 export class EC2SpotClient {
   private readonly aws: AwsClient;
+  private readonly serviceQuotas: AwsClient;
   private readonly endpoint: string;
+  private readonly serviceQuotasEndpoint: string;
   private readonly region: string;
   private readonly parser = new XMLParser({ ignoreAttributes: false });
 
@@ -47,6 +51,7 @@ export class EC2SpotClient {
     }
     this.region = region || env.CRABBOX_AWS_REGION || "eu-west-1";
     this.endpoint = `https://ec2.${this.region}.amazonaws.com/`;
+    this.serviceQuotasEndpoint = `https://servicequotas.${this.region}.amazonaws.com/`;
     const clientOptions: ConstructorParameters<typeof AwsClient>[0] = {
       accessKeyId,
       secretAccessKey,
@@ -57,6 +62,7 @@ export class EC2SpotClient {
       clientOptions.sessionToken = env.AWS_SESSION_TOKEN;
     }
     this.aws = new AwsClient(clientOptions);
+    this.serviceQuotas = new AwsClient({ ...clientOptions, service: "servicequotas" });
   }
 
   async listCrabboxServers(): Promise<ProviderMachine[]> {
@@ -86,7 +92,19 @@ export class EC2SpotClient {
     const candidates = awsLaunchCandidates(config);
     const failures: string[] = [];
     const attempts: ProvisioningAttempt[] = [];
+    const quotaCache = new Map<string, number | undefined>();
     for (const serverType of candidates) {
+      // oxlint-disable-next-line eslint/no-await-in-loop -- quota preflight follows sequential fallback order.
+      const preflight = await this.quotaPreflightAttempt(
+        serverType,
+        config.capacityMarket,
+        quotaCache,
+      );
+      if (preflight) {
+        attempts.push(preflight);
+        failures.push(`${serverType}: ${preflight.message}`);
+        continue;
+      }
       try {
         // oxlint-disable-next-line eslint/no-await-in-loop -- instance-type fallback must stay sequential.
         const server = await this.createServer(
@@ -122,6 +140,13 @@ export class EC2SpotClient {
     }
     if (config.capacityMarket === "spot" && config.capacityFallback.startsWith("on-demand")) {
       for (const serverType of candidates) {
+        // oxlint-disable-next-line eslint/no-await-in-loop -- on-demand fallback must stay sequential.
+        const preflight = await this.quotaPreflightAttempt(serverType, "on-demand", quotaCache);
+        if (preflight) {
+          attempts.push(preflight);
+          failures.push(`on-demand ${serverType}: ${preflight.message}`);
+          continue;
+        }
         try {
           // oxlint-disable-next-line eslint/no-await-in-loop -- on-demand fallback must stay sequential.
           const server = await this.createServer(
@@ -308,9 +333,6 @@ export class EC2SpotClient {
       "BlockDeviceMapping.1.Ebs.Encrypted": "true",
       "BlockDeviceMapping.1.Ebs.VolumeSize": String(Math.max(1, rootGB)),
       "BlockDeviceMapping.1.Ebs.VolumeType": "gp3",
-      "TagSpecification.1.ResourceType": "instance",
-      "TagSpecification.2.ResourceType": "volume",
-      "TagSpecification.3.ResourceType": "spot-instances-request",
     };
     if (config.capacityMarket !== "on-demand") {
       params["InstanceMarketOptions.MarketType"] = "spot";
@@ -329,9 +351,7 @@ export class EC2SpotClient {
     } else {
       params["SecurityGroupId.1"] = securityGroupID;
     }
-    addTags(params, "TagSpecification.1.Tag", { ...labels, Name: name });
-    addTags(params, "TagSpecification.2.Tag", { ...labels, Name: name });
-    addTags(params, "TagSpecification.3.Tag", { ...labels, Name: name });
+    addRunInstancesTagSpecifications(params, { ...labels, Name: name }, config.capacityMarket);
     const root = await this.ec2("RunInstances", params);
     const instance = items(record(root["instancesSet"])["item"])[0];
     if (!instance) {
@@ -478,6 +498,41 @@ export class EC2SpotClient {
     const root = parsedRecord[`${action}Response`] ?? parsedRecord["Response"] ?? parsedRecord;
     return record(root);
   }
+
+  private async quotaPreflightAttempt(
+    serverType: string,
+    market: LeaseConfig["capacityMarket"],
+    quotaCache: Map<string, number | undefined>,
+  ): Promise<ProvisioningAttempt | undefined> {
+    const code = awsQuotaCodeForMarket(market);
+    let quota = quotaCache.get(code);
+    if (!quotaCache.has(code)) {
+      quota = await this.appliedServiceQuota(code);
+      quotaCache.set(code, quota);
+    }
+    return awsQuotaPreflightAttempt(serverType, market, this.region, quota);
+  }
+
+  private async appliedServiceQuota(quotaCode: string): Promise<number | undefined> {
+    try {
+      const response = await this.serviceQuotas.fetch(this.serviceQuotasEndpoint, {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-amz-json-1.1",
+          "x-amz-target": "ServiceQuotasV20190624.GetServiceQuota",
+        },
+        body: JSON.stringify({ ServiceCode: "ec2", QuotaCode: quotaCode }),
+      });
+      if (!response.ok) {
+        return undefined;
+      }
+      const parsed = record(await response.json());
+      const quota = record(parsed["Quota"]);
+      return positiveNumber(quota["Value"]);
+    } catch {
+      return undefined;
+    }
+  }
 }
 
 function awsSSHCIDRs(config: LeaseConfig, env: Env): string[] {
@@ -537,6 +592,21 @@ function addTags(
     });
 }
 
+export function addRunInstancesTagSpecifications(
+  params: Record<string, string>,
+  labels: Record<string, string>,
+  market: string,
+): void {
+  params["TagSpecification.1.ResourceType"] = "instance";
+  params["TagSpecification.2.ResourceType"] = "volume";
+  addTags(params, "TagSpecification.1.Tag", labels);
+  addTags(params, "TagSpecification.2.Tag", labels);
+  if (market !== "on-demand") {
+    params["TagSpecification.3.ResourceType"] = "spot-instances-request";
+    addTags(params, "TagSpecification.3.Tag", labels);
+  }
+}
+
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -573,6 +643,43 @@ export function awsLaunchCandidates(
   ]);
 }
 
+export function awsQuotaCodeForMarket(market: string): string {
+  return market === "on-demand" ? awsOnDemandQuotaCode : awsSpotQuotaCode;
+}
+
+export function awsInstanceTypeVCPUs(serverType: string): number | undefined {
+  const match = /\.([0-9]+)xlarge$/.exec(serverType);
+  if (match?.[1]) {
+    return Number.parseInt(match[1], 10) * 4;
+  }
+  if (serverType.endsWith(".xlarge")) {
+    return 4;
+  }
+  if (/\.(nano|micro|small|medium|large)$/.test(serverType)) {
+    return 2;
+  }
+  return undefined;
+}
+
+export function awsQuotaPreflightAttempt(
+  serverType: string,
+  market: string,
+  region: string,
+  quotaValue: number | undefined,
+): ProvisioningAttempt | undefined {
+  const needed = awsInstanceTypeVCPUs(serverType);
+  if (!needed || quotaValue === undefined || quotaValue >= needed) {
+    return undefined;
+  }
+  const quotaCode = awsQuotaCodeForMarket(market);
+  return {
+    serverType,
+    market,
+    category: "quota",
+    message: `quota ${quotaCode} in ${region} is ${quotaValue} vCPUs; ${serverType} needs ${needed} vCPUs`,
+  };
+}
+
 function awsPolicyFallbackCandidates(): string[] {
   return ["t3.small"];
 }
@@ -591,6 +698,11 @@ function positiveInt(value: string | undefined): number {
 
 function positiveFloat(value: string): number | undefined {
   const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function positiveNumber(value: unknown): number | undefined {
+  const parsed = typeof value === "number" ? value : Number.parseFloat(String(value));
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
