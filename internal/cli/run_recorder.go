@@ -4,33 +4,38 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 )
 
 type runRecorder struct {
-	coord    *CoordinatorClient
-	runID    string
-	stderr   io.Writer
-	finished bool
-	warned   bool
-	warnMu   sync.Mutex
-	output   *runOutputEventQueue
+	coord           *CoordinatorClient
+	command         []string
+	runID           string
+	stderr          io.Writer
+	deferUntilLease bool
+	finished        bool
+	warned          bool
+	warnMu          sync.Mutex
+	output          *runOutputEventQueue
 }
 
 func newRunRecorder(ctx context.Context, coord *CoordinatorClient, cfg Config, command []string, stderr io.Writer) *runRecorder {
-	rec := &runRecorder{coord: coord, stderr: stderr}
+	rec := &runRecorder{coord: coord, command: command, stderr: stderr}
 	if coord == nil {
 		return rec
 	}
 	run, err := coord.CreateRun(ctx, "", cfg, command)
 	if err != nil {
+		if isInvalidLeaseIDCoordinatorError(err) {
+			rec.deferUntilLease = true
+			return rec
+		}
 		rec.warn("run history create failed: %v", err)
 		return rec
 	}
-	rec.runID = run.ID
-	rec.output = newRunOutputEventQueue(coord, run.ID, rec.warn)
-	fmt.Fprintf(stderr, "recording run %s\n", run.ID)
+	rec.attachRun(run)
 	return rec
 }
 
@@ -51,7 +56,20 @@ func (r *runRecorder) Event(kind, phase, message string) {
 }
 
 func (r *runRecorder) AttachLease(leaseID, slug string, cfg Config) {
-	if r == nil || r.runID == "" || r.finished {
+	if r == nil || r.finished {
+		return
+	}
+	if r.runID == "" && r.deferUntilLease && r.coord != nil && leaseID != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		run, err := r.coord.CreateRun(ctx, leaseID, cfg, r.command)
+		if err != nil {
+			r.warn("run history create failed: %v", err)
+			return
+		}
+		r.attachRun(run)
+	}
+	if r.runID == "" {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -68,6 +86,12 @@ func (r *runRecorder) AttachLease(leaseID, slug string, cfg Config) {
 	if err != nil {
 		r.warn("run event append failed for lease.created: %v", err)
 	}
+}
+
+func (r *runRecorder) attachRun(run CoordinatorRun) {
+	r.runID = run.ID
+	r.output = newRunOutputEventQueue(r.coord, run.ID, r.warn)
+	fmt.Fprintf(r.stderr, "recording run %s\n", run.ID)
 }
 
 func (r *runRecorder) StreamWriter(stream string) *runEventStreamWriter {
@@ -126,4 +150,8 @@ func (r *runRecorder) waitForOutputEvents(timeout time.Duration) {
 		return
 	}
 	r.output.CloseAndWait(timeout)
+}
+
+func isInvalidLeaseIDCoordinatorError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "invalid_lease_id")
 }
