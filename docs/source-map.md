@@ -77,3 +77,4 @@ Bootstrap is intentionally tiny: OpenSSH, CA certificates, curl, Git, rsync, jq,
 - GoReleaser archives and Homebrew formula config: `.goreleaser.yaml`
 - Docs link check, site builder, and Pages deployment: `scripts/check-docs-links.mjs`, `scripts/build-docs-site.mjs`, `.github/workflows/pages.yml`
 - Live provider smoke coverage: `scripts/live-smoke.sh`
+- Live coordinator auth smoke coverage: `scripts/live-auth-smoke.sh`

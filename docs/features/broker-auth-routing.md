@@ -118,12 +118,14 @@ Useful proof commands:
 curl -i https://crabbox-access.openclaw.ai/v1/health
 CRABBOX_COORDINATOR=https://crabbox-access.openclaw.ai bin/crabbox doctor
 CRABBOX_COORDINATOR=https://crabbox-access.openclaw.ai bin/crabbox whoami
+CRABBOX_LIVE=1 CRABBOX_COORDINATOR=https://crabbox-access.openclaw.ai CRABBOX_BIN=bin/crabbox scripts/live-auth-smoke.sh
 CRABBOX_LIVE=1 CRABBOX_LIVE_PROVIDERS=aws CRABBOX_COORDINATOR=https://crabbox-access.openclaw.ai CRABBOX_BIN=bin/crabbox scripts/live-smoke.sh
 ```
 
-The first command should fail at Cloudflare Access without credentials. The CLI
-commands should pass when local Access credentials and Crabbox broker auth are
-configured.
+The first command should fail at Cloudflare Access without credentials. The auth
+smoke should pass when local Access credentials, shared broker auth, and admin
+broker auth are configured. The provider smoke additionally proves the same
+route can lease, run, and release a real machine.
 
 Owner selection for bearer-token requests:
 

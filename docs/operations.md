@@ -118,12 +118,16 @@ Use the protected route when testing the Cloudflare Access layer:
 ```sh
 CRABBOX_COORDINATOR=https://crabbox-access.openclaw.ai bin/crabbox doctor
 CRABBOX_COORDINATOR=https://crabbox-access.openclaw.ai bin/crabbox whoami
+CRABBOX_LIVE=1 CRABBOX_COORDINATOR=https://crabbox-access.openclaw.ai CRABBOX_BIN=bin/crabbox scripts/live-auth-smoke.sh
 CRABBOX_LIVE=1 CRABBOX_LIVE_PROVIDERS=aws CRABBOX_COORDINATOR=https://crabbox-access.openclaw.ai CRABBOX_BIN=bin/crabbox scripts/live-smoke.sh
 ```
 
-`doctor` should report `access=service-token`. A raw request without Access
-headers to `https://crabbox-access.openclaw.ai/v1/health` should return a
-Cloudflare Access `403`.
+`doctor` should report `access=service-token`. `scripts/live-auth-smoke.sh`
+proves the auth boundary without leasing a machine: no Access headers are denied
+at the edge, shared-token user auth works, raw Access identity spoofing is
+ignored, shared-token admin calls fail, and admin-token admin calls pass. A raw
+request without Access headers to `https://crabbox-access.openclaw.ai/v1/health`
+should return a Cloudflare Access `403`.
 
 Use `crabbox config show` to confirm which URL and provider the CLI will use:
 
