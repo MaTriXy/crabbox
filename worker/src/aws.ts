@@ -83,10 +83,7 @@ export class EC2SpotClient {
     await this.ensureSSHKey(config.providerKey, config.sshPublicKey);
     const imageID = await this.resolveAMI(config);
     const securityGroupID = await this.ensureSecurityGroup(config);
-    const candidates = prependUnique(
-      config.serverType,
-      awsInstanceTypeCandidatesForClass(config.class),
-    );
+    const candidates = awsLaunchCandidates(config);
     const failures: string[] = [];
     for (const serverType of candidates) {
       try {
@@ -129,6 +126,11 @@ export class EC2SpotClient {
           }
         }
       }
+    }
+    if (config.serverTypeExplicit) {
+      throw new Error(
+        `requested exact AWS instance type ${config.serverType} failed; remove --type to allow class fallback: ${failures.join("; ")}`,
+      );
     }
     throw new Error(failures.join("; "));
   }
@@ -529,8 +531,25 @@ function asString(value: unknown): string {
   return "";
 }
 
-function prependUnique(first: string, rest: string[]): string[] {
-  return [first, ...rest.filter((value) => value !== first)];
+export function awsLaunchCandidates(
+  config: Pick<LeaseConfig, "serverType" | "serverTypeExplicit" | "class">,
+): string[] {
+  if (config.serverTypeExplicit) {
+    return [config.serverType];
+  }
+  return uniqueStrings([
+    config.serverType,
+    ...awsInstanceTypeCandidatesForClass(config.class),
+    ...awsPolicyFallbackCandidates(),
+  ]);
+}
+
+function awsPolicyFallbackCandidates(): string[] {
+  return ["t3.small"];
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))];
 }
 
 function positiveInt(value: string | undefined): number {
@@ -546,14 +565,30 @@ function positiveFloat(value: string): number | undefined {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
+export function awsProvisioningErrorCategory(message: string): string {
+  if (message.includes("InsufficientInstanceCapacity")) {
+    return "capacity";
+  }
+  if (message.includes("MaxSpotInstanceCountExceeded") || message.includes("VcpuLimitExceeded")) {
+    return "quota";
+  }
+  if (message.includes("Unsupported") || message.includes("InvalidParameterValue")) {
+    return "unsupported";
+  }
+  if (
+    message.includes("InvalidParameterCombination") &&
+    (message.includes("Free Tier") ||
+      message.includes("eligible") ||
+      message.includes("InstanceType") ||
+      message.includes("instance type"))
+  ) {
+    return "policy";
+  }
+  return "";
+}
+
 function isRetryableAWSProvisioningError(message: string): boolean {
-  return (
-    message.includes("InsufficientInstanceCapacity") ||
-    message.includes("MaxSpotInstanceCountExceeded") ||
-    message.includes("VcpuLimitExceeded") ||
-    message.includes("Unsupported") ||
-    message.includes("InvalidParameterValue")
-  );
+  return awsProvisioningErrorCategory(message) !== "";
 }
 
 function trimBody(text: string): string {

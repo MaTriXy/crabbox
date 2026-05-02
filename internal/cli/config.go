@@ -13,38 +13,39 @@ import (
 )
 
 type Config struct {
-	Profile          string
-	Provider         string
-	Class            string
-	ServerType       string
-	Coordinator      string
-	CoordToken       string
-	CoordAdminToken  string
-	Access           AccessConfig
-	Location         string
-	Image            string
-	AWSRegion        string
-	AWSAMI           string
-	AWSSGID          string
-	AWSSubnetID      string
-	AWSProfile       string
-	AWSRootGB        int32
-	AWSSSHCIDRs      []string
-	SSHUser          string
-	SSHKey           string
-	SSHPort          string
-	SSHFallbackPorts []string
-	ProviderKey      string
-	WorkRoot         string
-	TTL              time.Duration
-	IdleTimeout      time.Duration
-	Sync             SyncConfig
-	EnvAllow         []string
-	Capacity         CapacityConfig
-	Actions          ActionsConfig
-	Blacksmith       BlacksmithConfig
-	Results          ResultsConfig
-	Cache            CacheConfig
+	Profile            string
+	Provider           string
+	Class              string
+	ServerType         string
+	ServerTypeExplicit bool
+	Coordinator        string
+	CoordToken         string
+	CoordAdminToken    string
+	Access             AccessConfig
+	Location           string
+	Image              string
+	AWSRegion          string
+	AWSAMI             string
+	AWSSGID            string
+	AWSSubnetID        string
+	AWSProfile         string
+	AWSRootGB          int32
+	AWSSSHCIDRs        []string
+	SSHUser            string
+	SSHKey             string
+	SSHPort            string
+	SSHFallbackPorts   []string
+	ProviderKey        string
+	WorkRoot           string
+	TTL                time.Duration
+	IdleTimeout        time.Duration
+	Sync               SyncConfig
+	EnvAllow           []string
+	Capacity           CapacityConfig
+	Actions            ActionsConfig
+	Blacksmith         BlacksmithConfig
+	Results            ResultsConfig
+	Cache              CacheConfig
 }
 
 type SyncConfig struct {
@@ -648,6 +649,9 @@ func applyEnv(cfg *Config) {
 	cfg.Profile = getenv("CRABBOX_PROFILE", cfg.Profile)
 	cfg.Provider = getenv("CRABBOX_PROVIDER", cfg.Provider)
 	cfg.Class = getenv("CRABBOX_DEFAULT_CLASS", cfg.Class)
+	if os.Getenv("CRABBOX_SERVER_TYPE") != "" {
+		cfg.ServerTypeExplicit = true
+	}
 	cfg.ServerType = getenv("CRABBOX_SERVER_TYPE", cfg.ServerType)
 	cfg.Coordinator = getenv("CRABBOX_COORDINATOR", cfg.Coordinator)
 	cfg.CoordToken = getenv("CRABBOX_COORDINATOR_TOKEN", cfg.CoordToken)

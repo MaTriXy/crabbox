@@ -53,6 +53,7 @@ func (a App) actionsHydrate(ctx context.Context, args []string) error {
 	waitTimeout := fs.Duration("wait-timeout", 20*time.Minute, "time to wait for Actions hydration")
 	keepAliveMinutes := fs.Int("keep-alive-minutes", 90, "minutes for workflow to keep the job alive")
 	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
+	timingJSON := fs.Bool("timing-json", false, "print final timing as JSON")
 	fieldFlags := stringListFlag{}
 	fs.Var(&fieldFlags, "f", "workflow input key=value")
 	fs.Var(&fieldFlags, "field", "workflow input key=value")
@@ -147,6 +148,19 @@ func (a App) actionsHydrate(ctx context.Context, args []string) error {
 	}
 	fmt.Fprintf(a.Stdout, "actions hydrated id=%s slug=%s workspace=%s run_id=%s\n", leaseID, blank(slug, "-"), state.Workspace, blank(state.RunID, "-"))
 	fmt.Fprintf(a.Stdout, "actions hydrate complete total=%s\n", time.Since(started).Round(time.Millisecond))
+	if *timingJSON {
+		total := time.Since(started)
+		if err := writeTimingJSON(a.Stderr, timingReport{
+			Provider:      cfg.Provider,
+			LeaseID:       leaseID,
+			Slug:          slug,
+			TotalMs:       total.Milliseconds(),
+			ExitCode:      0,
+			ActionsRunURL: actionsRunURL(ghRepo, state.RunID),
+		}); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -561,6 +575,13 @@ func actionsHydrationStopPath(leaseID string) string {
 
 func actionsHydrationDir() string {
 	return ".crabbox/actions"
+}
+
+func actionsRunURL(repo GitHubRepo, runID string) string {
+	if repo.Slug() == "" || runID == "" {
+		return ""
+	}
+	return "https://github.com/" + repo.Slug() + "/actions/runs/" + runID
 }
 
 func remoteWriteActionsHydrationStop(leaseID string) string {

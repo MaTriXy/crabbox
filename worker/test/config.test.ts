@@ -61,7 +61,19 @@ describe("lease config", () => {
   it("uses AWS defaults when requested", () => {
     const config = leaseConfig({ provider: "aws", sshPublicKey: "ssh-ed25519 test" });
     expect(config.serverType).toBe("c7a.48xlarge");
+    expect(config.serverTypeExplicit).toBe(false);
     expect(config.awsRegion).toBe("eu-west-1");
+  });
+
+  it("preserves exact server type requests", () => {
+    const config = leaseConfig({
+      provider: "aws",
+      serverType: "t3.small",
+      serverTypeExplicit: true,
+      sshPublicKey: "ssh-ed25519 test",
+    });
+    expect(config.serverType).toBe("t3.small");
+    expect(config.serverTypeExplicit).toBe(true);
   });
 
   it("uses configured SSH fallback ports as ordered candidates", () => {

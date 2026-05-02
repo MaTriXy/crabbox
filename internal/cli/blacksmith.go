@@ -29,6 +29,7 @@ type blacksmithRunOptions struct {
 	ShellMode   bool
 	Command     []string
 	IdleTimeout time.Duration
+	TimingJSON  bool
 }
 
 type blacksmithFlagValues struct {
@@ -76,7 +77,7 @@ func applyBlacksmithFlagOverrides(cfg *Config, fs *flag.FlagSet, values blacksmi
 	}
 }
 
-func (a App) blacksmithWarmup(ctx context.Context, cfg Config, repo Repo, keep, reclaim bool) error {
+func (a App) blacksmithWarmup(ctx context.Context, cfg Config, repo Repo, keep, reclaim, timingJSON bool) error {
 	started := time.Now()
 	leaseID, slug, err := a.blacksmithWarmupLease(ctx, cfg, repo, reclaim)
 	if err != nil {
@@ -87,6 +88,18 @@ func (a App) blacksmithWarmup(ctx context.Context, cfg Config, repo Repo, keep, 
 		fmt.Fprintf(a.Stderr, "warning: blacksmith warmup keeps the testbox until idle timeout or explicit stop\n")
 	}
 	fmt.Fprintf(a.Stdout, "warmup complete total=%s\n", time.Since(started).Round(time.Millisecond))
+	if timingJSON {
+		total := time.Since(started)
+		if err := writeTimingJSON(a.Stderr, timingReport{
+			Provider: blacksmithTestboxProvider,
+			LeaseID:  leaseID,
+			Slug:     slug,
+			TotalMs:  total.Milliseconds(),
+			ExitCode: 0,
+		}); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -133,6 +146,19 @@ func (a App) blacksmithRun(ctx context.Context, cfg Config, repo Repo, opts blac
 	commandDuration := time.Since(commandStart)
 	total := time.Since(started)
 	fmt.Fprintf(a.Stderr, "blacksmith run summary sync=delegated command=%s total=%s exit=%d\n", commandDuration.Round(time.Millisecond), total.Round(time.Millisecond), code)
+	if opts.TimingJSON {
+		if err := writeTimingJSON(a.Stderr, timingReport{
+			Provider:      blacksmithTestboxProvider,
+			LeaseID:       leaseID,
+			SyncPhases:    []timingPhase{{Name: "delegated", Skipped: true, Reason: "blacksmith-testbox owns sync"}},
+			SyncDelegated: true,
+			CommandMs:     commandDuration.Milliseconds(),
+			TotalMs:       total.Milliseconds(),
+			ExitCode:      code,
+		}); err != nil {
+			return err
+		}
+	}
 	if code != 0 {
 		return ExitError{Code: code, Message: fmt.Sprintf("blacksmith testbox run exited %d", code)}
 	}

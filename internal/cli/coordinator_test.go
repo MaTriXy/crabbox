@@ -214,8 +214,9 @@ func TestCoordinatorLeaseWatchCancelsWhenLeaseReleased(t *testing.T) {
 
 func TestCoordinatorCreateLeaseSendsAWSSSHCIDRs(t *testing.T) {
 	var body struct {
-		AWSSSHCIDRs      []string `json:"awsSSHCIDRs"`
-		SSHFallbackPorts []string `json:"sshFallbackPorts"`
+		AWSSSHCIDRs        []string `json:"awsSSHCIDRs"`
+		SSHFallbackPorts   []string `json:"sshFallbackPorts"`
+		ServerTypeExplicit bool     `json:"serverTypeExplicit"`
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/v1/leases" {
@@ -231,9 +232,11 @@ func TestCoordinatorCreateLeaseSendsAWSSSHCIDRs(t *testing.T) {
 
 	client := CoordinatorClient{BaseURL: server.URL, Client: server.Client()}
 	_, err := client.CreateLease(context.Background(), Config{
-		Provider:         "aws",
-		AWSSSHCIDRs:      []string{"198.51.100.7/32"},
-		SSHFallbackPorts: []string{"22", "2022"},
+		Provider:           "aws",
+		ServerType:         "t3.small",
+		ServerTypeExplicit: true,
+		AWSSSHCIDRs:        []string{"198.51.100.7/32"},
+		SSHFallbackPorts:   []string{"22", "2022"},
 	}, "ssh-ed25519 test", false, "cbx_123", "blue-crab")
 	if err != nil {
 		t.Fatal(err)
@@ -243,6 +246,9 @@ func TestCoordinatorCreateLeaseSendsAWSSSHCIDRs(t *testing.T) {
 	}
 	if len(body.SSHFallbackPorts) != 2 || body.SSHFallbackPorts[0] != "22" || body.SSHFallbackPorts[1] != "2022" {
 		t.Fatalf("sshFallbackPorts=%v", body.SSHFallbackPorts)
+	}
+	if !body.ServerTypeExplicit {
+		t.Fatal("serverTypeExplicit=false, want true")
 	}
 }
 

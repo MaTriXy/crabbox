@@ -137,10 +137,7 @@ func (c *AWSClient) CreateServerWithFallback(ctx context.Context, cfg Config, pu
 	if err != nil {
 		return Server{}, cfg, err
 	}
-	candidates := awsInstanceTypeCandidatesForClass(cfg.Class)
-	if cfg.ServerType != "" && cfg.ServerType != candidates[0] {
-		candidates = append([]string{cfg.ServerType}, candidates...)
-	}
+	candidates := awsLaunchCandidates(cfg)
 	useSpot := cfg.Capacity.Market != "on-demand"
 	var errs []error
 	for i, instanceType := range candidates {
@@ -174,6 +171,9 @@ func (c *AWSClient) CreateServerWithFallback(ctx context.Context, cfg Config, pu
 				return Server{}, next, joinErrors(errs)
 			}
 		}
+	}
+	if cfg.ServerTypeExplicit {
+		return Server{}, cfg, fmt.Errorf("requested exact AWS instance type %s failed; remove --type to allow class fallback: %w", cfg.ServerType, joinErrors(errs))
 	}
 	return Server{}, cfg, joinErrors(errs)
 }
@@ -482,7 +482,19 @@ func isRetryableAWSProvisioningError(err error) bool {
 		strings.Contains(s, "MaxSpotInstanceCountExceeded") ||
 		strings.Contains(s, "VcpuLimitExceeded") ||
 		strings.Contains(s, "Unsupported") ||
-		strings.Contains(s, "InvalidParameterValue")
+		strings.Contains(s, "InvalidParameterValue") ||
+		(strings.Contains(s, "InvalidParameterCombination") &&
+			(strings.Contains(s, "Free Tier") ||
+				strings.Contains(s, "eligible") ||
+				strings.Contains(s, "InstanceType") ||
+				strings.Contains(s, "instance type")))
+}
+
+func awsLaunchCandidates(cfg Config) []string {
+	if cfg.ServerTypeExplicit {
+		return []string{cfg.ServerType}
+	}
+	return appendUniqueStrings([]string{cfg.ServerType}, append(awsInstanceTypeCandidatesForClass(cfg.Class), "t3.small")...)
 }
 
 func parsePort32(port string) (int32, bool) {

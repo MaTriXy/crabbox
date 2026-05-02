@@ -23,6 +23,7 @@ func (a App) warmup(ctx context.Context, args []string) error {
 	keep := fs.Bool("keep", true, "keep server after warmup")
 	actionsRunner := fs.Bool("actions-runner", false, "register this box as an ephemeral GitHub Actions runner")
 	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
+	timingJSON := fs.Bool("timing-json", false, "print final timing as JSON")
 	blacksmithFlags := registerBlacksmithFlags(fs, defaults)
 	if err := parseFlags(fs, args); err != nil {
 		return err
@@ -36,6 +37,7 @@ func (a App) warmup(ctx context.Context, args []string) error {
 	cfg.Class = *class
 	if flagWasSet(fs, "type") {
 		cfg.ServerType = *serverType
+		cfg.ServerTypeExplicit = true
 	}
 	if cfg.ServerType == "" || ((flagWasSet(fs, "provider") || flagWasSet(fs, "class")) && !flagWasSet(fs, "type")) {
 		cfg.ServerType = serverTypeForProviderClass(cfg.Provider, *class)
@@ -61,7 +63,7 @@ func (a App) warmup(ctx context.Context, args []string) error {
 		if *actionsRunner {
 			return exit(2, "--actions-runner is not supported for provider=%s; Blacksmith owns runner hydration", cfg.Provider)
 		}
-		return a.blacksmithWarmup(ctx, cfg, repo, *keep, *reclaim)
+		return a.blacksmithWarmup(ctx, cfg, repo, *keep, *reclaim, *timingJSON)
 	}
 
 	coord, useCoordinator, err := newCoordinatorClient(cfg)
@@ -95,6 +97,18 @@ func (a App) warmup(ctx context.Context, args []string) error {
 		}
 	}
 	fmt.Fprintf(a.Stdout, "warmup complete total=%s\n", time.Since(started).Round(time.Millisecond))
+	if *timingJSON {
+		total := time.Since(started)
+		if err := writeTimingJSON(a.Stderr, timingReport{
+			Provider: cfg.Provider,
+			LeaseID:  leaseID,
+			Slug:     serverSlug(server),
+			TotalMs:  total.Milliseconds(),
+			ExitCode: 0,
+		}); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -117,6 +131,7 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 	forceSyncLarge := fs.Bool("force-sync-large", false, "allow unusually large sync candidates")
 	junitResults := fs.String("junit", "", "comma-separated remote JUnit XML paths to record")
 	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
+	timingJSON := fs.Bool("timing-json", false, "print final timing as JSON")
 	blacksmithFlags := registerBlacksmithFlags(fs, defaults)
 	if err := parseFlags(fs, args); err != nil {
 		return err
@@ -138,6 +153,7 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 	cfg.Class = *class
 	if flagWasSet(fs, "type") {
 		cfg.ServerType = *serverType
+		cfg.ServerTypeExplicit = true
 	}
 	if cfg.ServerType == "" || ((flagWasSet(fs, "provider") || flagWasSet(fs, "class")) && !flagWasSet(fs, "type")) {
 		cfg.ServerType = serverTypeForProviderClass(cfg.Provider, *class)
@@ -175,6 +191,7 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 			ShellMode:   *shellMode,
 			Command:     command,
 			IdleTimeout: cfg.IdleTimeout,
+			TimingJSON:  *timingJSON,
 		})
 	}
 
@@ -253,10 +270,14 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 	timings := runTimings{started: time.Now()}
 	workdir := filepath.ToSlash(filepath.Join(cfg.WorkRoot, leaseID, repo.Name))
 	actionsEnvFile := ""
+	hydratedByActions := false
 	if state, err := readActionsHydrationState(ctx, target, leaseID); err == nil && state.Workspace != "" {
 		workdir = state.Workspace
 		actionsEnvFile = state.EnvFile
+		hydratedByActions = true
 		fmt.Fprintf(a.Stderr, "using GitHub Actions workspace %s\n", workdir)
+	} else if commandNeedsHydrationHint(command, *shellMode) && cfg.Actions.Workflow != "" {
+		fmt.Fprintf(a.Stderr, "warning: no GitHub Actions hydration marker found for %s; JS package commands may fail on a raw box. Run \"crabbox actions hydrate --id %s\" first, or include runtime setup in the command.\n", leaseID, leaseID)
 	}
 	if !*noSync {
 		syncStart := time.Now()
@@ -342,11 +363,29 @@ func (a App) runCommand(ctx context.Context, args []string) error {
 			return exit(6, "remote sync sanity failed: %v", err)
 		}
 		timings.syncSteps.sanity = time.Since(stepStart)
-		stepStart = time.Now()
-		if err := runSSHQuiet(ctx, target, remoteGitHydrate(workdir, cfg.Sync.BaseRef)); err != nil {
-			fmt.Fprintf(a.Stderr, "warning: remote git hydrate failed: %v\n", err)
+		baseSHA := gitHydrateBaseSHA(repo, cfg.Sync.BaseRef)
+		if hydratedByActions {
+			stepStart = time.Now()
+			reason, err := runSSHOutput(ctx, target, remoteGitHydrateStatus(workdir, cfg.Sync.BaseRef, baseSHA))
+			if err == nil && reason != "" {
+				timings.syncSteps.gitHydrateSkipped = true
+				timings.syncSteps.gitHydrateSkipReason = reason
+				fmt.Fprintf(a.Stderr, "skipping git hydrate: %s\n", reason)
+			}
 		}
-		timings.syncSteps.gitHydrate = time.Since(stepStart)
+		if !timings.syncSteps.gitHydrateSkipped {
+			stepStart = time.Now()
+			if err := runSSHQuiet(ctx, target, remoteGitHydrate(workdir, cfg.Sync.BaseRef)); err != nil {
+				fmt.Fprintf(a.Stderr, "warning: remote git hydrate failed: %v\n", err)
+			}
+			timings.syncSteps.gitHydrate = time.Since(stepStart)
+		}
+		if cfg.Sync.BaseRef != "" && baseSHA != "" {
+			stepStart = time.Now()
+			if err := runSSHQuiet(ctx, target, remoteWriteGitHydrateMarker(workdir, cfg.Sync.BaseRef, baseSHA)); err != nil {
+				fmt.Fprintf(a.Stderr, "warning: write git hydrate marker failed: %v\n", err)
+			}
+		}
 		if fingerprint != "" {
 			stepStart = time.Now()
 			if err := runSSHQuiet(ctx, target, remoteWriteSyncFingerprint(workdir, fingerprint)); err != nil {
@@ -361,6 +400,12 @@ afterSync:
 	if *syncOnly {
 		fmt.Fprintf(a.Stdout, "synced %s\n", workdir)
 		fmt.Fprintln(a.Stderr, formatRunSummary(timings, time.Since(timings.started), 0))
+		if *timingJSON {
+			total := time.Since(timings.started)
+			if err := writeTimingJSON(a.Stderr, timingReportFromRun(cfg.Provider, leaseID, serverSlug(server), timings, total, 0)); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 
@@ -416,6 +461,11 @@ afterSync:
 	total := time.Since(timings.started)
 	fmt.Fprintf(a.Stderr, "command complete in %s total=%s\n", timings.command.Round(time.Millisecond), total.Round(time.Millisecond))
 	fmt.Fprintln(a.Stderr, formatRunSummary(timings, total, code))
+	if *timingJSON {
+		if err := writeTimingJSON(a.Stderr, timingReportFromRun(cfg.Provider, leaseID, serverSlug(server), timings, total, code)); err != nil {
+			return err
+		}
+	}
 	if code != 0 {
 		return ExitError{Code: code, Message: fmt.Sprintf("remote command exited %d", code)}
 	}
@@ -431,20 +481,22 @@ type runTimings struct {
 }
 
 type syncStepTimings struct {
-	sshReady          time.Duration
-	mkdir             time.Duration
-	manifest          time.Duration
-	preflight         time.Duration
-	fingerprintLocal  time.Duration
-	fingerprintRemote time.Duration
-	gitSeed           time.Duration
-	manifestWrite     time.Duration
-	prune             time.Duration
-	rsync             time.Duration
-	manifestApply     time.Duration
-	sanity            time.Duration
-	gitHydrate        time.Duration
-	fingerprintWrite  time.Duration
+	sshReady             time.Duration
+	mkdir                time.Duration
+	manifest             time.Duration
+	preflight            time.Duration
+	fingerprintLocal     time.Duration
+	fingerprintRemote    time.Duration
+	gitSeed              time.Duration
+	manifestWrite        time.Duration
+	prune                time.Duration
+	rsync                time.Duration
+	manifestApply        time.Duration
+	sanity               time.Duration
+	gitHydrate           time.Duration
+	gitHydrateSkipped    bool
+	gitHydrateSkipReason string
+	fingerprintWrite     time.Duration
 }
 
 func formatRunSummary(timings runTimings, total time.Duration, exitCode int) string {
@@ -480,9 +532,47 @@ func formatSyncStepTimings(steps syncStepTimings) string {
 	appendStep("rsync", steps.rsync)
 	appendStep("manifest_apply", steps.manifestApply)
 	appendStep("sanity", steps.sanity)
-	appendStep("git_hydrate", steps.gitHydrate)
+	if steps.gitHydrateSkipped {
+		parts = append(parts, "git_hydrate:skipped_"+strings.ReplaceAll(steps.gitHydrateSkipReason, " ", "_"))
+	} else {
+		appendStep("git_hydrate", steps.gitHydrate)
+	}
 	appendStep("fingerprint_write", steps.fingerprintWrite)
 	return strings.Join(parts, ",")
+}
+
+func commandNeedsHydrationHint(command []string, shellMode bool) bool {
+	if len(command) == 0 {
+		return false
+	}
+	words := command
+	if shellMode || len(command) == 1 {
+		words = strings.Fields(strings.Join(command, " "))
+	}
+	for len(words) > 0 && words[0] == "env" {
+		words = words[1:]
+		for len(words) > 0 && strings.Contains(words[0], "=") {
+			words = words[1:]
+		}
+	}
+	for _, word := range words {
+		word = strings.Trim(word, "'\";|&()")
+		switch word {
+		case "pnpm", "npm", "node", "npx", "corepack", "yarn", "bun":
+			return true
+		}
+	}
+	return false
+}
+
+func gitHydrateBaseSHA(repo Repo, baseRef string) string {
+	if baseRef == "" {
+		return ""
+	}
+	if sha := gitOutput(repo.Root, "rev-parse", "--verify", "refs/remotes/origin/"+baseRef+"^{commit}"); sha != "" {
+		return sha
+	}
+	return gitOutput(repo.Root, "rev-parse", "--verify", baseRef+"^{commit}")
 }
 
 func shouldUseShell(command []string) bool {

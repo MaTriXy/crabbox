@@ -407,10 +407,43 @@ func remoteGitHydrate(workdir, baseRef string) string {
 	if baseRef == "" {
 		return "true"
 	}
+	refspec := "+refs/heads/" + baseRef + ":refs/remotes/origin/" + baseRef
 	return "cd " + shellQuote(workdir) + " && " +
 		"if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git remote get-url origin >/dev/null 2>&1; then " +
-		"git fetch --quiet --unshallow origin " + shellQuote(baseRef) + " || git fetch --quiet --depth=1000 origin " + shellQuote(baseRef) + " || git fetch --quiet origin " + shellQuote(baseRef) + " || true; " +
+		"git fetch --quiet --unshallow origin " + shellQuote(refspec) + " || git fetch --quiet --depth=1000 origin " + shellQuote(refspec) + " || git fetch --quiet origin " + shellQuote(refspec) + " || git fetch --quiet origin " + shellQuote(baseRef) + " || true; " +
 		"fi"
+}
+
+func remoteGitHydrateStatus(workdir, baseRef, expectedSHA string) string {
+	if baseRef == "" || expectedSHA == "" {
+		return "printf ''"
+	}
+	script := `cd ` + shellQuote(workdir) + ` && ` + remoteSyncMetaDirScript() + `
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  exit 0
+fi
+marker="$meta_dir/git-hydrate-base"
+remote_sha="$(git rev-parse --verify ` + shellQuote("refs/remotes/origin/"+baseRef+"^{commit}") + ` 2>/dev/null || git rev-parse --verify ` + shellQuote("origin/"+baseRef+"^{commit}") + ` 2>/dev/null || true)"
+if [ "$remote_sha" = ` + shellQuote(expectedSHA) + ` ]; then
+  if [ -f "$marker" ] && grep -qx ` + shellQuote(baseRef+" "+expectedSHA) + ` "$marker"; then
+    printf 'marker base current'
+    exit 0
+  fi
+  printf 'remote base current'
+  exit 0
+fi
+if [ -n "$remote_sha" ] && git merge-base --is-ancestor ` + shellQuote(expectedSHA) + ` "$remote_sha" >/dev/null 2>&1; then
+  printf 'remote base contains local'
+fi`
+	return "bash -lc " + shellQuote(script)
+}
+
+func remoteWriteGitHydrateMarker(workdir, baseRef, expectedSHA string) string {
+	if baseRef == "" || expectedSHA == "" {
+		return "true"
+	}
+	script := "cd " + shellQuote(workdir) + " && " + remoteSyncMetaDirScript() + "mkdir -p \"$meta_dir\" && printf %s " + shellQuote(baseRef+" "+expectedSHA+"\n") + " > \"$meta_dir/git-hydrate-base\""
+	return "bash -lc " + shellQuote(script)
 }
 
 func remoteGitSeed(workdir, remoteURL, head string) string {

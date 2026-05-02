@@ -258,6 +258,23 @@ func TestRemoteApplySyncManifestOnlyCommitsManifest(t *testing.T) {
 	}
 }
 
+func TestRemoteGitHydrateStatusUsesMarkerAndRemoteBase(t *testing.T) {
+	got := remoteGitHydrateStatus("/work/repo", "main", "abc123")
+	for _, want := range []string{
+		"git-hydrate-base",
+		"marker base current",
+		"remote base current",
+		"remote base contains local",
+		"merge-base --is-ancestor",
+		"refs/remotes/origin/main",
+		"abc123",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("remoteGitHydrateStatus missing %q in %q", want, got)
+		}
+	}
+}
+
 func TestRemoteWriteSyncManifestNew(t *testing.T) {
 	got := remoteWriteSyncManifestNew("/work/repo")
 	if !strings.Contains(got, "cat > \"$meta_dir/sync-manifest.new\"") {
@@ -381,6 +398,17 @@ func TestAWSServerTypeForClass(t *testing.T) {
 		if got := serverTypeForProviderClass("aws", in); got != want {
 			t.Fatalf("serverTypeForProviderClass(%q)=%q want %q", in, got, want)
 		}
+	}
+}
+
+func TestAWSLaunchCandidatesAddsPolicyFallbackUnlessExact(t *testing.T) {
+	got := awsLaunchCandidates(Config{Provider: "aws", Class: "beast", ServerType: "c7a.48xlarge"})
+	if got[len(got)-1] != "t3.small" {
+		t.Fatalf("last fallback=%q want t3.small in %v", got[len(got)-1], got)
+	}
+	exact := awsLaunchCandidates(Config{Provider: "aws", Class: "beast", ServerType: "t3.small", ServerTypeExplicit: true})
+	if len(exact) != 1 || exact[0] != "t3.small" {
+		t.Fatalf("exact candidates=%v", exact)
 	}
 }
 

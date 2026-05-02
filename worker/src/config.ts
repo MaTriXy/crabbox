@@ -5,6 +5,7 @@ export interface LeaseConfig {
   profile: string;
   class: string;
   serverType: string;
+  serverTypeExplicit: boolean;
   location: string;
   image: string;
   awsRegion: string;
@@ -52,6 +53,7 @@ export function leaseConfig(input: LeaseRequest): LeaseConfig {
     profile: input.profile ?? "default",
     class: machineClass,
     serverType,
+    serverTypeExplicit: input.serverTypeExplicit ?? false,
     location: input.location ?? "fsn1",
     image: input.image ?? "ubuntu-24.04",
     awsRegion: input.awsRegion ?? "eu-west-1",

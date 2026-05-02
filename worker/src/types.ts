@@ -42,6 +42,7 @@ export interface LeaseRequest {
   profile?: string;
   class?: string;
   serverType?: string;
+  serverTypeExplicit?: boolean;
   location?: string;
   image?: string;
   awsRegion?: string;
