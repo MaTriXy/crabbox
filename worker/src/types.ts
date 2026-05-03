@@ -39,6 +39,9 @@ export interface LeaseRequest {
   slug?: string;
   requestedSlug?: string;
   provider?: Provider;
+  target?: TargetOS;
+  targetOS?: TargetOS;
+  windowsMode?: WindowsMode;
   profile?: string;
   class?: string;
   serverType?: string;
@@ -71,11 +74,15 @@ export interface LeaseRequest {
 }
 
 export type Provider = "hetzner" | "aws";
+export type TargetOS = "linux" | "macos" | "windows";
+export type WindowsMode = "normal" | "wsl2";
 
 export interface LeaseRecord {
   id: string;
   slug?: string;
   provider: Provider;
+  target: TargetOS;
+  windowsMode?: WindowsMode;
   cloudID: string;
   region?: string;
   owner: string;
@@ -132,6 +139,8 @@ export interface RunRecord {
   owner: string;
   org: string;
   provider: Provider;
+  target?: TargetOS;
+  windowsMode?: WindowsMode;
   class: string;
   serverType: string;
   command: string[];
@@ -153,6 +162,8 @@ export interface RunRecord {
 export interface RunCreateRequest {
   leaseID?: string;
   provider?: Provider;
+  target?: TargetOS;
+  windowsMode?: WindowsMode;
   class?: string;
   serverType?: string;
   command?: string[];
@@ -179,6 +190,8 @@ export interface RunEventRecord {
   leaseID?: string;
   slug?: string;
   provider?: Provider;
+  target?: TargetOS;
+  windowsMode?: WindowsMode;
   class?: string;
   serverType?: string;
   exitCode?: number;
@@ -194,6 +207,8 @@ export interface RunEventRequest {
   leaseID?: string;
   slug?: string;
   provider?: Provider;
+  target?: TargetOS;
+  windowsMode?: WindowsMode;
   class?: string;
   serverType?: string;
   exitCode?: number;

@@ -63,6 +63,42 @@ func TestRemoteCommandSourcesActionsEnvFile(t *testing.T) {
 	}
 }
 
+func TestWindowsNativeRemoteCommandUsesPowerShell(t *testing.T) {
+	got := windowsRemoteCommandWithEnvFile(`C:\crabbox\cbx\repo`, map[string]string{"CI": "1"}, "", []string{"pwsh", "-NoProfile", "-Command", "echo ok"})
+	if !strings.HasPrefix(got, "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ") {
+		t.Fatalf("windows command should use encoded powershell: %q", got)
+	}
+}
+
+func TestWSL2WrapsRemoteCommand(t *testing.T) {
+	target := SSHTarget{TargetOS: targetWindows, WindowsMode: windowsModeWSL2}
+	got := wrapRemoteForTarget(target, "echo ok")
+	if got != "wsl.exe --exec bash -lc 'echo ok'" {
+		t.Fatalf("wrapRemoteForTarget()=%q", got)
+	}
+}
+
+func TestStaticLeaseBypassesCoordinatorAndUsesTargetServerType(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Provider = "ssh"
+	cfg.Coordinator = "https://broker.example.test"
+	cfg.TargetOS = targetMacOS
+	cfg.Static.Host = "mac.local"
+	cfg.ServerType = "c7a.48xlarge"
+	cfg.ServerTypeExplicit = false
+	coord, ok, err := newTargetCoordinatorClient(cfg)
+	if err != nil || ok || coord != nil {
+		t.Fatalf("static coordinator=%v ok=%t err=%v", coord, ok, err)
+	}
+	server, _, _, err := staticLease(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if server.ServerType.Name != "macos" || server.Labels["server_type"] != "macos" {
+		t.Fatalf("static type=%q label=%q", server.ServerType.Name, server.Labels["server_type"])
+	}
+}
+
 func TestShouldUseShellForControlOperators(t *testing.T) {
 	if !shouldUseShell([]string{"pnpm", "install", "&&", "pnpm", "test"}) {
 		t.Fatal("expected shell mode for && token")

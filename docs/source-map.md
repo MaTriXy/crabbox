@@ -12,7 +12,7 @@ This page maps user-facing behavior back to implementation files. Keep docs desc
 
 - Command router and top-level help: `internal/cli/app.go`
 - Shared flag parsing and exit helpers: `internal/cli/flags.go`, `internal/cli/errors.go`
-- Config defaults, YAML keys, env overrides, and class maps: `internal/cli/config.go`
+- Config defaults, YAML keys, env overrides, target selection, and class maps: `internal/cli/config.go`, `internal/cli/target.go`
 - `crabbox init` generated repo files: `internal/cli/init.go`
 - Login/logout/whoami/config commands: `internal/cli/auth.go`, `internal/cli/config_cmd.go`
 - Doctor checks: `internal/cli/doctor.go`
@@ -32,6 +32,7 @@ This page maps user-facing behavior back to implementation files. Keep docs desc
 
 - Direct Hetzner provider: `internal/cli/hcloud.go`
 - Direct AWS provider: `internal/cli/aws.go`
+- Static SSH macOS/Windows provider: `internal/cli/static.go`
 - Blacksmith Testbox CLI wrapper: `internal/cli/blacksmith.go`
 - Worker Hetzner provider: `worker/src/hetzner.ts`
 - Worker AWS EC2 Spot provider: `worker/src/aws.ts`
@@ -44,6 +45,7 @@ Bootstrap is intentionally tiny: OpenSSH, CA certificates, curl, Git, rsync, jq,
 ## Sync, Execution, Actions, Cache, And Results
 
 - Remote command flow, sync/reuse/release, heartbeat lifecycle: `internal/cli/run.go`
+- Native Windows target archive sync and PowerShell command wrapping: `internal/cli/sync_windows_target.go`, `internal/cli/ssh.go`
 - Git manifest, rsync plan, fingerprints, guardrails: `internal/cli/repo.go`
 - Sync plan command: `internal/cli/sync_plan.go`
 - SSH command output and direct SSH touch behavior: `internal/cli/ssh.go`, `internal/cli/ssh_cmd.go`

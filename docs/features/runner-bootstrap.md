@@ -6,7 +6,7 @@ Read when:
 - debugging machines that never become SSH-ready;
 - changing the minimal runner contract or readiness checks.
 
-Each runner is an Ubuntu machine prepared by cloud-init. It does not need coordinator credentials.
+Brokered cloud runners are Ubuntu machines prepared by cloud-init. They do not need coordinator credentials.
 
 Bootstrap creates:
 
@@ -24,7 +24,14 @@ Bootstrap installs:
 - jq;
 - OpenSSH server.
 
-Bootstrap intentionally does not install project language runtimes such as Go, Node, pnpm, Docker, databases, or service dependencies. Those belong in GitHub Actions hydration, devcontainers, Nix, mise/asdf, or repository setup scripts. A machine should not pass readiness until `crabbox-ready` succeeds over SSH.
+Bootstrap intentionally does not install project language runtimes such as Go, Node, pnpm, Docker, databases, or service dependencies. Those belong in GitHub Actions hydration, devcontainers, Nix, mise/asdf, or repository setup scripts. A brokered machine should not pass readiness until `crabbox-ready` succeeds over SSH.
+
+Static SSH targets are not bootstrapped by Crabbox. They are assumed to be
+operator-managed:
+
+- macOS and Windows WSL2 targets need SSH, `bash`, `git`, `rsync`, and `tar`;
+- native Windows targets need OpenSSH, PowerShell, `git`, and `tar`;
+- `static.workRoot` must point at a writable directory for that target mode.
 
 The CLI prefers the configured SSH port and can fall back through `ssh.fallbackPorts` during early bootstrap or operator-network egress restrictions. Set `ssh.fallbackPorts: []` or `CRABBOX_SSH_FALLBACK_PORTS=none` when the fallback should be disabled. Long term, snapshots or provider images can replace slow cloud-init once the bootstrap contract is stable.
 

@@ -19,6 +19,7 @@ func directLeaseLabels(cfg Config, leaseID, slug, provider, market string, keep 
 		"profile":           cfg.Profile,
 		"provider_key":      cfg.ProviderKey,
 		"provider":          provider,
+		"target":            cfg.TargetOS,
 		"server_type":       cfg.ServerType,
 		"state":             "leased",
 		"created_at":        leaseLabelTime(now),
@@ -30,6 +31,9 @@ func directLeaseLabels(cfg Config, leaseID, slug, provider, market string, keep 
 	}
 	if market != "" {
 		labels["market"] = market
+	}
+	if cfg.TargetOS == targetWindows {
+		labels["windows_mode"] = cfg.WindowsMode
 	}
 	return sanitizeProviderLabels(labels)
 }

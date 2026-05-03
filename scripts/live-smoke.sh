@@ -9,7 +9,7 @@ fi
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cb="${CRABBOX_BIN:-$root/bin/crabbox}"
 repo="${CRABBOX_LIVE_REPO:-$PWD}"
-providers=",${CRABBOX_LIVE_PROVIDERS-aws,hetzner,blacksmith-testbox},"
+providers=",${CRABBOX_LIVE_PROVIDERS-aws,hetzner},"
 
 run_in_repo() {
   (cd "$repo" && "$@")

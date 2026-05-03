@@ -9,25 +9,29 @@ import (
 
 func (a App) status(ctx context.Context, args []string) error {
 	fs := newFlagSet("status", a.Stderr)
-	provider := fs.String("provider", defaultConfig().Provider, "provider: hetzner, aws, or blacksmith-testbox")
+	provider := fs.String("provider", defaultConfig().Provider, "provider: hetzner, aws, ssh, or blacksmith-testbox")
 	id := fs.String("id", "", "lease id or slug")
 	wait := fs.Bool("wait", false, "wait until ready")
 	waitTimeout := fs.Duration("wait-timeout", 5*time.Minute, "maximum wait duration")
 	jsonOut := fs.Bool("json", false, "print JSON")
+	targetFlags := registerTargetFlags(fs, defaultConfig())
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	if *id == "" && fs.NArg() > 0 {
 		*id = fs.Arg(0)
 	}
-	if *id == "" {
-		return exit(2, "usage: crabbox status --id <lease-id-or-slug>")
-	}
 	cfg, err := loadConfig()
 	if err != nil {
 		return err
 	}
 	cfg.Provider = *provider
+	if err := applyTargetFlagOverrides(&cfg, fs, targetFlags); err != nil {
+		return err
+	}
+	if *id == "" && !isStaticProvider(cfg.Provider) {
+		return exit(2, "usage: crabbox status --id <lease-id-or-slug>")
+	}
 	if isBlacksmithProvider(cfg.Provider) {
 		return a.blacksmithStatus(ctx, cfg, *id, *wait, *waitTimeout, *jsonOut)
 	}
@@ -45,7 +49,7 @@ func (a App) status(ctx context.Context, args []string) error {
 				return json.NewEncoder(a.Stdout).Encode(state)
 			}
 		} else {
-			fmt.Fprintf(a.Stdout, "%s slug=%s provider=%s state=%s type=%s host=%s ready=%t has_host=%t idle_for=%s idle_timeout=%s expires=%s\n", state.ID, blank(state.Slug, "-"), state.Provider, state.State, state.ServerType, state.Host, state.Ready, state.HasHost, blank(state.IdleFor, "-"), blank(state.IdleTimeout, "-"), blank(state.ExpiresAt, "-"))
+			fmt.Fprintf(a.Stdout, "%s slug=%s provider=%s target=%s windows_mode=%s state=%s type=%s host=%s ready=%t has_host=%t idle_for=%s idle_timeout=%s expires=%s\n", state.ID, blank(state.Slug, "-"), state.Provider, state.TargetOS, blank(state.WindowsMode, "-"), state.State, state.ServerType, state.Host, state.Ready, state.HasHost, blank(state.IdleFor, "-"), blank(state.IdleTimeout, "-"), blank(state.ExpiresAt, "-"))
 		}
 		if !*wait || state.Ready {
 			return nil
@@ -61,6 +65,8 @@ type statusView struct {
 	ID               string            `json:"id"`
 	Slug             string            `json:"slug,omitempty"`
 	Provider         string            `json:"provider"`
+	TargetOS         string            `json:"target"`
+	WindowsMode      string            `json:"windowsMode,omitempty"`
 	State            string            `json:"state"`
 	ServerID         string            `json:"serverId"`
 	ServerType       string            `json:"serverType"`
@@ -79,7 +85,7 @@ type statusView struct {
 }
 
 func (a App) leaseStatus(ctx context.Context, cfg Config, id string) (statusView, error) {
-	if coord, ok, err := newCoordinatorClient(cfg); err != nil {
+	if coord, ok, err := newTargetCoordinatorClient(cfg); err != nil {
 		return statusView{}, err
 	} else if ok {
 		lease, err := coord.GetLease(ctx, id)
@@ -93,6 +99,8 @@ func (a App) leaseStatus(ctx context.Context, cfg Config, id string) (statusView
 			ID:               lease.ID,
 			Slug:             lease.Slug,
 			Provider:         blank(lease.Provider, cfg.Provider),
+			TargetOS:         cfg.TargetOS,
+			WindowsMode:      cfg.WindowsMode,
 			State:            lease.State,
 			ServerID:         leaseDisplayID(lease),
 			ServerType:       lease.ServerType,
@@ -120,6 +128,8 @@ func (a App) leaseStatus(ctx context.Context, cfg Config, id string) (statusView
 		ID:               leaseID,
 		Slug:             serverSlug(server),
 		Provider:         blank(server.Provider, cfg.Provider),
+		TargetOS:         blank(server.Labels["target"], cfg.TargetOS),
+		WindowsMode:      blank(server.Labels["windows_mode"], cfg.WindowsMode),
 		State:            blank(server.Labels["state"], server.Status),
 		ServerID:         server.DisplayID(),
 		ServerType:       server.ServerType.Name,
@@ -139,7 +149,7 @@ func (a App) leaseStatus(ctx context.Context, cfg Config, id string) (statusView
 }
 
 func (a App) resolveLeaseTarget(ctx context.Context, cfg Config, id string) (Server, SSHTarget, string, error) {
-	if coord, ok, err := newCoordinatorClient(cfg); err != nil {
+	if coord, ok, err := newTargetCoordinatorClient(cfg); err != nil {
 		return Server{}, SSHTarget{}, "", err
 	} else if ok {
 		lease, err := coord.GetLease(ctx, id)

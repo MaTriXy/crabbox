@@ -43,7 +43,7 @@ The CLI talks to the broker over HTTPS, then talks **directly** to the leased ru
 | **CLI** | config + flags; per-lease SSH key; SSH readiness; Git seeding + rsync; sync fingerprints + sanity checks; remote command + streaming; heartbeats; release |
 | **Broker** | request auth + identity; serialized lease state; provider credentials; machine create/delete; lease expiry; pool/status/inspect; usage; spend caps |
 | **Provider** | raw compute: Hetzner Cloud servers or AWS EC2 Spot instances |
-| **Runner** | nothing durable: Ubuntu prepared by cloud-init with SSH, Git, rsync, curl, jq, `/work/crabbox`; project runtimes come from repo-owned setup |
+| **Runner** | nothing durable for brokered boxes: Ubuntu prepared by cloud-init with SSH, Git, rsync, curl, jq, `/work/crabbox`; static macOS/Windows targets are existing SSH hosts; project runtimes come from repo-owned setup |
 
 ## What `crabbox run` does
 
@@ -53,7 +53,7 @@ A single `crabbox run` command walks through five phases:
 
 **2. Lease.** `POST /v1/leases` to the broker with class, provider, TTL, idle timeout, slug, bootstrap options, and the SSH public key. Worker authenticates, then forwards to the Fleet Durable Object. Durable Object enforces active-lease and monthly spend caps, asks the provider for live pricing, reserves the worst-case TTL cost, provisions the machine, and returns host / SSH user / port / work root / expiry / lease ID / slug. CLI re-keys its local key dir if the broker assigned a different final lease ID.
 
-**3. Sync.** Wait for SSH and the `crabbox-ready` marker. Seed remote Git when possible. Compare local and remote sync fingerprints; skip rsync if nothing changed. Otherwise rsync the dirty checkout into `/work/crabbox/<lease>/<repo>`, run sanity checks, hydrate the configured base ref.
+**3. Sync.** Wait for SSH and the target readiness probe. Seed remote Git when possible. Compare local and remote sync fingerprints; skip rsync if nothing changed. Otherwise rsync the dirty checkout into `/work/crabbox/<lease>/<repo>` for POSIX targets, or send a manifest tar archive for native Windows, then run sanity checks and hydrate the configured base ref when supported.
 
 **4. Run.** Start heartbeats in the background. Run the requested command over SSH and stream stdout/stderr.
 
@@ -91,6 +91,10 @@ CLI -> runner over SSH/rsync
 ```
 
 Direct mode needs local provider credentials (AWS SDK chain or `HCLOUD_TOKEN`). It has no central usage history and no brokered heartbeat. It is handy for diagnosing the broker itself, not for day-to-day work.
+
+Static SSH targets use `provider: ssh` and bypass the broker even when a broker
+URL exists in config. macOS and Windows WSL2 use the POSIX rsync contract;
+native Windows uses PowerShell plus tar archive sync.
 
 ## Auth And Identity
 

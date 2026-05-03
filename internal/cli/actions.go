@@ -91,10 +91,10 @@ func (a App) actionsHydrate(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := claimLeaseForRepo(leaseID, slug, repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
+	if err := claimLeaseForRepoConfig(leaseID, slug, cfg, repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
 		return err
 	}
-	if coord, ok, err := newCoordinatorClient(cfg); err != nil {
+	if coord, ok, err := newTargetCoordinatorClient(cfg); err != nil {
 		return err
 	} else if ok {
 		stopHeartbeat := startCoordinatorHeartbeat(ctx, coord, leaseID, cfg.IdleTimeout, nil, a.Stderr)
@@ -202,7 +202,7 @@ func (a App) actionsRegister(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if coord, ok, err := newCoordinatorClient(cfg); err != nil {
+	if coord, ok, err := newTargetCoordinatorClient(cfg); err != nil {
 		return err
 	} else if ok {
 		lease, err := coord.GetLease(ctx, *leaseIDFlag)
@@ -210,7 +210,7 @@ func (a App) actionsRegister(ctx context.Context, args []string) error {
 			return err
 		}
 		_, target, leaseID := leaseToServerTarget(lease, cfg)
-		if err := claimLeaseForRepo(leaseID, lease.Slug, repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
+		if err := claimLeaseForRepoConfig(leaseID, lease.Slug, cfg, repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
 			return err
 		}
 		a.touchCoordinatorLeaseBestEffort(ctx, cfg, leaseID)
@@ -220,7 +220,7 @@ func (a App) actionsRegister(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := claimLeaseForRepo(leaseID, serverSlug(server), repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
+	if err := claimLeaseForRepoConfig(leaseID, serverSlug(server), cfg, repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
 		return err
 	}
 	a.touchActiveLeaseBestEffort(ctx, cfg, server, leaseID)
@@ -271,6 +271,9 @@ func (a App) actionsDispatch(ctx context.Context, args []string) error {
 }
 
 func (a App) registerGitHubActionsRunner(ctx context.Context, cfg Config, target SSHTarget, leaseID, slug string, ghRepo GitHubRepo, nameOverride string, extraLabels []string) error {
+	if target.TargetOS != "" && target.TargetOS != targetLinux {
+		return exit(2, "actions runner registration currently supports target=linux only")
+	}
 	token, err := githubActionsRegistrationToken(ctx, ghRepo)
 	if err != nil {
 		return err
@@ -290,7 +293,7 @@ func (a App) registerGitHubActionsRunner(ctx context.Context, cfg Config, target
 }
 
 func (a App) resolveLeaseTargetForActions(ctx context.Context, cfg Config, id string) (Server, SSHTarget, string, string, error) {
-	if coord, ok, err := newCoordinatorClient(cfg); err != nil {
+	if coord, ok, err := newTargetCoordinatorClient(cfg); err != nil {
 		return Server{}, SSHTarget{}, "", "", err
 	} else if ok {
 		lease, err := coord.GetLease(ctx, id)

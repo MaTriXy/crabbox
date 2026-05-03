@@ -82,13 +82,15 @@ func (r *runRecorder) AttachLease(leaseID, slug string, cfg Config) {
 		return
 	}
 	r.appendEvent("lease.created", CoordinatorRunEventInput{
-		Type:       "lease.created",
-		Phase:      "leased",
-		LeaseID:    leaseID,
-		Slug:       slug,
-		Provider:   cfg.Provider,
-		Class:      cfg.Class,
-		ServerType: cfg.ServerType,
+		Type:        "lease.created",
+		Phase:       "leased",
+		LeaseID:     leaseID,
+		Slug:        slug,
+		Provider:    cfg.Provider,
+		TargetOS:    cfg.TargetOS,
+		WindowsMode: cfg.WindowsMode,
+		Class:       cfg.Class,
+		ServerType:  cfg.ServerType,
 	})
 }
 

@@ -148,6 +148,7 @@ export class FleetDurableObject implements DurableObject {
       id: leaseID,
       slug,
       provider: config.provider,
+      target: config.target,
       cloudID: "",
       owner,
       org,
@@ -179,6 +180,9 @@ export class FleetDurableObject implements DurableObject {
         config.idleTimeoutSeconds,
       ).toISOString(),
     };
+    if (config.target === "windows") {
+      record.windowsMode = config.windowsMode;
+    }
     const limitError = enforceCostLimits(leases, record, costLimits(this.env), now);
     if (limitError) {
       return json({ error: "cost_limit_exceeded", message: limitError }, { status: 429 });
@@ -374,6 +378,7 @@ export class FleetDurableObject implements DurableObject {
       owner,
       org,
       provider: lease?.provider ?? input.provider ?? "hetzner",
+      target: lease?.target ?? input.target ?? "linux",
       class: lease?.class ?? input.class ?? "",
       serverType: lease?.serverType ?? input.serverType ?? "",
       command: Array.isArray(input.command) ? input.command.map(String) : [],
@@ -385,6 +390,10 @@ export class FleetDurableObject implements DurableObject {
       lastEventAt: now,
       eventCount: 0,
     };
+    const windowsMode = lease?.windowsMode ?? input.windowsMode;
+    if (windowsMode) {
+      run.windowsMode = windowsMode;
+    }
     if (lease?.slug) {
       run.slug = lease.slug;
     }
@@ -942,6 +951,12 @@ function boundedRunEvent(
   if (input.provider === "aws" || input.provider === "hetzner") {
     event.provider = input.provider;
   }
+  if (input.target === "linux" || input.target === "macos" || input.target === "windows") {
+    event.target = input.target;
+  }
+  if (input.windowsMode === "normal" || input.windowsMode === "wsl2") {
+    event.windowsMode = input.windowsMode;
+  }
   if (input.class) {
     event.class = truncateString(input.class, 128);
   }
@@ -972,6 +987,12 @@ function applyRunEventSummary(run: RunRecord, event: RunEventRecord): void {
   }
   if (event.provider) {
     run.provider = event.provider;
+  }
+  if (event.target) {
+    run.target = event.target;
+  }
+  if (event.windowsMode) {
+    run.windowsMode = event.windowsMode;
   }
   if (event.class) {
     run.class = event.class;

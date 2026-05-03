@@ -7,18 +7,30 @@ crabbox warmup --class beast
 crabbox warmup --provider aws --class beast --market on-demand
 crabbox warmup --actions-runner
 crabbox warmup --provider blacksmith-testbox --blacksmith-workflow .github/workflows/ci-check-testbox.yml --blacksmith-job test
+crabbox warmup --provider ssh --target macos --static-host mac-studio.local
 ```
 
 The command returns a stable `cbx_...` lease ID and a friendly slug. Reuse either for subsequent `run`, `status`, `ssh`, `inspect`, and `stop` commands; scripts should keep using the canonical ID.
 
 With `--provider blacksmith-testbox`, the canonical ID is the Blacksmith `tbx_...` ID returned by `blacksmith testbox warmup`; Crabbox still assigns and stores a local slug for reuse.
 
+With `--provider ssh`, warmup claims an existing static SSH host instead of
+creating cloud capacity. Use `--target macos`, `--target windows
+--windows-mode normal`, or `--target windows --windows-mode wsl2` to select the
+remote command/sync contract.
+
 On success, `warmup` prints a concise total duration line. Add `--timing-json` to emit a final JSON timing record with provider, lease ID, slug, total duration, and exit code.
 
 Flags:
 
 ```text
---provider hetzner|aws|blacksmith-testbox
+--provider hetzner|aws|ssh|blacksmith-testbox
+--target linux|macos|windows
+--windows-mode normal|wsl2
+--static-host <host>
+--static-user <user>
+--static-port <port>
+--static-work-root <path>
 --profile <name>
 --class <name>
 --type <provider-type>

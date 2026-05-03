@@ -6,13 +6,13 @@
 
 **Warm a box, sync the diff, run the suite.**
 
-Crabbox is an open-source remote testbox runner for maintainers and AI agents. Lease a fast Linux machine on owned cloud capacity, sync your dirty checkout, run a command remotely, stream output, and release. Local edit-save-run loop, cloud-grade compute.
+Crabbox is an open-source remote testbox runner for maintainers and AI agents. Lease a fast Linux machine on owned cloud capacity, or point at an existing macOS/Windows SSH host, sync your dirty checkout, run a command remotely, stream output, and release. Local edit-save-run loop, cloud-grade compute.
 
 ```sh
 crabbox run -- pnpm test
 ```
 
-Behind that single command: a Go CLI on your laptop, a Cloudflare Worker broker that owns provider credentials and lease state, and a vanilla Ubuntu runner on Hetzner Cloud or AWS EC2 Spot. Crabbox can also wrap Blacksmith Testboxes when you choose `provider: blacksmith-testbox`.
+Behind that single command: a Go CLI on your laptop, a Cloudflare Worker broker that owns provider credentials and lease state, and a vanilla Ubuntu runner on Hetzner Cloud or AWS EC2 Spot. Crabbox can also wrap Blacksmith Testboxes when you choose `provider: blacksmith-testbox`, or use `provider: ssh` for existing macOS and Windows targets.
 
 ---
 
@@ -76,6 +76,7 @@ For the full mental model, see [How Crabbox Works](docs/how-it-works.md). For th
 - **Stable timing records.** `--timing-json` on `run`, `warmup`, and `actions hydrate` gives scripts one machine-readable sync/command/total timing schema across AWS, Hetzner, and Blacksmith Testboxes.
 - **Local-first sync.** No clean-checkout requirement. Tracked + nonignored files only, fingerprint skip on no-op runs, sanity checks against suspicious mass deletions, optional shallow base-ref hydration for changed-test workflows.
 - **Brokered cloud.** Maintainers and agents share infra without sharing provider tokens. Hetzner and AWS EC2 Spot are first-class; both fall back across instance families when capacity or quota rejects a request.
+- **macOS and Windows targets.** `provider: ssh` reuses existing SSH hosts. macOS and Windows WSL2 use the POSIX rsync path; native Windows uses PowerShell plus tar archive sync.
 - **Blacksmith Testbox wrapper.** Set `provider: blacksmith-testbox` to delegate warmup/run/list/status/stop to the Blacksmith CLI while Crabbox keeps local slugs, repo claims, timing summaries, and config conventions.
 - **Trusted AWS images.** Operators can create AMIs from active brokered AWS leases and promote a known-good image as the coordinator default.
 - **Cost guardrails.** Per-lease and monthly spend caps. Live pricing from EC2 Spot history or Hetzner server-type prices, with static fallbacks. `crabbox usage` summarizes spend by user, org, provider, and type.
@@ -143,6 +144,20 @@ blacksmith:
   idleTimeout: 90m
 ```
 
+Optional static macOS or Windows target:
+
+```yaml
+provider: ssh
+target: windows
+windows:
+  mode: normal # or wsl2
+static:
+  host: win-dev.local
+  user: Peter
+  port: "22"
+  workRoot: C:\crabbox
+```
+
 Forwarded environment is intentionally narrow: `NODE_OPTIONS` and `CI`. Do not pass secrets as command-line arguments. Full env-var reference and per-command flags are in [docs/cli.md](docs/cli.md) and [docs/commands/](docs/commands/README.md).
 
 ## OpenClaw plugin
@@ -173,6 +188,8 @@ npm run docs:check
 
 # Optional live smoke, when broker/provider credentials are available
 CRABBOX_LIVE=1 CRABBOX_LIVE_REPO=/path/to/openclaw scripts/live-smoke.sh
+# Add Blacksmith only for repos with a Testbox workflow.
+CRABBOX_LIVE=1 CRABBOX_LIVE_PROVIDERS=blacksmith-testbox scripts/live-smoke.sh
 ```
 
 CI runs the full gate (gofmt, vet, race tests, coverage threshold, docs link/build check, GoReleaser snapshot, Worker lint/typecheck/tests/build) on every push and PR. Tagged pushes matching `v*` publish Go archives via GoReleaser and bump the Homebrew formula at [openclaw/homebrew-tap](https://github.com/openclaw/homebrew-tap).

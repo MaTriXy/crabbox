@@ -47,6 +47,9 @@ func TestLoadConfigFromUserFile(t *testing.T) {
     clientSecret: access-secret
     token: access-jwt
 class: standard
+target: windows
+windows:
+  mode: wsl2
 lease:
   ttl: 2h
   idleTimeout: 45m
@@ -99,6 +102,13 @@ blacksmith:
   ref: main
   idleTimeout: 90m
   debug: true
+static:
+  id: win-dev
+  name: windows-dev
+  host: win-dev.local
+  user: peter
+  port: "22"
+  workRoot: /home/peter/crabbox
 results:
   junit:
     - junit.xml
@@ -124,6 +134,9 @@ ssh:
 	}
 	if cfg.Provider != "aws" {
 		t.Fatalf("Provider=%q want aws", cfg.Provider)
+	}
+	if cfg.TargetOS != targetWindows || cfg.WindowsMode != windowsModeWSL2 {
+		t.Fatalf("target config not loaded: target=%s windowsMode=%s", cfg.TargetOS, cfg.WindowsMode)
 	}
 	if cfg.ServerType != "c7a.8xlarge" {
 		t.Fatalf("ServerType=%q want c7a.8xlarge", cfg.ServerType)
@@ -176,6 +189,9 @@ ssh:
 	if cfg.Blacksmith.Org != "openclaw" || cfg.Blacksmith.Workflow != ".github/workflows/blacksmith-testbox.yml" || cfg.Blacksmith.Job != "hydrate" || cfg.Blacksmith.Ref != "main" || cfg.Blacksmith.IdleTimeout != 90*time.Minute || !cfg.Blacksmith.Debug {
 		t.Fatalf("blacksmith config not loaded: %#v", cfg.Blacksmith)
 	}
+	if cfg.Static.Host != "win-dev.local" || cfg.Static.User != "peter" || cfg.Static.Port != "22" || cfg.WorkRoot != "/home/peter/crabbox" {
+		t.Fatalf("static config not loaded: static=%#v workRoot=%s", cfg.Static, cfg.WorkRoot)
+	}
 	if len(cfg.Results.JUnit) != 1 || cfg.Results.JUnit[0] != "junit.xml" {
 		t.Fatalf("results config not loaded: %#v", cfg.Results)
 	}
@@ -200,6 +216,8 @@ func TestEnvOverridesConfig(t *testing.T) {
 	t.Setenv("CRABBOX_ACCESS_CLIENT_SECRET", "env-access-secret")
 	t.Setenv("CRABBOX_ACCESS_TOKEN", "env-access-jwt")
 	t.Setenv("CRABBOX_COORDINATOR_ADMIN_TOKEN", "env-admin-secret")
+	t.Setenv("CRABBOX_TARGET", "macos")
+	t.Setenv("CRABBOX_STATIC_HOST", "mac.local")
 	path := userConfigPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
@@ -226,6 +244,9 @@ func TestEnvOverridesConfig(t *testing.T) {
 	}
 	if cfg.CoordAdminToken != "env-admin-secret" {
 		t.Fatalf("unexpected admin token state: %q", cfg.CoordAdminToken)
+	}
+	if cfg.TargetOS != targetMacOS || cfg.Static.Host != "mac.local" {
+		t.Fatalf("unexpected target env: target=%s static=%#v", cfg.TargetOS, cfg.Static)
 	}
 }
 

@@ -1,7 +1,9 @@
-import type { LeaseRequest, Provider } from "./types";
+import type { LeaseRequest, Provider, TargetOS, WindowsMode } from "./types";
 
 export interface LeaseConfig {
   provider: Provider;
+  target: TargetOS;
+  windowsMode: WindowsMode;
   profile: string;
   class: string;
   serverType: string;
@@ -40,6 +42,11 @@ export function leaseConfig(input: LeaseRequest): LeaseConfig {
   if (provider !== "hetzner" && provider !== "aws") {
     throw new Error(`unsupported provider: ${String(provider)}`);
   }
+  const target = normalizeTarget(input.target ?? input.targetOS ?? "linux");
+  const windowsMode = normalizeWindowsMode(input.windowsMode ?? "normal");
+  if (target !== "linux") {
+    throw new Error(`unsupported target for brokered ${provider}: ${target}`);
+  }
   const machineClass = input.class ?? "beast";
   const serverType = input.serverType ?? serverTypeForProviderClass(provider, machineClass);
   const ttlSeconds = clampTTL(input.ttlSeconds ?? 5400);
@@ -50,6 +57,8 @@ export function leaseConfig(input: LeaseRequest): LeaseConfig {
   }
   return {
     provider,
+    target,
+    windowsMode,
     profile: input.profile ?? "default",
     class: machineClass,
     serverType,
@@ -78,6 +87,41 @@ export function leaseConfig(input: LeaseRequest): LeaseConfig {
     keep: input.keep ?? false,
     sshPublicKey,
   };
+}
+
+function normalizeTarget(value: string): TargetOS {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "" || normalized === "linux" || normalized === "ubuntu") {
+    return "linux";
+  }
+  if (
+    normalized === "mac" ||
+    normalized === "macos" ||
+    normalized === "darwin" ||
+    normalized === "osx"
+  ) {
+    return "macos";
+  }
+  if (normalized === "win" || normalized === "windows") {
+    return "windows";
+  }
+  throw new Error(`target must be linux, macos, or windows`);
+}
+
+function normalizeWindowsMode(value: string): WindowsMode {
+  const normalized = value.trim().toLowerCase();
+  if (
+    normalized === "" ||
+    normalized === "normal" ||
+    normalized === "native" ||
+    normalized === "powershell"
+  ) {
+    return "normal";
+  }
+  if (normalized === "wsl" || normalized === "wsl2") {
+    return "wsl2";
+  }
+  throw new Error(`windowsMode must be normal or wsl2`);
 }
 
 export function sshPorts(config: Pick<LeaseConfig, "sshPort" | "sshFallbackPorts">): string[] {

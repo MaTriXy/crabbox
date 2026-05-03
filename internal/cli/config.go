@@ -15,6 +15,8 @@ import (
 type Config struct {
 	Profile            string
 	Provider           string
+	TargetOS           string
+	WindowsMode        string
 	Class              string
 	ServerType         string
 	ServerTypeExplicit bool
@@ -44,6 +46,7 @@ type Config struct {
 	Capacity           CapacityConfig
 	Actions            ActionsConfig
 	Blacksmith         BlacksmithConfig
+	Static             StaticConfig
 	Results            ResultsConfig
 	Cache              CacheConfig
 }
@@ -91,6 +94,15 @@ type BlacksmithConfig struct {
 	Debug       bool
 }
 
+type StaticConfig struct {
+	ID       string
+	Name     string
+	Host     string
+	User     string
+	Port     string
+	WorkRoot string
+}
+
 type ResultsConfig struct {
 	JUnit []string
 }
@@ -126,6 +138,10 @@ func loadConfig() (Config, error) {
 		}
 	}
 	applyEnv(&cfg)
+	normalizeTargetConfig(&cfg)
+	if err := validateTargetConfig(cfg); err != nil {
+		return Config{}, err
+	}
 	if cfg.ServerType == "" {
 		cfg.ServerType = serverTypeForProviderClass(cfg.Provider, cfg.Class)
 	}
@@ -144,6 +160,8 @@ func baseConfig() Config {
 	return Config{
 		Profile:          "default",
 		Provider:         provider,
+		TargetOS:         "linux",
+		WindowsMode:      "normal",
 		Class:            class,
 		ServerType:       "",
 		Location:         "fsn1",
@@ -192,6 +210,9 @@ func baseConfig() Config {
 type fileConfig struct {
 	Profile          string                `yaml:"profile,omitempty"`
 	Provider         string                `yaml:"provider,omitempty"`
+	Target           string                `yaml:"target,omitempty"`
+	TargetOS         string                `yaml:"targetOS,omitempty"`
+	Windows          *fileWindowsConfig    `yaml:"windows,omitempty"`
 	Class            string                `yaml:"class,omitempty"`
 	ServerType       string                `yaml:"serverType,omitempty"`
 	Coordinator      string                `yaml:"coordinator,omitempty"`
@@ -205,12 +226,17 @@ type fileConfig struct {
 	Capacity         *fileCapacityConfig   `yaml:"capacity,omitempty"`
 	Actions          *fileActionsConfig    `yaml:"actions,omitempty"`
 	Blacksmith       *fileBlacksmithConfig `yaml:"blacksmith,omitempty"`
+	Static           *fileStaticConfig     `yaml:"static,omitempty"`
 	Results          *fileResultsConfig    `yaml:"results,omitempty"`
 	Cache            *fileCacheConfig      `yaml:"cache,omitempty"`
 	Lease            *fileLeaseConfig      `yaml:"lease,omitempty"`
 	TTL              string                `yaml:"ttl,omitempty"`
 	IdleTimeout      string                `yaml:"idleTimeout,omitempty"`
 	WorkRoot         string                `yaml:"workRoot,omitempty"`
+}
+
+type fileWindowsConfig struct {
+	Mode string `yaml:"mode,omitempty"`
 }
 
 type fileBrokerConfig struct {
@@ -296,6 +322,15 @@ type fileBlacksmithConfig struct {
 	Ref         string `yaml:"ref,omitempty"`
 	IdleTimeout string `yaml:"idleTimeout,omitempty"`
 	Debug       *bool  `yaml:"debug,omitempty"`
+}
+
+type fileStaticConfig struct {
+	ID       string `yaml:"id,omitempty"`
+	Name     string `yaml:"name,omitempty"`
+	Host     string `yaml:"host,omitempty"`
+	User     string `yaml:"user,omitempty"`
+	Port     string `yaml:"port,omitempty"`
+	WorkRoot string `yaml:"workRoot,omitempty"`
 }
 
 type fileResultsConfig struct {
@@ -418,6 +453,15 @@ func applyFileConfig(cfg *Config, file fileConfig) {
 	}
 	if file.Provider != "" {
 		cfg.Provider = file.Provider
+	}
+	if file.Target != "" {
+		cfg.TargetOS = file.Target
+	}
+	if file.TargetOS != "" {
+		cfg.TargetOS = file.TargetOS
+	}
+	if file.Windows != nil && file.Windows.Mode != "" {
+		cfg.WindowsMode = file.Windows.Mode
 	}
 	if file.Class != "" {
 		cfg.Class = file.Class
@@ -616,6 +660,26 @@ func applyFileConfig(cfg *Config, file fileConfig) {
 			cfg.Blacksmith.Debug = *file.Blacksmith.Debug
 		}
 	}
+	if file.Static != nil {
+		if file.Static.ID != "" {
+			cfg.Static.ID = file.Static.ID
+		}
+		if file.Static.Name != "" {
+			cfg.Static.Name = file.Static.Name
+		}
+		if file.Static.Host != "" {
+			cfg.Static.Host = file.Static.Host
+		}
+		if file.Static.User != "" {
+			cfg.Static.User = file.Static.User
+		}
+		if file.Static.Port != "" {
+			cfg.Static.Port = file.Static.Port
+		}
+		if file.Static.WorkRoot != "" {
+			cfg.Static.WorkRoot = file.Static.WorkRoot
+		}
+	}
 	if file.Results != nil && len(file.Results.JUnit) > 0 {
 		cfg.Results.JUnit = appendUniqueStrings(nil, file.Results.JUnit...)
 	}
@@ -653,6 +717,8 @@ func applyLeaseDuration(target *time.Duration, value string) {
 func applyEnv(cfg *Config) {
 	cfg.Profile = getenv("CRABBOX_PROFILE", cfg.Profile)
 	cfg.Provider = getenv("CRABBOX_PROVIDER", cfg.Provider)
+	cfg.TargetOS = getenv("CRABBOX_TARGET", getenv("CRABBOX_TARGET_OS", cfg.TargetOS))
+	cfg.WindowsMode = getenv("CRABBOX_WINDOWS_MODE", cfg.WindowsMode)
 	cfg.Class = getenv("CRABBOX_DEFAULT_CLASS", cfg.Class)
 	if os.Getenv("CRABBOX_SERVER_TYPE") != "" {
 		cfg.ServerTypeExplicit = true
@@ -701,6 +767,12 @@ func applyEnv(cfg *Config) {
 	cfg.Blacksmith.Workflow = getenv("CRABBOX_BLACKSMITH_WORKFLOW", cfg.Blacksmith.Workflow)
 	cfg.Blacksmith.Job = getenv("CRABBOX_BLACKSMITH_JOB", cfg.Blacksmith.Job)
 	cfg.Blacksmith.Ref = getenv("CRABBOX_BLACKSMITH_REF", cfg.Blacksmith.Ref)
+	cfg.Static.ID = getenv("CRABBOX_STATIC_ID", cfg.Static.ID)
+	cfg.Static.Name = getenv("CRABBOX_STATIC_NAME", cfg.Static.Name)
+	cfg.Static.Host = getenv("CRABBOX_STATIC_HOST", cfg.Static.Host)
+	cfg.Static.User = getenv("CRABBOX_STATIC_USER", cfg.Static.User)
+	cfg.Static.Port = getenv("CRABBOX_STATIC_PORT", cfg.Static.Port)
+	cfg.Static.WorkRoot = getenv("CRABBOX_STATIC_WORK_ROOT", cfg.Static.WorkRoot)
 	if idleTimeout := os.Getenv("CRABBOX_BLACKSMITH_IDLE_TIMEOUT"); idleTimeout != "" {
 		applyLeaseDuration(&cfg.Blacksmith.IdleTimeout, idleTimeout)
 	}
@@ -789,7 +861,7 @@ func serverTypeForClass(class string) string {
 }
 
 func serverTypeForProviderClass(provider, class string) string {
-	if isBlacksmithProvider(provider) {
+	if isBlacksmithProvider(provider) || isStaticProvider(provider) {
 		return ""
 	}
 	if provider == "aws" {

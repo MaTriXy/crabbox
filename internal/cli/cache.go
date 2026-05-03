@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"strings"
 )
 
@@ -49,7 +48,11 @@ func (a App) cacheStats(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	out, err := runSSHOutput(ctx, target, remoteCacheStats(enabledCacheKinds(cfg.Cache)))
+	remote := remoteCacheStats(enabledCacheKinds(cfg.Cache))
+	if isWindowsNativeTarget(target) {
+		remote = windowsRemoteCacheUnsupported()
+	}
+	out, err := runSSHOutput(ctx, target, remote)
 	if err != nil {
 		return err
 	}
@@ -93,6 +96,9 @@ func (a App) cachePurge(ctx context.Context, args []string) error {
 	if *kind != "all" && !enabled[*kind] {
 		return exit(2, "cache kind %q is disabled by config", *kind)
 	}
+	if isWindowsNativeTarget(target) {
+		return exit(2, "cache purge is not supported for target=windows windows.mode=normal")
+	}
 	if err := runSSHQuiet(ctx, target, remoteCachePurge(*kind, enabled)); err != nil {
 		return err
 	}
@@ -125,14 +131,18 @@ func (a App) cacheWarm(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	workdir := filepath.ToSlash(filepath.Join(cfg.WorkRoot, leaseID, repo.Name))
+	workdir := remoteJoin(cfg, leaseID, repo.Name)
 	actionsEnvFile := ""
 	if state, err := readActionsHydrationState(ctx, target, leaseID); err == nil && state.Workspace != "" {
 		workdir = state.Workspace
 		actionsEnvFile = state.EnvFile
 		fmt.Fprintf(a.Stderr, "using GitHub Actions workspace %s\n", workdir)
 	}
-	code := runSSHStream(ctx, target, remoteCacheWarmCommand(workdir, allowedEnv(cfg.EnvAllow), actionsEnvFile, command), a.Stdout, a.Stderr)
+	remote := remoteCacheWarmCommand(workdir, allowedEnv(cfg.EnvAllow), actionsEnvFile, command)
+	if isWindowsNativeTarget(target) {
+		remote = windowsRemoteCommandWithEnvFile(workdir, allowedEnv(cfg.EnvAllow), actionsEnvFile, command)
+	}
+	code := runSSHStream(ctx, target, remote, a.Stdout, a.Stderr)
 	if code != 0 {
 		return ExitError{Code: code, Message: fmt.Sprintf("cache warm command exited %d", code)}
 	}
@@ -150,7 +160,7 @@ func (a App) cacheTarget(ctx context.Context, id string, reclaim bool) (SSHTarge
 		if repoErr != nil {
 			return SSHTarget{}, Config{}, "", repoErr
 		}
-		if claimErr := claimLeaseForRepo(leaseID, serverSlug(server), repo.Root, cfg.IdleTimeout, reclaim); claimErr != nil {
+		if claimErr := claimLeaseForRepoConfig(leaseID, serverSlug(server), cfg, repo.Root, cfg.IdleTimeout, reclaim); claimErr != nil {
 			return SSHTarget{}, Config{}, "", claimErr
 		}
 		a.touchActiveLeaseBestEffort(ctx, cfg, server, leaseID)

@@ -28,6 +28,8 @@ type CoordinatorLease struct {
 	ID                   string                `json:"id"`
 	Slug                 string                `json:"slug,omitempty"`
 	Provider             string                `json:"provider"`
+	TargetOS             string                `json:"target,omitempty"`
+	WindowsMode          string                `json:"windowsMode,omitempty"`
 	Owner                string                `json:"owner"`
 	Org                  string                `json:"org"`
 	Profile              string                `json:"profile"`
@@ -121,6 +123,8 @@ type CoordinatorRun struct {
 	Owner        string             `json:"owner"`
 	Org          string             `json:"org"`
 	Provider     string             `json:"provider"`
+	TargetOS     string             `json:"target,omitempty"`
+	WindowsMode  string             `json:"windowsMode,omitempty"`
 	Class        string             `json:"class"`
 	ServerType   string             `json:"serverType"`
 	Command      []string           `json:"command"`
@@ -148,34 +152,38 @@ type CoordinatorRunEventResponse struct {
 }
 
 type CoordinatorRunEvent struct {
-	RunID      string `json:"runID"`
-	Seq        int    `json:"seq"`
-	Type       string `json:"type"`
-	Phase      string `json:"phase,omitempty"`
-	Stream     string `json:"stream,omitempty"`
-	Message    string `json:"message,omitempty"`
-	Data       string `json:"data,omitempty"`
-	LeaseID    string `json:"leaseID,omitempty"`
-	Slug       string `json:"slug,omitempty"`
-	Provider   string `json:"provider,omitempty"`
-	Class      string `json:"class,omitempty"`
-	ServerType string `json:"serverType,omitempty"`
-	ExitCode   *int   `json:"exitCode,omitempty"`
-	CreatedAt  string `json:"createdAt"`
+	RunID       string `json:"runID"`
+	Seq         int    `json:"seq"`
+	Type        string `json:"type"`
+	Phase       string `json:"phase,omitempty"`
+	Stream      string `json:"stream,omitempty"`
+	Message     string `json:"message,omitempty"`
+	Data        string `json:"data,omitempty"`
+	LeaseID     string `json:"leaseID,omitempty"`
+	Slug        string `json:"slug,omitempty"`
+	Provider    string `json:"provider,omitempty"`
+	TargetOS    string `json:"target,omitempty"`
+	WindowsMode string `json:"windowsMode,omitempty"`
+	Class       string `json:"class,omitempty"`
+	ServerType  string `json:"serverType,omitempty"`
+	ExitCode    *int   `json:"exitCode,omitempty"`
+	CreatedAt   string `json:"createdAt"`
 }
 
 type CoordinatorRunEventInput struct {
-	Type       string `json:"type,omitempty"`
-	Phase      string `json:"phase,omitempty"`
-	Stream     string `json:"stream,omitempty"`
-	Message    string `json:"message,omitempty"`
-	Data       string `json:"data,omitempty"`
-	LeaseID    string `json:"leaseID,omitempty"`
-	Slug       string `json:"slug,omitempty"`
-	Provider   string `json:"provider,omitempty"`
-	Class      string `json:"class,omitempty"`
-	ServerType string `json:"serverType,omitempty"`
-	ExitCode   *int   `json:"exitCode,omitempty"`
+	Type        string `json:"type,omitempty"`
+	Phase       string `json:"phase,omitempty"`
+	Stream      string `json:"stream,omitempty"`
+	Message     string `json:"message,omitempty"`
+	Data        string `json:"data,omitempty"`
+	LeaseID     string `json:"leaseID,omitempty"`
+	Slug        string `json:"slug,omitempty"`
+	Provider    string `json:"provider,omitempty"`
+	TargetOS    string `json:"target,omitempty"`
+	WindowsMode string `json:"windowsMode,omitempty"`
+	Class       string `json:"class,omitempty"`
+	ServerType  string `json:"serverType,omitempty"`
+	ExitCode    *int   `json:"exitCode,omitempty"`
 }
 
 type TestResultSummary struct {
@@ -294,6 +302,8 @@ func (c *CoordinatorClient) CreateLease(ctx context.Context, cfg Config, publicK
 		"slug":               slug,
 		"profile":            cfg.Profile,
 		"provider":           cfg.Provider,
+		"target":             cfg.TargetOS,
+		"windowsMode":        cfg.WindowsMode,
 		"class":              cfg.Class,
 		"serverType":         cfg.ServerType,
 		"serverTypeExplicit": cfg.ServerTypeExplicit,
@@ -498,11 +508,13 @@ func (c *CoordinatorClient) PromoteImage(ctx context.Context, imageID string) (C
 func (c *CoordinatorClient) CreateRun(ctx context.Context, leaseID string, cfg Config, command []string) (CoordinatorRun, error) {
 	var res CoordinatorRunResponse
 	err := c.do(ctx, http.MethodPost, "/v1/runs", map[string]any{
-		"leaseID":    leaseID,
-		"provider":   cfg.Provider,
-		"class":      cfg.Class,
-		"serverType": cfg.ServerType,
-		"command":    command,
+		"leaseID":     leaseID,
+		"provider":    cfg.Provider,
+		"target":      cfg.TargetOS,
+		"windowsMode": cfg.WindowsMode,
+		"class":       cfg.Class,
+		"serverType":  cfg.ServerType,
+		"command":     command,
 	}, &res)
 	return res.Run, err
 }
@@ -801,6 +813,8 @@ func leaseToServerTarget(lease CoordinatorLease, cfg Config) (Server, SSHTarget,
 			"lease":             lease.ID,
 			"slug":              lease.Slug,
 			"keep":              fmt.Sprint(lease.Keep),
+			"target":            blank(lease.TargetOS, cfg.TargetOS),
+			"windows_mode":      blank(lease.WindowsMode, cfg.WindowsMode),
 			"expires_at":        lease.ExpiresAt,
 			"last_touched_at":   lease.LastTouchedAt,
 			"idle_timeout_secs": fmt.Sprint(lease.IdleTimeoutSeconds),

@@ -9,6 +9,9 @@ crabbox run --provider aws --class beast --market on-demand -- pnpm check
 crabbox run --id blue-lobster --shell 'pnpm install --frozen-lockfile && pnpm test'
 crabbox run --id cbx_abcdef123456 --junit junit.xml -- go test ./...
 crabbox run --provider blacksmith-testbox --blacksmith-workflow .github/workflows/ci-check-testbox.yml --blacksmith-job test -- pnpm test
+crabbox run --provider ssh --target macos --static-host mac-studio.local -- xcodebuild test
+crabbox run --provider ssh --target windows --windows-mode normal --static-host win-dev.local -- pwsh -NoProfile -Command "dotnet test"
+crabbox run --provider ssh --target windows --windows-mode wsl2 --static-host win-dev.local -- pnpm test
 ```
 
 If `--id` is omitted, Crabbox creates a fresh non-kept lease and releases it when the command exits. `--id` accepts the stable `cbx_...` ID or the active friendly slug.
@@ -20,6 +23,11 @@ When the lease has been hydrated by `crabbox actions hydrate`, `run` reads the r
 If a configured Actions hydration workflow exists and a package-manager command such as `pnpm`, `npm`, `node`, or `corepack` is run before a hydration marker exists, Crabbox warns that the raw box may not have the project runtime installed. Hydrate first for CI-like setup, or include the runtime setup explicitly in the command.
 
 Sync uses `git ls-files --cached --others --exclude-standard` to build a file manifest, then feeds that manifest to rsync over SSH. That means tracked files plus nonignored untracked files sync, while `.git`, ignored local build output, dependency folders, and common caches stay out of the transfer. Crabbox records a local/remote sync fingerprint and skips rsync when the tracked commit plus manifest and dirty metadata have not changed. Use `--checksum` when you need a paranoid checksum scan, and `--debug` to print sync timing, progress, and itemized rsync output.
+
+For `provider=ssh`, `target=macos` and `target=windows windows.mode=wsl2`
+use the same POSIX rsync flow. Native Windows mode uses PowerShell over OpenSSH
+and sends the manifest as a tar archive into `static.workRoot`; cache purge and
+GitHub Actions runner registration remain Linux-only.
 
 Before rsync starts, Crabbox prints the candidate file count and byte estimate. Large syncs warn or fail according to `sync.warnFiles`, `sync.warnBytes`, `sync.failFiles`, and `sync.failBytes`; use `--force-sync-large` or `sync.allowLarge: true` only when the transfer size is intentional. Quiet rsync runs print a heartbeat, and `sync.timeout` kills stalled syncs.
 
@@ -41,7 +49,13 @@ Flags:
 
 ```text
 --id <lease-id-or-slug>
---provider hetzner|aws|blacksmith-testbox
+--provider hetzner|aws|ssh|blacksmith-testbox
+--target linux|macos|windows
+--windows-mode normal|wsl2
+--static-host <host>
+--static-user <user>
+--static-port <port>
+--static-work-root <path>
 --profile <name>
 --class <name>
 --type <provider-type>

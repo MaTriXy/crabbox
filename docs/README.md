@@ -6,7 +6,7 @@
 
 Crabbox is a shared remote testbox system for OpenClaw maintainers and AI agents. The goal is to keep the local developer story unchanged - edit, save, run - while moving compute and tests onto owned cloud capacity.
 
-A `crabbox run` command leases a Linux machine, syncs your tracked and nonignored local files, executes the command remotely, streams stdout and stderr back, and releases the machine. Behind the scenes a small Cloudflare-hosted broker owns provider credentials, lease state, cleanup, usage, and cost guardrails so individual machines and CLIs never need to.
+A `crabbox run` command leases a brokered Linux machine or reuses a static macOS/Windows SSH host, syncs your tracked and nonignored local files, executes the command remotely, streams stdout and stderr back, and releases or unclaims the target. Behind the scenes a small Cloudflare-hosted broker owns cloud provider credentials, lease state, cleanup, usage, and cost guardrails so individual machines and CLIs never need to.
 
 ## How it fits together
 
@@ -19,7 +19,7 @@ crabbox CLI    -- HTTPS --> Fleet Durable Object  -->   Hetzner / AWS Spot
    +------------ SSH + rsync to leased runner <--------------+
 ```
 
-The CLI is a Go binary. The broker is a Cloudflare Worker plus a single Durable Object. Runners are vanilla Ubuntu boxes prepared by cloud-init with SSH, Git, rsync, curl, jq, and `/work/crabbox`. Project runtimes come from Actions hydration or repo-owned setup. Runners hold no broker credentials - they are leaf nodes.
+The CLI is a Go binary. The broker is a Cloudflare Worker plus a single Durable Object. Brokered runners are vanilla Ubuntu boxes prepared by cloud-init with SSH, Git, rsync, curl, jq, and `/work/crabbox`. Static macOS and Windows targets are existing SSH hosts selected with `provider: ssh`. Project runtimes come from Actions hydration or repo-owned setup. Runners hold no broker credentials - they are leaf nodes.
 
 ## A run, end to end
 

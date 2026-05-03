@@ -23,6 +23,14 @@ func claimLeaseForRepo(leaseID, slug, repoRoot string, idleTimeout time.Duration
 	return claimLeaseForRepoProvider(leaseID, slug, "", repoRoot, idleTimeout, reclaim)
 }
 
+func claimLeaseForRepoConfig(leaseID, slug string, cfg Config, repoRoot string, idleTimeout time.Duration, reclaim bool) error {
+	provider := ""
+	if isStaticProvider(cfg.Provider) {
+		provider = staticProvider
+	}
+	return claimLeaseForRepoProvider(leaseID, slug, provider, repoRoot, idleTimeout, reclaim)
+}
+
 func claimLeaseForRepoProvider(leaseID, slug, provider, repoRoot string, idleTimeout time.Duration, reclaim bool) error {
 	if leaseID == "" || repoRoot == "" {
 		return nil

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -28,7 +27,7 @@ func (a App) warmup(ctx context.Context, args []string) error {
 	started := time.Now()
 	defaults := defaultConfig()
 	fs := newFlagSet("warmup", a.Stderr)
-	provider := fs.String("provider", defaults.Provider, "provider: hetzner, aws, or blacksmith-testbox")
+	provider := fs.String("provider", defaults.Provider, "provider: hetzner, aws, ssh, or blacksmith-testbox")
 	profile := fs.String("profile", defaults.Profile, "profile")
 	class := fs.String("class", defaults.Class, "machine class")
 	serverType := fs.String("type", getenv("CRABBOX_SERVER_TYPE", ""), "provider server/instance type")
@@ -40,6 +39,7 @@ func (a App) warmup(ctx context.Context, args []string) error {
 	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
 	timingJSON := fs.Bool("timing-json", false, "print final timing as JSON")
 	blacksmithFlags := registerBlacksmithFlags(fs, defaults)
+	targetFlags := registerTargetFlags(fs, defaults)
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
@@ -50,6 +50,9 @@ func (a App) warmup(ctx context.Context, args []string) error {
 	cfg.Provider = *provider
 	cfg.Profile = *profile
 	cfg.Class = *class
+	if err := applyTargetFlagOverrides(&cfg, fs, targetFlags); err != nil {
+		return err
+	}
 	if flagWasSet(fs, "type") {
 		cfg.ServerType = *serverType
 		cfg.ServerTypeExplicit = true
@@ -67,6 +70,9 @@ func (a App) warmup(ctx context.Context, args []string) error {
 		cfg.IdleTimeout = *idleTimeout
 	}
 	applyBlacksmithFlagOverrides(&cfg, fs, blacksmithFlags)
+	if err := validateProviderTarget(cfg); err != nil {
+		return err
+	}
 	if cfg.TTL <= 0 {
 		return exit(2, "ttl must be positive")
 	}
@@ -84,7 +90,7 @@ func (a App) warmup(ctx context.Context, args []string) error {
 		return a.blacksmithWarmup(ctx, cfg, repo, *keep, *reclaim, *timingJSON)
 	}
 
-	coord, useCoordinator, err := newCoordinatorClient(cfg)
+	coord, useCoordinator, err := newTargetCoordinatorClient(cfg)
 	if err != nil {
 		return err
 	}
@@ -100,7 +106,7 @@ func (a App) warmup(ctx context.Context, args []string) error {
 		return err
 	}
 	applyResolvedServerConfig(&cfg, server)
-	if err := claimLeaseForRepo(leaseID, serverSlug(server), repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
+	if err := claimLeaseForRepoConfig(leaseID, serverSlug(server), cfg, repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
 		a.releaseAcquiredLeaseBestEffort(ctx, cfg, coord, useCoordinator, server, target, leaseID)
 		return err
 	}
@@ -134,7 +140,7 @@ func (a App) warmup(ctx context.Context, args []string) error {
 func (a App) runCommand(ctx context.Context, args []string) (err error) {
 	defaults := defaultConfig()
 	fs := newFlagSet("run", a.Stderr)
-	provider := fs.String("provider", defaults.Provider, "provider: hetzner, aws, or blacksmith-testbox")
+	provider := fs.String("provider", defaults.Provider, "provider: hetzner, aws, ssh, or blacksmith-testbox")
 	profile := fs.String("profile", defaults.Profile, "profile")
 	class := fs.String("class", defaults.Class, "machine class")
 	serverType := fs.String("type", getenv("CRABBOX_SERVER_TYPE", ""), "provider server/instance type")
@@ -153,6 +159,7 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
 	timingJSON := fs.Bool("timing-json", false, "print final timing as JSON")
 	blacksmithFlags := registerBlacksmithFlags(fs, defaults)
+	targetFlags := registerTargetFlags(fs, defaults)
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
@@ -171,6 +178,9 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 	cfg.Provider = *provider
 	cfg.Profile = *profile
 	cfg.Class = *class
+	if err := applyTargetFlagOverrides(&cfg, fs, targetFlags); err != nil {
+		return err
+	}
 	if flagWasSet(fs, "type") {
 		cfg.ServerType = *serverType
 		cfg.ServerTypeExplicit = true
@@ -194,6 +204,9 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 		cfg.Results.JUnit = splitCommaList(*junitResults)
 	}
 	applyBlacksmithFlagOverrides(&cfg, fs, blacksmithFlags)
+	if err := validateProviderTarget(cfg); err != nil {
+		return err
+	}
 	if cfg.TTL <= 0 {
 		return exit(2, "ttl must be positive")
 	}
@@ -222,7 +235,7 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 	var target SSHTarget
 	var leaseID string
 	acquired := false
-	coord, useCoordinator, err := newCoordinatorClient(cfg)
+	coord, useCoordinator, err := newTargetCoordinatorClient(cfg)
 	if err != nil {
 		return err
 	}
@@ -273,7 +286,7 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 	if useCoordinator {
 		recorder.AttachLease(leaseID, serverSlug(server), cfg)
 	}
-	if err := claimLeaseForRepo(leaseID, serverSlug(server), repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
+	if err := claimLeaseForRepoConfig(leaseID, serverSlug(server), cfg, repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
 		if acquired && !*keep {
 			a.releaseAcquiredLeaseBestEffort(ctx, cfg, coord, useCoordinator, server, target, leaseID)
 		}
@@ -308,7 +321,7 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 		cfg.Sync.BaseRef = repo.BaseRef
 	}
 	timings := runTimings{started: time.Now()}
-	workdir := filepath.ToSlash(filepath.Join(cfg.WorkRoot, leaseID, repo.Name))
+	workdir := remoteJoin(cfg, leaseID, repo.Name)
 	actionsEnvFile := ""
 	actionsURL := ""
 	hydratedByActions := false
@@ -336,7 +349,11 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 		recorder.Event("sync.started", "sync", "")
 		timings.syncSteps.sshReady = time.Since(stepStart)
 		stepStart = time.Now()
-		if err := runSSHQuiet(ctx, target, remoteMkdir(workdir)); err != nil {
+		mkdirCommand := remoteMkdir(workdir)
+		if isWindowsNativeTarget(target) {
+			mkdirCommand = windowsRemoteMkdir(workdir)
+		}
+		if err := runSSHQuiet(ctx, target, mkdirCommand); err != nil {
 			return recordFailure(exit(7, "create remote workdir: %v", err))
 		}
 		timings.syncSteps.mkdir = time.Since(stepStart)
@@ -351,6 +368,17 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 			return recordFailure(err)
 		}
 		timings.syncSteps.preflight = time.Since(stepStart)
+		if isWindowsNativeTarget(target) {
+			stepStart = time.Now()
+			if err := syncWindowsNative(ctx, target, repo, cfg, workdir, manifest, a.Stdout, a.Stderr, rsyncOptions{Debug: *debugSync, Delete: cfg.Sync.Delete, Checksum: cfg.Sync.Checksum, Timeout: cfg.Sync.Timeout, HeartbeatInterval: 15 * time.Second}); err != nil {
+				return recordFailure(err)
+			}
+			timings.syncSteps.rsync = time.Since(stepStart)
+			timings.sync = time.Since(syncStart)
+			fmt.Fprintf(a.Stderr, "sync complete in %s\n", timings.sync.Round(time.Millisecond))
+			recorder.Event("sync.finished", "synced", fmt.Sprintf("duration=%s mode=archive", timings.sync.Round(time.Millisecond)))
+			goto afterSync
+		}
 		fingerprint := ""
 		if cfg.Sync.Fingerprint {
 			stepStart = time.Now()
@@ -468,7 +496,11 @@ afterSync:
 		return recordFailure(err)
 	}
 	if *noSync {
-		if err := runSSHQuiet(ctx, target, remoteMkdir(workdir)); err != nil {
+		mkdirCommand := remoteMkdir(workdir)
+		if isWindowsNativeTarget(target) {
+			mkdirCommand = windowsRemoteMkdir(workdir)
+		}
+		if err := runSSHQuiet(ctx, target, mkdirCommand); err != nil {
 			return recordFailure(exit(7, "create remote workdir: %v", err))
 		}
 	}
@@ -483,6 +515,12 @@ afterSync:
 	remote := remoteCommandWithEnvFile(workdir, allowedEnv(cfg.EnvAllow), actionsEnvFile, command)
 	if *shellMode || shouldUseShell(command) {
 		remote = remoteShellCommandWithEnvFile(workdir, allowedEnv(cfg.EnvAllow), actionsEnvFile, strings.Join(command, " "))
+	}
+	if isWindowsNativeTarget(target) {
+		remote = windowsRemoteCommandWithEnvFile(workdir, allowedEnv(cfg.EnvAllow), actionsEnvFile, command)
+		if *shellMode || shouldUseShell(command) {
+			remote = windowsRemoteShellCommandWithEnvFile(workdir, allowedEnv(cfg.EnvAllow), actionsEnvFile, strings.Join(command, " "))
+		}
 	}
 	var logBuffer runLogBuffer
 	stdoutEvents := recorder.StreamWriter("stdout")
@@ -894,7 +932,7 @@ func heartbeatInterval(ttl time.Duration) time.Duration {
 }
 
 func (a App) touchLeaseBestEffort(ctx context.Context, cfg Config, identifier, leaseID string) {
-	if _, ok, err := newCoordinatorClient(cfg); err == nil && ok {
+	if _, ok, err := newTargetCoordinatorClient(cfg); err == nil && ok {
 		if leaseID == "" {
 			leaseID = identifier
 		}
@@ -910,7 +948,7 @@ func (a App) touchLeaseBestEffort(ctx context.Context, cfg Config, identifier, l
 }
 
 func (a App) touchActiveLeaseBestEffort(ctx context.Context, cfg Config, server Server, leaseID string) Server {
-	if _, ok, err := newCoordinatorClient(cfg); err == nil && ok {
+	if _, ok, err := newTargetCoordinatorClient(cfg); err == nil && ok {
 		a.touchCoordinatorLeaseBestEffort(ctx, cfg, leaseID)
 		return server
 	}
@@ -922,6 +960,9 @@ func (a App) touchDirectLeaseBestEffort(ctx context.Context, cfg Config, server 
 		server.Labels = map[string]string{}
 	}
 	server.Labels = touchDirectLeaseLabels(server.Labels, cfg, state, time.Now().UTC())
+	if isStaticProvider(cfg.Provider) || server.Provider == staticProvider {
+		return server
+	}
 	if cfg.Provider == "aws" || server.Provider == "aws" || strings.HasPrefix(server.CloudID, "i-") {
 		client, err := newAWSClient(ctx, cfg)
 		if err != nil {
@@ -945,6 +986,9 @@ func (a App) touchDirectLeaseBestEffort(ctx context.Context, cfg Config, server 
 }
 
 func (a App) acquire(ctx context.Context, cfg Config, keep bool) (Server, SSHTarget, string, error) {
+	if isStaticProvider(cfg.Provider) {
+		return a.acquireStatic(ctx, cfg, keep)
+	}
 	if cfg.Provider == "aws" {
 		return a.acquireAWS(ctx, cfg, keep)
 	}
@@ -1089,6 +1133,9 @@ func waitForServerIP(ctx context.Context, client *HetznerClient, id int64) (Serv
 }
 
 func (a App) findLease(ctx context.Context, cfg Config, id string) (Server, SSHTarget, string, error) {
+	if isStaticProvider(cfg.Provider) {
+		return a.findStaticLease(ctx, cfg, id)
+	}
 	if cfg.Provider == "aws" {
 		return a.findAWSLease(ctx, cfg, id)
 	}
@@ -1191,7 +1238,8 @@ func findServerByAlias(servers []Server, id string) (Server, string, error) {
 
 func (a App) stop(ctx context.Context, args []string) error {
 	fs := newFlagSet("stop", a.Stderr)
-	provider := fs.String("provider", defaultConfig().Provider, "provider: hetzner, aws, or blacksmith-testbox")
+	provider := fs.String("provider", defaultConfig().Provider, "provider: hetzner, aws, ssh, or blacksmith-testbox")
+	targetFlags := registerTargetFlags(fs, defaultConfig())
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
@@ -1203,10 +1251,13 @@ func (a App) stop(ctx context.Context, args []string) error {
 		return err
 	}
 	cfg.Provider = *provider
+	if err := applyTargetFlagOverrides(&cfg, fs, targetFlags); err != nil {
+		return err
+	}
 	if isBlacksmithProvider(cfg.Provider) {
 		return a.blacksmithStop(ctx, cfg, fs.Arg(0))
 	}
-	if coord, ok, err := newCoordinatorClient(cfg); err != nil {
+	if coord, ok, err := newTargetCoordinatorClient(cfg); err != nil {
 		return err
 	} else if ok {
 		if lease, err := coord.GetLease(ctx, fs.Arg(0)); err == nil {
@@ -1255,6 +1306,9 @@ func leaseDisplayID(lease CoordinatorLease) string {
 }
 
 func deleteServer(ctx context.Context, cfg Config, server Server) error {
+	if isStaticProvider(cfg.Provider) || server.Provider == staticProvider {
+		return nil
+	}
 	if cfg.Provider == "aws" || server.Provider == "aws" || strings.HasPrefix(server.CloudID, "i-") {
 		client, err := newAWSClient(ctx, cfg)
 		if err != nil {

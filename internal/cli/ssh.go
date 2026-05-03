@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha1"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf16"
 )
 
 type SSHTarget struct {
@@ -23,6 +25,9 @@ type SSHTarget struct {
 	Key           string
 	Port          string
 	FallbackPorts []string
+	TargetOS      string
+	WindowsMode   string
+	ReadyCheck    string
 }
 
 func sshTargetFromConfig(cfg Config, host string) SSHTarget {
@@ -42,6 +47,8 @@ func sshTargetForLease(cfg Config, host, user, port string) SSHTarget {
 		Key:           cfg.SSHKey,
 		Port:          port,
 		FallbackPorts: cfg.SSHFallbackPorts,
+		TargetOS:      cfg.TargetOS,
+		WindowsMode:   cfg.WindowsMode,
 	}
 }
 
@@ -71,7 +78,7 @@ func waitForSSHReady(ctx context.Context, target *SSHTarget, stderr io.Writer, p
 			if reachablePort == "" {
 				reachablePort = probe.Port
 			}
-			if runSSHQuiet(ctx, probe, sshReadyCommand()) == nil {
+			if runSSHQuiet(ctx, probe, sshReadyCommand(probe)) == nil {
 				if target.Port != probe.Port {
 					fmt.Fprintf(stderr, "using ssh port %s for %s (configured %s not ready)\n", probe.Port, target.Host, target.Port)
 					target.Port = probe.Port
@@ -111,7 +118,7 @@ func probeSSHReady(ctx context.Context, target *SSHTarget, timeout time.Duration
 			continue
 		}
 		_ = conn.Close()
-		if runSSHQuietWithOptions(ctx, probe, sshReadyCommand(), "2", "1") == nil {
+		if runSSHQuietWithOptions(ctx, probe, sshReadyCommand(probe), "2", "1") == nil {
 			target.Port = probe.Port
 			return true
 		}
@@ -119,8 +126,22 @@ func probeSSHReady(ctx context.Context, target *SSHTarget, timeout time.Duration
 	return false
 }
 
-func sshReadyCommand() string {
+func sshReadyCommand(target SSHTarget) string {
+	if target.ReadyCheck != "" {
+		return target.ReadyCheck
+	}
+	if isWindowsNativeTarget(target) {
+		return powershellCommand(`$ErrorActionPreference = "Stop"
+git --version | Out-Null
+tar --version | Out-Null
+if (-not (Test-Path -LiteralPath ` + psQuote(targetWindowsReadyRoot(target)) + `)) { throw "work root missing" }`)
+	}
 	return "test -x /usr/local/bin/crabbox-ready && crabbox-ready >/tmp/crabbox-ready.log 2>&1"
+}
+
+func targetWindowsReadyRoot(target SSHTarget) string {
+	_ = target
+	return `C:\`
 }
 
 func sshPortCandidates(port string, fallbackPorts []string) []string {
@@ -149,6 +170,7 @@ func runSSHQuiet(ctx context.Context, target SSHTarget, remote string) error {
 }
 
 func runSSHQuietWithOptions(ctx context.Context, target SSHTarget, remote, connectTimeout, connectionAttempts string) error {
+	remote = wrapRemoteForTarget(target, remote)
 	cmd := exec.CommandContext(ctx, "ssh", sshArgsWithOptions(target, remote, connectTimeout, connectionAttempts)...)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
@@ -156,6 +178,7 @@ func runSSHQuietWithOptions(ctx context.Context, target SSHTarget, remote, conne
 }
 
 func runSSHOutput(ctx context.Context, target SSHTarget, remote string) (string, error) {
+	remote = wrapRemoteForTarget(target, remote)
 	cmd := exec.CommandContext(ctx, "ssh", sshArgs(target, remote)...)
 	out, err := cmd.Output()
 	if err != nil {
@@ -165,20 +188,27 @@ func runSSHOutput(ctx context.Context, target SSHTarget, remote string) (string,
 }
 
 func runSSHCombinedOutput(ctx context.Context, target SSHTarget, remote string) (string, error) {
+	remote = wrapRemoteForTarget(target, remote)
 	cmd := exec.CommandContext(ctx, "ssh", sshArgs(target, remote)...)
 	out, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(out)), err
 }
 
 func runSSHInputQuiet(ctx context.Context, target SSHTarget, remote, input string) error {
+	return runSSHInput(ctx, target, remote, strings.NewReader(input), io.Discard, io.Discard)
+}
+
+func runSSHInput(ctx context.Context, target SSHTarget, remote string, input io.Reader, stdout, stderr io.Writer) error {
+	remote = wrapRemoteForTarget(target, remote)
 	cmd := exec.CommandContext(ctx, "ssh", sshArgs(target, remote)...)
-	cmd.Stdin = strings.NewReader(input)
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
+	cmd.Stdin = input
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 	return cmd.Run()
 }
 
 func runSSHStream(ctx context.Context, target SSHTarget, remote string, stdout, stderr io.Writer) int {
+	remote = wrapRemoteForTarget(target, remote)
 	cmd := exec.CommandContext(ctx, "ssh", sshArgs(target, remote)...)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
@@ -287,6 +317,9 @@ func rsync(ctx context.Context, target SSHTarget, src, dst string, excludes []st
 	if opts.UseFilesFrom {
 		args = append(args, "--files-from=-", "--from0")
 	}
+	if isWindowsWSL2Target(target) {
+		args = append(args, "--rsync-path", "wsl.exe rsync")
+	}
 	for _, exclude := range excludes {
 		args = append(args, "--exclude", exclude)
 	}
@@ -311,6 +344,19 @@ func rsync(ctx context.Context, target SSHTarget, src, dst string, excludes []st
 		fmt.Fprintf(stderr, "rsync elapsed=%s checksum=%t delete=%t\n", time.Since(start).Round(time.Millisecond), opts.Checksum, opts.Delete)
 	}
 	return err
+}
+
+func wrapRemoteForTarget(target SSHTarget, remote string) string {
+	if isWindowsNativeTarget(target) {
+		if strings.HasPrefix(remote, "powershell.exe ") || strings.HasPrefix(remote, "powershell ") {
+			return remote
+		}
+		return powershellCommand(remote)
+	}
+	if isWindowsWSL2Target(target) {
+		return "wsl.exe --exec bash -lc " + shellQuote(remote)
+	}
+	return remote
 }
 
 func startSyncHeartbeat(stderr io.Writer, start time.Time, interval time.Duration) func() {
@@ -342,6 +388,24 @@ func ensureTrailingSlash(path string) string {
 
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
+
+func psQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+}
+
+func powershellCommand(script string) string {
+	encoded := base64.StdEncoding.EncodeToString(utf16LE([]byte(script)))
+	return "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " + encoded
+}
+
+func utf16LE(input []byte) []byte {
+	encoded := utf16.Encode([]rune(string(input)))
+	out := make([]byte, 0, len(encoded)*2)
+	for _, unit := range encoded {
+		out = append(out, byte(unit), byte(unit>>8))
+	}
+	return out
 }
 
 func remoteCommand(workdir string, env map[string]string, command []string) string {

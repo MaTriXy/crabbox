@@ -9,8 +9,9 @@ import (
 
 func (a App) doctor(ctx context.Context, args []string) error {
 	fs := newFlagSet("doctor", a.Stderr)
-	provider := fs.String("provider", defaultConfig().Provider, "provider: hetzner or aws")
+	provider := fs.String("provider", defaultConfig().Provider, "provider: hetzner, aws, or ssh")
 	id := fs.String("id", "", "remote lease id to inspect")
+	targetFlags := registerTargetFlags(fs, defaultConfig())
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
@@ -39,12 +40,19 @@ func (a App) doctor(ctx context.Context, args []string) error {
 		}
 	}
 	cfg.Provider = *provider
+	if err := applyTargetFlagOverrides(&cfg, fs, targetFlags); err != nil {
+		return err
+	}
 	if *id != "" {
 		_, target, _, err := a.resolveLeaseTarget(ctx, cfg, *id)
 		if err != nil {
 			return err
 		}
-		out, err := runSSHOutput(ctx, target, "printf 'git='; git --version; printf 'rsync='; rsync --version | head -1; printf 'curl='; curl --version | head -1; printf 'jq='; jq --version")
+		remote := "printf 'git='; git --version; printf 'rsync='; rsync --version | head -1; printf 'curl='; curl --version | head -1; printf 'jq='; jq --version"
+		if isWindowsNativeTarget(target) {
+			remote = windowsRemoteDoctor()
+		}
+		out, err := runSSHOutput(ctx, target, remote)
 		if err != nil {
 			return exit(7, "remote doctor failed for %s: %v", *id, err)
 		}
@@ -54,7 +62,7 @@ func (a App) doctor(ctx context.Context, args []string) error {
 		cfg.ServerType = serverTypeForProviderClass(cfg.Provider, cfg.Class)
 	}
 	useCoordinator := false
-	if coord, coordinatorConfigured, err := newCoordinatorClient(cfg); err != nil {
+	if coord, coordinatorConfigured, err := newTargetCoordinatorClient(cfg); err != nil {
 		fmt.Fprintf(a.Stdout, "failed  coord    %v\n", err)
 		ok = false
 	} else if coordinatorConfigured {
@@ -109,6 +117,13 @@ func (a App) doctor(ctx context.Context, args []string) error {
 	}
 
 	switch cfg.Provider {
+	case "ssh", "static", "static-ssh":
+		if cfg.Static.Host == "" {
+			fmt.Fprintf(a.Stdout, "failed  static   missing static.host\n")
+			ok = false
+		} else {
+			fmt.Fprintf(a.Stdout, "ok      static   target=%s windows_mode=%s host=%s\n", cfg.TargetOS, cfg.WindowsMode, cfg.Static.Host)
+		}
 	case "aws":
 		client, err := newAWSClient(ctx, cfg)
 		if err != nil {

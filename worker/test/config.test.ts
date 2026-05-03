@@ -65,6 +65,15 @@ describe("lease config", () => {
     expect(config.awsRegion).toBe("eu-west-1");
   });
 
+  it("records linux target defaults and rejects brokered non-linux targets", () => {
+    const config = leaseConfig({ sshPublicKey: "ssh-ed25519 test" });
+    expect(config.target).toBe("linux");
+    expect(config.windowsMode).toBe("normal");
+    expect(() => leaseConfig({ target: "macos", sshPublicKey: "ssh-ed25519 test" })).toThrow(
+      "unsupported target",
+    );
+  });
+
   it("preserves exact server type requests", () => {
     const config = leaseConfig({
       provider: "aws",

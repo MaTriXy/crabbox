@@ -11,6 +11,8 @@ Cleanup refuses to run when a coordinator is configured. Brokered cleanup belong
 
 Direct cleanup skips kept machines, deletes expired ready/leased/active machines, and gives running/provisioning machines an extra stale safety window. It relies on provider labels such as `lease`, `slug`, `expires_at`, and `state`.
 
+Static SSH targets are existing hosts, so `provider=ssh` has nothing to sweep.
+
 Flags:
 
 ```text

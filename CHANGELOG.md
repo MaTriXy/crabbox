@@ -4,10 +4,13 @@
 
 ### Added
 
+- Added static SSH macOS and Windows targets with `--target macos|windows`, `--windows-mode normal|wsl2`, and config/env support for reusable hosts.
 - Added `actions.fields` config support so repository-specific workflow inputs are sent on every Actions hydration, with CLI `-f key=value` overrides. Thanks @vincentkoc.
 - Added a command-doc drift check to `npm run docs:check` so every top-level CLI command has a matching command page and index entry. Thanks @stainlu.
 
 ### Changed
+
+- Brokered Hetzner and AWS leases now reject non-Linux targets clearly; use `provider: ssh` for macOS or Windows hosts.
 
 ### Fixed
 
@@ -15,6 +18,7 @@
 - Suppressed repeated run-event append warnings when a legacy coordinator does not support the newer run-event path. Thanks @vincentkoc.
 - Fixed recorded run logs so long noisy commands are stored in bounded chunks instead of losing the failure evidence between the first output events and the final tail.
 - Forced SSH to use Crabbox's per-lease identity file so local SSH-agent keys cannot exhaust server auth attempts before the runner key is tried.
+- Made Blacksmith live smoke explicit opt-in so the default live smoke works in repositories without a Testbox workflow.
 
 ## 0.3.0 - 2026-05-02
 

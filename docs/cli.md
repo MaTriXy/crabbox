@@ -33,8 +33,8 @@ crabbox init [--force]
 crabbox config show [--json]
 crabbox config path
 crabbox config set-broker --url <url> --token-stdin [--provider hetzner|aws]
-crabbox warmup [--provider hetzner|aws|blacksmith-testbox] [--profile <name>] [--idle-timeout <duration>] [--timing-json]
-crabbox run [--id <lease-id-or-slug>] [--shell] [--checksum] [--debug] [--force-sync-large] [--timing-json] [--blacksmith-workflow <workflow>] -- <command...>
+crabbox warmup [--provider hetzner|aws|ssh|blacksmith-testbox] [--target linux|macos|windows] [--profile <name>] [--idle-timeout <duration>] [--timing-json]
+crabbox run [--id <lease-id-or-slug>] [--provider hetzner|aws|ssh|blacksmith-testbox] [--target linux|macos|windows] [--windows-mode normal|wsl2] [--shell] [--checksum] [--debug] [--force-sync-large] [--timing-json] [--blacksmith-workflow <workflow>] -- <command...>
 crabbox sync-plan [--limit <n>]
 crabbox history [--lease <lease-id>] [--owner <email>] [--org <name>] [--limit <n>] [--json]
 crabbox logs <run-id> [--json]
@@ -99,6 +99,14 @@ crabbox warmup --provider blacksmith-testbox --blacksmith-workflow .github/workf
 crabbox run --provider blacksmith-testbox --id blue-lobster -- pnpm test:changed
 crabbox run --provider blacksmith-testbox --blacksmith-workflow .github/workflows/ci-check-testbox.yml --blacksmith-job test -- pnpm test
 crabbox stop --provider blacksmith-testbox blue-lobster
+```
+
+Use an existing macOS or Windows SSH host:
+
+```sh
+crabbox run --provider ssh --target macos --static-host mac-studio.local -- xcodebuild test
+crabbox run --provider ssh --target windows --windows-mode normal --static-host win-dev.local -- dotnet test
+crabbox run --provider ssh --target windows --windows-mode wsl2 --static-host win-dev.local -- pnpm test
 ```
 
 Inspect pool:
@@ -200,7 +208,13 @@ Flags:
 
 ```text
 --id <lease-id-or-slug>  reuse an existing lease
---provider <name>        hetzner, aws, or blacksmith-testbox
+--provider <name>        hetzner, aws, ssh, or blacksmith-testbox
+--target <name>          linux, macos, or windows
+--windows-mode <mode>    normal or wsl2
+--static-host <host>     existing SSH host for provider=ssh
+--static-user <user>     static SSH user override
+--static-port <port>     static SSH port override
+--static-work-root <path> static target work root
 --profile <name>        profile to run on
 --class <name>          machine class override
 --type <name>           provider server or instance type override
@@ -285,6 +299,36 @@ ssh:
   fallbackPorts:
     - "22"
 ```
+
+Static macOS target:
+
+```yaml
+provider: ssh
+target: macos
+static:
+  host: mac-studio.local
+  user: steipete
+  port: "22"
+  workRoot: /Users/steipete/crabbox
+```
+
+Static Windows target:
+
+```yaml
+provider: ssh
+target: windows
+windows:
+  mode: normal # normal or wsl2
+static:
+  host: win-dev.local
+  user: Peter
+  port: "22"
+  workRoot: C:\crabbox
+```
+
+`windows.mode: normal` runs native PowerShell over OpenSSH and syncs with a tar
+archive. `windows.mode: wsl2` runs commands through `wsl.exe --exec bash -lc`
+and uses rsync inside WSL2, so `static.workRoot` should be a WSL path.
 
 `crabbox warmup --market spot|on-demand` and `crabbox run --market spot|on-demand`
 override `capacity.market` for a single AWS lease. Use this for temporary quota
@@ -374,6 +418,14 @@ CRABBOX_ACCESS_CLIENT_ID
 CRABBOX_ACCESS_CLIENT_SECRET
 CRABBOX_ACCESS_TOKEN
 CRABBOX_PROVIDER
+CRABBOX_TARGET
+CRABBOX_WINDOWS_MODE
+CRABBOX_STATIC_ID
+CRABBOX_STATIC_NAME
+CRABBOX_STATIC_HOST
+CRABBOX_STATIC_USER
+CRABBOX_STATIC_PORT
+CRABBOX_STATIC_WORK_ROOT
 CRABBOX_PROFILE
 CRABBOX_CONFIG
 CRABBOX_DEFAULT_CLASS

@@ -13,6 +13,13 @@ hetzner     Hetzner Cloud servers
 aws         AWS EC2 one-time Spot instances
 ```
 
+Brokered Hetzner and AWS leases are Linux targets. macOS and Windows targets use
+the direct static SSH provider:
+
+```text
+ssh         Existing SSH host selected by static.host
+```
+
 Hetzner behavior:
 
 - imports or reuses the lease SSH key;
@@ -79,6 +86,37 @@ structured quota preflight and `provisioningAttempts` metadata belong to the
 brokered Worker path.
 
 Crabbox can also wrap Blacksmith Testboxes with `provider: blacksmith-testbox`. That backend does not use the Crabbox broker or direct cloud credentials. It shells out to the authenticated Blacksmith CLI for `testbox warmup`, `run`, `status`, `list`, and `stop`, while Crabbox keeps local slugs, repo claims, config, and timing summaries. See [Blacksmith Testbox](blacksmith-testbox.md).
+
+Static SSH targets:
+
+```yaml
+provider: ssh
+target: macos
+static:
+  host: mac-studio.local
+  user: steipete
+  port: "22"
+  workRoot: /Users/steipete/crabbox
+```
+
+```yaml
+provider: ssh
+target: windows
+windows:
+  mode: normal
+static:
+  host: win-dev.local
+  user: Peter
+  port: "22"
+  workRoot: C:\crabbox
+```
+
+`target: windows` supports `windows.mode: normal` and `windows.mode: wsl2`.
+Normal mode uses PowerShell over OpenSSH and syncs the manifest as a tar archive.
+WSL2 mode keeps the POSIX SSH contract: commands run through
+`wsl.exe --exec bash -lc`, rsync uses `wsl.exe rsync`, and `static.workRoot`
+should be a WSL path such as `/home/peter/crabbox`. macOS also uses the POSIX
+contract and needs `git`, `rsync`, `tar`, and SSH.
 
 Related docs:
 

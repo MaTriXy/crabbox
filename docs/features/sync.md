@@ -28,7 +28,7 @@ Sync flow:
 9. run sanity checks for mass tracked deletions;
 10. hydrate configured base-ref history for changed-test workflows.
 
-The remote manifest deletion step only removes paths Crabbox previously synced. It does not delete workflow-created state, package caches, `.git`, or other local runner files outside the managed file list.
+The remote manifest deletion step only removes paths Crabbox previously synced. It does not delete workflow-created state, package caches, `.git`, or other local runner files outside the managed file list. Native Windows static targets use the same Git manifest but transfer it as a tar archive over OpenSSH instead of rsync.
 
 In remote Git worktrees, Crabbox stores its sync metadata under `.git/crabbox` so repository status stays clean. Crabbox does not delete files under the worktree `.crabbox/` directory; that path remains available for repository-owned files and config.
 

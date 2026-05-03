@@ -13,7 +13,11 @@ func collectRemoteJUnitResults(ctx context.Context, target SSHTarget, workdir st
 	if len(paths) == 0 {
 		return nil, nil
 	}
-	out, err := runSSHOutput(ctx, target, remoteReadResultFiles(workdir, paths))
+	remote := remoteReadResultFiles(workdir, paths)
+	if isWindowsNativeTarget(target) {
+		remote = windowsRemoteReadResultFiles(workdir, paths)
+	}
+	out, err := runSSHOutput(ctx, target, remote)
 	if err != nil {
 		return nil, err
 	}

@@ -10,7 +10,7 @@ export function leaseProviderLabels(
   now: Date,
   extra: Record<string, string> = {},
 ): Record<string, string> {
-  return sanitizeLabels({
+  const labels: Record<string, string> = {
     class: config.class,
     crabbox: "true",
     created_by: "crabbox",
@@ -21,6 +21,7 @@ export function leaseProviderLabels(
     profile: config.profile,
     provider_key: config.providerKey,
     provider,
+    target: config.target ?? "linux",
     server_type: config.serverType,
     state: "leased",
     created_at: labelTime(now),
@@ -30,8 +31,11 @@ export function leaseProviderLabels(
     expires_at: labelTime(
       new Date(now.getTime() + Math.min(config.ttlSeconds, config.idleTimeoutSeconds) * 1000),
     ),
-    ...extra,
-  });
+  };
+  if (config.target === "windows") {
+    labels["windows_mode"] = config.windowsMode;
+  }
+  return sanitizeLabels({ ...labels, ...extra });
 }
 
 function sanitizeLabel(value: string): string {

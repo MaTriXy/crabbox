@@ -100,7 +100,7 @@ func (a App) Run(ctx context.Context, args []string) error {
 }
 
 func (a App) printHelp() {
-	fmt.Fprintln(a.Stdout, `Crabbox leases remote Linux test boxes, syncs your dirty checkout, runs commands, and cleans up.
+	fmt.Fprintln(a.Stdout, `Crabbox leases remote test boxes, syncs your dirty checkout, runs commands, and cleans up.
 
 Usage:
   crabbox <command> [flags]
@@ -163,6 +163,8 @@ Common Flows:
   crabbox warmup --actions-runner
   crabbox actions hydrate --id blue-lobster
   crabbox actions dispatch -f testbox_id=cbx_abcdef123456
+  crabbox run --provider ssh --target macos --static-host mac.local -- echo ok
+  crabbox run --provider ssh --target windows --windows-mode normal --static-host win.local -- pwsh -NoProfile -Command '$PSVersionTable'
   crabbox stop blue-lobster
 
 Global:
@@ -184,7 +186,10 @@ Environment:
   CRABBOX_ACCESS_CLIENT_ID     Cloudflare Access service token client ID
   CRABBOX_ACCESS_CLIENT_SECRET Cloudflare Access service token client secret
   CRABBOX_ACCESS_TOKEN         Cloudflare Access JWT for protected routes
-  CRABBOX_PROVIDER             hetzner or aws
+  CRABBOX_PROVIDER             hetzner, aws, ssh, or blacksmith-testbox
+  CRABBOX_TARGET               linux, macos, or windows
+  CRABBOX_WINDOWS_MODE         normal or wsl2
+  CRABBOX_STATIC_HOST          Static SSH host for provider=ssh
   CRABBOX_OWNER                Usage owner override
   CRABBOX_ORG                  Usage org override
   CRABBOX_CONFIG               Optional config path
