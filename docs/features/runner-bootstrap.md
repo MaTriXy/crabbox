@@ -26,6 +26,11 @@ Bootstrap installs:
 
 Bootstrap intentionally does not install project language runtimes such as Go, Node, pnpm, Docker, databases, or service dependencies. Those belong in GitHub Actions hydration, devcontainers, Nix, mise/asdf, or repository setup scripts. A brokered machine should not pass readiness until `crabbox-ready` succeeds over SSH.
 
+Interactive desktop tooling is an optional lease profile, not part of the
+minimal bootstrap. See [Interactive desktop and VNC](interactive-desktop-vnc.md)
+for the planned boundary: Crabbox owns the desktop/VNC machine capability, while
+scenario systems own browser automation and proof artifacts.
+
 Static SSH targets are not bootstrapped by Crabbox. They are assumed to be
 operator-managed:
 

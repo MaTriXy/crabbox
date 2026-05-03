@@ -39,6 +39,7 @@ This page maps user-facing behavior back to implementation files. Keep docs desc
 - Worker AWS AMI create/read/promote routes: `worker/src/fleet.ts`, `worker/src/aws.ts`
 - CLI cloud-init bootstrap: `internal/cli/bootstrap.go`
 - Worker cloud-init bootstrap: `worker/src/bootstrap.ts`
+- Planned interactive desktop/VNC contract: `docs/features/interactive-desktop-vnc.md`
 
 Bootstrap is intentionally tiny: OpenSSH, CA certificates, curl, Git, rsync, jq, `/work/crabbox`, cache directories, and `crabbox-ready`. Project runtimes such as Go, Node, pnpm, Docker, databases, and services are repository-owned setup, usually through Actions hydration or repo scripts.
 

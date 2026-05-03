@@ -17,6 +17,7 @@ Core features:
 - [Runner bootstrap](runner-bootstrap.md): cloud-init, installed tools, SSH port, and readiness.
 - [Sync](sync.md): Git file-list manifests, rsync, fingerprints, excludes, guardrails, and sanity checks.
 - [Actions hydration](actions-hydration.md): let GitHub Actions prepare a runner, then sync local work into that workspace.
+- [Interactive desktop and VNC](interactive-desktop-vnc.md): Linux UI leases, tunnel-only VNC takeover, and Mantis/browser QA boundaries.
 - [SSH keys](ssh-keys.md): per-lease keys, provider key cleanup, and local storage.
 - [Cost and usage](cost-usage.md): guardrails, provider-backed pricing, and reporting.
 - [History and logs](history-logs.md): coordinator run records, events, and retained remote output.

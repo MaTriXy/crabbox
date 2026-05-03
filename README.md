@@ -81,6 +81,7 @@ For the full mental model, see [How Crabbox Works](docs/how-it-works.md). For th
 - **Trusted AWS images.** Operators can create AMIs from active brokered AWS leases and promote a known-good image as the coordinator default.
 - **Cost guardrails.** Per-lease and monthly spend caps. Live pricing from EC2 Spot history or Hetzner server-type prices, with static fallbacks. `crabbox usage` summarizes spend by user, org, provider, and type.
 - **GitHub Actions hydration.** `crabbox actions hydrate` registers a leased box as an ephemeral Actions runner, so the repo's own workflow installs runtimes, services, and secrets. Crabbox does not parse Actions YAML.
+- **Planned interactive desktop leases.** VNC/browser takeover belongs in Crabbox as an optional Linux desktop profile, while QA systems such as Mantis own scenario logic, screenshots, and PR evidence.
 - **Hardened coordinator auth.** GitHub browser login, owner-scoped leases, admin-only routes, optional GitHub team allowlists, Cloudflare Access JWT verification, and service-token support keep normal use and operator automation separate.
 - **OpenClaw plugin.** The repo root is a native OpenClaw plugin for box lifecycle operations: `crabbox_run`, `crabbox_warmup`, `crabbox_status`, `crabbox_list`, and `crabbox_stop`. Run inspection stays in the CLI and Crabbox skill.
 - **Operator surface.** `doctor`, `init`, `status`, `inspect`, `list`, `usage`, `history`, `logs`, `results`, `cache`, `admin`, `cleanup`, plus `--json` output where it matters.
@@ -200,6 +201,7 @@ Worker deployment, required secrets, and DNS routing live in [docs/infrastructur
 
 - **Get the model:** [How Crabbox Works](docs/how-it-works.md), [Architecture](docs/architecture.md), [Orchestrator](docs/orchestrator.md)
 - **Use the CLI:** [CLI](docs/cli.md), [Commands](docs/commands/README.md), [Features](docs/features/README.md)
+- **Interactive QA:** [Interactive Desktop and VNC](docs/features/interactive-desktop-vnc.md)
 - **Operate it:** [Operations](docs/operations.md), [Observability](docs/observability.md), [Troubleshooting](docs/troubleshooting.md)
 - **Set it up or audit it:** [Infrastructure](docs/infrastructure.md), [Security](docs/security.md), [Source Map](docs/source-map.md), [MVP Plan](docs/mvp-plan.md)
 - **Changes:** [CHANGELOG.md](CHANGELOG.md)
