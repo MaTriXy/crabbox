@@ -11,6 +11,7 @@
 ### Fixed
 
 - Fixed recorded run logs so long noisy commands are stored in bounded chunks instead of losing the failure evidence between the first output events and the final tail.
+- Forced SSH to use Crabbox's per-lease identity file so local SSH-agent keys cannot exhaust server auth attempts before the runner key is tried.
 
 ## 0.3.0 - 2026-05-02
 

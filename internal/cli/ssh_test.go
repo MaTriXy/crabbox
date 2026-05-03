@@ -95,6 +95,7 @@ func TestSSHArgsIncludeReliabilityOptions(t *testing.T) {
 	for _, want := range []string{
 		"ConnectTimeout=10",
 		"ConnectionAttempts=3",
+		"IdentitiesOnly=yes",
 		"ServerAliveInterval=15",
 		"ServerAliveCountMax=2",
 		"ControlMaster=auto",

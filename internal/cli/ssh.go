@@ -213,6 +213,7 @@ func sshBaseArgs(target SSHTarget) []string {
 func sshBaseArgsWithOptions(target SSHTarget, connectTimeout, connectionAttempts string) []string {
 	return []string{
 		"-i", target.Key,
+		"-o", "IdentitiesOnly=yes",
 		"-o", "BatchMode=yes",
 		"-o", "StrictHostKeyChecking=accept-new",
 		"-o", "UserKnownHostsFile=" + sshConfigFileValue(knownHostsFile(target)),
