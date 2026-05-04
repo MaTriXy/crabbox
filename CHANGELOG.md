@@ -27,6 +27,7 @@
 
 - Fixed WebVNC portal login redirects by canonicalizing broker origins before starting the browser login flow.
 - Fixed AWS desktop provisioning and Windows SSH bootstrap issues that could leave managed desktop leases unreachable.
+- Fixed passthrough command help such as `crabbox run --help` so it prints local usage instead of provisioning a remote lease.
 - Fixed `crabbox desktop launch --browser` on freshly warmed desktop leases by creating the remote workdir before launching the app.
 - Fixed failed Blacksmith Testbox warmups so printed, newly listed, or delayed `tbx_...` boxes are stopped instead of being left queued after an upstream workflow error.
 - Fixed `crabbox run --junit` so all-passing JUnit files record results instead of leaving the coordinator run stuck when the failure list is empty.

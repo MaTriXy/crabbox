@@ -36,8 +36,72 @@ func (a App) Run(ctx context.Context, args []string) error {
 		a.printHelp()
 		return nil
 	}
+	if help, ok := a.directCommandHelp(ctx, args); ok {
+		return help
+	}
 
 	return a.runKong(ctx, args)
+}
+
+func (a App) directCommandHelp(ctx context.Context, args []string) (error, bool) {
+	if len(args) < 2 || !isHelpArg(args[1]) || isKongCommandGroup(args[0]) {
+		return nil, false
+	}
+	helpArgs := []string{"--help"}
+	switch args[0] {
+	case "init":
+		return a.initProject(ctx, helpArgs), true
+	case "login":
+		return a.login(ctx, helpArgs), true
+	case "logout":
+		return a.logout(ctx, helpArgs), true
+	case "whoami":
+		return a.whoami(ctx, helpArgs), true
+	case "doctor":
+		return a.doctor(ctx, helpArgs), true
+	case "warmup":
+		return a.warmup(ctx, helpArgs), true
+	case "run":
+		return a.runCommand(ctx, helpArgs), true
+	case "sync-plan":
+		return a.syncPlan(ctx, helpArgs), true
+	case "history":
+		return a.history(ctx, helpArgs), true
+	case "logs":
+		return a.logs(ctx, helpArgs), true
+	case "events":
+		return a.events(ctx, helpArgs), true
+	case "attach":
+		return a.attach(ctx, helpArgs), true
+	case "results":
+		return a.results(ctx, helpArgs), true
+	case "status":
+		return a.status(ctx, helpArgs), true
+	case "list":
+		return a.list(ctx, helpArgs), true
+	case "usage":
+		return a.usage(ctx, helpArgs), true
+	case "ssh":
+		return a.ssh(ctx, helpArgs), true
+	case "vnc":
+		return a.vnc(ctx, helpArgs), true
+	case "webvnc":
+		return a.webvnc(ctx, helpArgs), true
+	case "screenshot":
+		return a.screenshot(ctx, helpArgs), true
+	case "inspect":
+		return a.inspect(ctx, helpArgs), true
+	case "stop", "release":
+		return a.stop(ctx, helpArgs), true
+	case "cleanup":
+		return a.cleanup(ctx, helpArgs), true
+	default:
+		return nil, false
+	}
+}
+
+func isHelpArg(arg string) bool {
+	return arg == "-h" || arg == "--help" || arg == "help"
 }
 
 func (a App) printHelp() {

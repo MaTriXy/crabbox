@@ -81,6 +81,23 @@ func TestSubcommandHelpExitsZero(t *testing.T) {
 	}
 }
 
+func TestPassthroughCommandHelpExitsBeforeExecution(t *testing.T) {
+	for _, command := range []string{"warmup", "run", "status", "ssh", "vnc", "webvnc", "screenshot", "inspect", "stop"} {
+		t.Run(command, func(t *testing.T) {
+			var stderr bytes.Buffer
+			app := App{Stdout: &bytes.Buffer{}, Stderr: &stderr}
+			err := app.Run(context.Background(), []string{command, "--help"})
+			var exitErr ExitError
+			if !AsExitError(err, &exitErr) || exitErr.Code != 0 {
+				t.Fatalf("%s --help error=%v, want exit 0", command, err)
+			}
+			if !strings.Contains(stderr.String(), "Usage") {
+				t.Fatalf("%s --help output missing usage: %s", command, stderr.String())
+			}
+		})
+	}
+}
+
 func TestGroupedCommandHelpExitsZero(t *testing.T) {
 	for _, command := range []string{"actions", "admin", "cache", "config", "desktop", "pool", "machine"} {
 		t.Run(command, func(t *testing.T) {
