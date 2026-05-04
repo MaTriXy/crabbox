@@ -41,6 +41,17 @@ func testboxKeyPath(leaseID string) (string, error) {
 }
 
 func ensureTestboxKey(leaseID string) (string, string, error) {
+	return ensureTestboxKeyWithType(leaseID, "ed25519")
+}
+
+func ensureTestboxKeyForConfig(cfg Config, leaseID string) (string, string, error) {
+	if cfg.Provider == "aws" && cfg.TargetOS == targetWindows && cfg.WindowsMode == windowsModeNormal {
+		return ensureTestboxKeyWithType(leaseID, "rsa")
+	}
+	return ensureTestboxKey(leaseID)
+}
+
+func ensureTestboxKeyWithType(leaseID, keyType string) (string, string, error) {
 	privatePath, err := testboxKeyPath(leaseID)
 	if err != nil {
 		return "", "", err
@@ -52,7 +63,11 @@ func ensureTestboxKey(leaseID string) (string, string, error) {
 	if err := os.MkdirAll(filepath.Dir(privatePath), 0o700); err != nil {
 		return "", "", exit(2, "create testbox key directory: %v", err)
 	}
-	cmd := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "crabbox "+leaseID, "-f", privatePath)
+	args := []string{"-q", "-t", keyType, "-N", "", "-C", "crabbox " + leaseID, "-f", privatePath}
+	if keyType == "rsa" {
+		args = []string{"-q", "-t", "rsa", "-b", "4096", "-N", "", "-C", "crabbox " + leaseID, "-f", privatePath}
+	}
+	cmd := exec.Command("ssh-keygen", args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return "", "", exit(2, "generate ssh key for %s: %v: %s", leaseID, err, strings.TrimSpace(string(out)))
 	}

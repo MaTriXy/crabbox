@@ -701,7 +701,7 @@ func shouldUseShell(command []string) bool {
 func (a App) acquireCoordinator(ctx context.Context, cfg Config, coord *CoordinatorClient, keep bool) (Server, SSHTarget, string, error) {
 	leaseID := newLeaseID()
 	slug := newLeaseSlug(leaseID)
-	keyPath, publicKey, err := ensureTestboxKey(leaseID)
+	keyPath, publicKey, err := ensureTestboxKeyForConfig(cfg, leaseID)
 	if err != nil {
 		return Server{}, SSHTarget{}, "", err
 	}
@@ -1038,7 +1038,7 @@ func (a App) acquire(ctx context.Context, cfg Config, keep bool) (Server, SSHTar
 		return Server{}, SSHTarget{}, "", err
 	}
 	slug := allocateDirectLeaseSlug(leaseID, servers)
-	keyPath, publicKey, err := ensureTestboxKey(leaseID)
+	keyPath, publicKey, err := ensureTestboxKeyForConfig(cfg, leaseID)
 	if err != nil {
 		return Server{}, SSHTarget{}, "", err
 	}
@@ -1089,7 +1089,7 @@ func (a App) acquireAWS(ctx context.Context, cfg Config, keep bool) (Server, SSH
 		return Server{}, SSHTarget{}, "", err
 	}
 	slug := allocateDirectLeaseSlug(leaseID, servers)
-	keyPath, publicKey, err := ensureTestboxKey(leaseID)
+	keyPath, publicKey, err := ensureTestboxKeyForConfig(cfg, leaseID)
 	if err != nil {
 		return Server{}, SSHTarget{}, "", err
 	}

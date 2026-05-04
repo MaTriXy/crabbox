@@ -18,7 +18,8 @@ import (
 const awsUbuntuOwner = "099720109477"
 
 type AWSClient struct {
-	ec2 *ec2.Client
+	ec2    *ec2.Client
+	region string
 }
 
 func newAWSClient(ctx context.Context, cfg Config) (*AWSClient, error) {
@@ -29,7 +30,7 @@ func newAWSClient(ctx context.Context, cfg Config) (*AWSClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &AWSClient{ec2: ec2.NewFromConfig(awsCfg)}, nil
+	return &AWSClient{ec2: ec2.NewFromConfig(awsCfg), region: cfg.AWSRegion}, nil
 }
 
 func (c *AWSClient) SpotPlacementScores(ctx context.Context, cfg Config) ([]types.SpotPlacementScore, error) {
@@ -190,6 +191,13 @@ func (c *AWSClient) createServer(ctx context.Context, cfg Config, publicKey, lea
 	}
 	one := int32(1)
 	rootDevice := "/dev/sda1"
+	tagSpecifications := []types.TagSpecification{
+		{ResourceType: types.ResourceTypeInstance, Tags: awsTagsWithName(labels, name)},
+		{ResourceType: types.ResourceTypeVolume, Tags: awsTagsWithName(labels, name)},
+	}
+	if spot {
+		tagSpecifications = append(tagSpecifications, types.TagSpecification{ResourceType: types.ResourceTypeSpotInstancesRequest, Tags: awsTagsWithName(labels, name)})
+	}
 	input := &ec2.RunInstancesInput{
 		BlockDeviceMappings: []types.BlockDeviceMapping{
 			{
@@ -202,19 +210,15 @@ func (c *AWSClient) createServer(ctx context.Context, cfg Config, publicKey, lea
 				},
 			},
 		},
-		ClientToken:      aws.String(leaseID),
-		ImageId:          aws.String(imageID),
-		InstanceType:     types.InstanceType(cfg.ServerType),
-		KeyName:          aws.String(cfg.ProviderKey),
-		MaxCount:         aws.Int32(one),
-		MinCount:         aws.Int32(one),
-		SecurityGroupIds: []string{securityGroupID},
-		TagSpecifications: []types.TagSpecification{
-			{ResourceType: types.ResourceTypeInstance, Tags: awsTagsWithName(labels, name)},
-			{ResourceType: types.ResourceTypeVolume, Tags: awsTagsWithName(labels, name)},
-			{ResourceType: types.ResourceTypeSpotInstancesRequest, Tags: awsTagsWithName(labels, name)},
-		},
-		UserData: aws.String(userData),
+		ClientToken:       aws.String(leaseID),
+		ImageId:           aws.String(imageID),
+		InstanceType:      types.InstanceType(cfg.ServerType),
+		KeyName:           aws.String(cfg.ProviderKey),
+		MaxCount:          aws.Int32(one),
+		MinCount:          aws.Int32(one),
+		SecurityGroupIds:  []string{securityGroupID},
+		TagSpecifications: tagSpecifications,
+		UserData:          aws.String(userData),
 	}
 	if spot {
 		input.InstanceMarketOptions = &types.InstanceMarketOptionsRequest{
@@ -312,13 +316,13 @@ func (c *AWSClient) resolveAMI(ctx context.Context, cfg Config) (string, error) 
 		return cfg.AWSAMI, nil
 	}
 	if cfg.TargetOS == targetWindows && cfg.WindowsMode == windowsModeNormal {
-		return "resolve:ssm:/aws/service/ami-windows-latest/Windows_Server-2022-English-Full-Base", nil
+		return c.resolveLatestAmazonAMI(ctx, "Windows_Server-2022-English-Full-Base-*", "x86_64")
 	}
 	if cfg.TargetOS == targetMacOS {
 		if strings.HasPrefix(cfg.ServerType, "mac1.") {
-			return "resolve:ssm:/aws/service/ec2-macos/sonoma/x86_64_mac/latest/image_id", nil
+			return c.resolveLatestAmazonAMI(ctx, "amzn-ec2-macos-14.*", "x86_64_mac")
 		}
-		return "resolve:ssm:/aws/service/ec2-macos/sonoma/arm64_mac/latest/image_id", nil
+		return c.resolveLatestAmazonAMI(ctx, "amzn-ec2-macos-14.*-arm64", "arm64_mac")
 	}
 	out, err := c.ec2.DescribeImages(ctx, &ec2.DescribeImagesInput{
 		Owners: []string{awsUbuntuOwner},
@@ -334,6 +338,28 @@ func (c *AWSClient) resolveAMI(ctx context.Context, cfg Config) (string, error) 
 	}
 	if len(out.Images) == 0 {
 		return "", exit(3, "no Ubuntu 24.04 x86_64 AMI found in %s; set CRABBOX_AWS_AMI", cfg.AWSRegion)
+	}
+	sort.Slice(out.Images, func(i, j int) bool {
+		return aws.ToString(out.Images[i].CreationDate) > aws.ToString(out.Images[j].CreationDate)
+	})
+	return aws.ToString(out.Images[0].ImageId), nil
+}
+
+func (c *AWSClient) resolveLatestAmazonAMI(ctx context.Context, name, architecture string) (string, error) {
+	out, err := c.ec2.DescribeImages(ctx, &ec2.DescribeImagesInput{
+		Owners: []string{"amazon"},
+		Filters: []types.Filter{
+			{Name: aws.String("architecture"), Values: []string{architecture}},
+			{Name: aws.String("name"), Values: []string{name}},
+			{Name: aws.String("root-device-type"), Values: []string{"ebs"}},
+			{Name: aws.String("virtualization-type"), Values: []string{"hvm"}},
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	if len(out.Images) == 0 {
+		return "", exit(3, "no AWS AMI found in %s for name=%s architecture=%s; set CRABBOX_AWS_AMI", c.region, name, architecture)
 	}
 	sort.Slice(out.Images, func(i, j int) bool {
 		return aws.ToString(out.Images[i].CreationDate) > aws.ToString(out.Images[j].CreationDate)

@@ -373,13 +373,13 @@ export class EC2SpotClient {
       return config.awsAMI || this.env.CRABBOX_AWS_AMI || "";
     }
     if (config.target === "windows") {
-      return "resolve:ssm:/aws/service/ami-windows-latest/Windows_Server-2022-English-Full-Base";
+      return this.resolveLatestAmazonAMI("Windows_Server-2022-English-Full-Base-*", "x86_64");
     }
     if (config.target === "macos") {
       if (config.serverType.startsWith("mac1.")) {
-        return "resolve:ssm:/aws/service/ec2-macos/sonoma/x86_64_mac/latest/image_id";
+        return this.resolveLatestAmazonAMI("amzn-ec2-macos-14.*", "x86_64_mac");
       }
-      return "resolve:ssm:/aws/service/ec2-macos/sonoma/arm64_mac/latest/image_id";
+      return this.resolveLatestAmazonAMI("amzn-ec2-macos-14.*-arm64", "arm64_mac");
     }
     const root = await this.ec2("DescribeImages", {
       "Owner.1": awsUbuntuOwner,
@@ -398,6 +398,30 @@ export class EC2SpotClient {
     const imageID = asString(record(images[0])["imageId"]);
     if (!imageID) {
       throw new Error(`no Ubuntu 24.04 x86_64 AMI found in ${this.region}`);
+    }
+    return imageID;
+  }
+
+  private async resolveLatestAmazonAMI(name: string, architecture: string): Promise<string> {
+    const root = await this.ec2("DescribeImages", {
+      "Owner.1": "amazon",
+      "Filter.1.Name": "architecture",
+      "Filter.1.Value.1": architecture,
+      "Filter.2.Name": "name",
+      "Filter.2.Value.1": name,
+      "Filter.3.Name": "root-device-type",
+      "Filter.3.Value.1": "ebs",
+      "Filter.4.Name": "virtualization-type",
+      "Filter.4.Value.1": "hvm",
+    });
+    const images = items(record(root["imagesSet"])["item"]).toSorted((left, right) =>
+      asString(record(right)["creationDate"]).localeCompare(asString(record(left)["creationDate"])),
+    );
+    const imageID = asString(record(images[0])["imageId"]);
+    if (!imageID) {
+      throw new Error(
+        `no AWS AMI found in ${this.region} for name=${name} architecture=${architecture}`,
+      );
     }
     return imageID;
   }
