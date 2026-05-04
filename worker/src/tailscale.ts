@@ -7,7 +7,13 @@ export interface TailscaleKeyRequest {
 }
 
 export function tailscaleAllowed(env: Env): boolean {
-  return env.CRABBOX_TAILSCALE_ENABLED !== "0";
+  if (env.CRABBOX_TAILSCALE_ENABLED === "0") {
+    return false;
+  }
+  if (env.CRABBOX_TAILSCALE_ENABLED === "1") {
+    return true;
+  }
+  return Boolean(env.CRABBOX_TAILSCALE_CLIENT_ID && env.CRABBOX_TAILSCALE_CLIENT_SECRET);
 }
 
 export function tailscaleDefaultTags(env: Env): string[] {

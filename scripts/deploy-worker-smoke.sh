@@ -4,6 +4,36 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CRABBOX_BIN="${CRABBOX_BIN:-$ROOT/bin/crabbox}"
 
+profile_export() {
+  local name="$1" file line value
+  for file in "$HOME/.profile" "$HOME/.zprofile"; do
+    [[ -r "$file" ]] || continue
+    line="$(grep -E "^export ${name}=" "$file" | tail -n 1 || true)"
+    [[ -n "$line" ]] || continue
+    value="${line#export ${name}=}"
+    value="${value%\"}"
+    value="${value#\"}"
+    value="${value%\'}"
+    value="${value#\'}"
+    printf '%s' "$value"
+    return 0
+  done
+  return 1
+}
+
+if [[ -z "${CRABBOX_CLOUDFLARE_API_TOKEN:-}" ]]; then
+  CRABBOX_CLOUDFLARE_API_TOKEN="$(profile_export CRABBOX_CLOUDFLARE_API_TOKEN || true)"
+fi
+if [[ -z "${CRABBOX_CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+  CRABBOX_CLOUDFLARE_ACCOUNT_ID="$(profile_export CRABBOX_CLOUDFLARE_ACCOUNT_ID || true)"
+fi
+if [[ -n "${CRABBOX_CLOUDFLARE_API_TOKEN:-}" ]]; then
+  export CLOUDFLARE_API_TOKEN="$CRABBOX_CLOUDFLARE_API_TOKEN"
+fi
+if [[ -n "${CRABBOX_CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+  export CLOUDFLARE_ACCOUNT_ID="$CRABBOX_CLOUDFLARE_ACCOUNT_ID"
+fi
+
 run() {
   printf '+'
   printf ' %q' "$@"

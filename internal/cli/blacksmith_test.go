@@ -94,6 +94,39 @@ func TestBlacksmithWarmupFailureRemovesPendingKey(t *testing.T) {
 	}
 }
 
+func TestBlacksmithWarmupFailureStopsPrintedTestbox(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	original := blacksmithCommandContext
+	var stopped string
+	blacksmithCommandContext = func(_ context.Context, _ string, args ...string) *exec.Cmd {
+		if len(args) >= 3 && args[0] == "testbox" && args[1] == "stop" {
+			for i, arg := range args {
+				if arg == "--id" && i+1 < len(args) {
+					stopped = args[i+1]
+				}
+			}
+			return exec.Command("sh", "-c", "exit 0")
+		}
+		return exec.Command("sh", "-c", "printf 'queued tbx_leaked123\\n'; exit 1")
+	}
+	t.Cleanup(func() {
+		blacksmithCommandContext = original
+	})
+
+	cfg := baseConfig()
+	cfg.Blacksmith.Workflow = ".github/workflows/testbox.yml"
+	app := App{Stdout: io.Discard, Stderr: io.Discard}
+	_, _, err := app.blacksmithWarmupLease(context.Background(), cfg, Repo{Root: "/repo"}, false)
+	if err == nil {
+		t.Fatal("expected warmup failure")
+	}
+	if stopped != "tbx_leaked123" {
+		t.Fatalf("stopped=%q, want tbx_leaked123", stopped)
+	}
+}
+
 func TestBlacksmithOneShotRunRemovesClaimAfterStop(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

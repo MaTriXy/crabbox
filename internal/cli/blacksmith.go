@@ -223,6 +223,9 @@ func (a App) blacksmithWarmupLease(ctx context.Context, cfg Config, repo Repo, r
 	cmd.Stdout = io.MultiWriter(a.Stdout, &output)
 	cmd.Stderr = io.MultiWriter(a.Stderr, &output)
 	if err := cmd.Run(); err != nil {
+		if leaseID := parseBlacksmithID(output.String()); leaseID != "" {
+			_ = a.blacksmithStopLease(ctx, cfg, leaseID)
+		}
 		return "", "", exit(exitCode(err), "blacksmith testbox warmup failed: %v", err)
 	}
 	leaseID := parseBlacksmithID(output.String())

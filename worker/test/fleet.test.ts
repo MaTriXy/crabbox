@@ -217,6 +217,29 @@ describe("fleet lease identity and idle", () => {
     });
   });
 
+  it("reports brokered Tailscale disabled when OAuth secrets are absent", async () => {
+    const fleet = testFleet(new MemoryStorage(), { hetzner: fakeProvider() });
+    const create = await fleet.fetch(
+      request("POST", "/v1/leases", {
+        headers: {
+          "x-crabbox-owner": "peter@example.com",
+          "x-crabbox-org": "openclaw",
+        },
+        body: {
+          leaseID: "cbx_abcdef123456",
+          provider: "hetzner",
+          tailscale: true,
+          sshPublicKey: "ssh-ed25519 test",
+        },
+      }),
+    );
+    expect(create.status).toBe(403);
+    await expect(create.json()).resolves.toMatchObject({
+      error: "tailscale_disabled",
+      message: "Tailscale is disabled for this coordinator",
+    });
+  });
+
   it("passes the Cloudflare request source IP as AWS SSH ingress CIDR", async () => {
     let awsCIDRs: string[] = [];
     const fleet = testFleet(new MemoryStorage(), {

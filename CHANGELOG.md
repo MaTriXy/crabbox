@@ -20,6 +20,9 @@
 ### Fixed
 
 - Fixed `crabbox run --junit` so all-passing JUnit files record results instead of leaving the coordinator run stuck when the failure list is empty.
+- Fixed failed Blacksmith Testbox warmups so a printed `tbx_...` is stopped instead of being left ready after an upstream workflow error.
+- Fixed Worker deploy smoke to prefer the Crabbox-scoped Cloudflare token when it is present in the environment or local profile.
+- Fixed brokered Tailscale requests on coordinators without OAuth secrets so they fail as disabled instead of entering the auth-key minting path.
 - Fixed native Windows `--shell` runs so multi-statement PowerShell scripts keep their quotes instead of being re-parsed by a nested PowerShell process.
 - Removed the static macOS managed-login path so static host VNC cannot be mistaken for a Crabbox-created external instance.
 - Excluded macOS AppleDouble `._*` sidecar files from default sync manifests so native Windows archives do not transfer invalid TypeScript/package sidecars.
