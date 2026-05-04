@@ -9,7 +9,7 @@ const (
 	tightVNCMSIURL        = "https://www.tightvnc.com/download/2.8.85/tightvnc-2.8.85-gpl-setup-64bit.msi"
 	gitForWindowsSetupURL = "https://github.com/git-for-windows/git/releases/download/v2.52.0.windows.1/Git-2.52.0-64-bit.exe"
 	openSSHWin64ZipURL    = "https://github.com/PowerShell/Win32-OpenSSH/releases/download/v9.8.3.0p2-Preview/OpenSSH-Win64.zip"
-	ubuntuWSLRootFSURL    = "https://cloud-images.ubuntu.com/wsl/releases/noble/current/ubuntu-noble-wsl-amd64-24.04lts.rootfs.tar.gz"
+	ubuntuWSLRootFSURL    = "https://cloud-images.ubuntu.com/wsl/releases/24.04/current/ubuntu-noble-wsl-amd64-wsl.rootfs.tar.gz"
 )
 
 func awsUserData(cfg Config, publicKey string) string {
@@ -110,6 +110,7 @@ func windowsBootstrapPowerShell(cfg Config, publicKey string) string {
 	wslMode := cfg.WindowsMode == windowsModeWSL2
 	return `
 $ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 function Retry($ScriptBlock) {
   for ($i = 1; $i -le 8; $i++) {
@@ -133,6 +134,8 @@ $wslMode = $` + fmt.Sprint(wslMode) + `
 $wslDistro = "Crabbox"
 $wslRoot = "C:\ProgramData\crabbox\wsl\Crabbox"
 $wslRootfs = "C:\ProgramData\crabbox\wsl\ubuntu-noble-wsl-amd64.rootfs.tar.gz"
+$wslRootfsDownload = "$wslRootfs.download"
+$wslRootfsMinBytes = 100 * 1024 * 1024
 $wslSetup = "C:\ProgramData\crabbox\wsl\linux-setup.sh"
 $wslFeaturesMarker = "C:\ProgramData\crabbox\wsl-features-rebooted"
 $wslKernelMarker = "C:\ProgramData\crabbox\wsl-kernel-rebooted"
@@ -178,8 +181,34 @@ function Initialize-CrabboxWSL2 {
   $distros = (wsl.exe --list --quiet 2>$null) -join [Environment]::NewLine
   if ($distros -notmatch "(?m)^$([Regex]::Escape($wslDistro))$") {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $wslRoot), $wslRoot | Out-Null
+    if ((Test-Path -LiteralPath $wslRootfs) -and ((Get-Item -LiteralPath $wslRootfs).Length -lt $wslRootfsMinBytes)) {
+      Remove-Item -Force -LiteralPath $wslRootfs
+    }
     if (-not (Test-Path -LiteralPath $wslRootfs)) {
-      Retry { Invoke-WebRequest -Uri ` + psQuote(ubuntuWSLRootFSURL) + ` -OutFile $wslRootfs -UseBasicParsing }
+      Remove-Item -Force -LiteralPath $wslRootfsDownload -ErrorAction SilentlyContinue
+      Retry {
+        $expectedLength = 0
+        try {
+          $head = Invoke-WebRequest -Uri ` + psQuote(ubuntuWSLRootFSURL) + ` -Method Head -UseBasicParsing
+          if ($head.Headers.ContainsKey("Content-Length")) {
+            [void][Int64]::TryParse(($head.Headers["Content-Length"] | Select-Object -First 1), [ref]$expectedLength)
+          }
+        } catch {
+          $expectedLength = 0
+        }
+        if (Get-Command curl.exe -ErrorAction SilentlyContinue) {
+          & curl.exe -fL --retry 8 --retry-delay 5 --connect-timeout 30 --speed-time 30 --speed-limit 1024 -o $wslRootfsDownload ` + psQuote(ubuntuWSLRootFSURL) + `
+          if ($LASTEXITCODE -ne 0) { throw "download WSL rootfs failed with exit $LASTEXITCODE" }
+        } else {
+          Invoke-WebRequest -Uri ` + psQuote(ubuntuWSLRootFSURL) + ` -OutFile $wslRootfsDownload -UseBasicParsing
+        }
+        $actualLength = (Get-Item -LiteralPath $wslRootfsDownload).Length
+        if ($actualLength -lt $wslRootfsMinBytes) { throw "downloaded WSL rootfs is incomplete" }
+        if ($expectedLength -gt 0 -and $actualLength -ne $expectedLength) {
+          throw "downloaded WSL rootfs is incomplete: $actualLength of $expectedLength bytes"
+        }
+      }
+      Move-Item -Force -LiteralPath $wslRootfsDownload -Destination $wslRootfs
     }
     wsl.exe --import $wslDistro $wslRoot $wslRootfs --version 2 | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "wsl --import failed with exit $LASTEXITCODE" }
