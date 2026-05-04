@@ -825,6 +825,49 @@ describe("fleet run history", () => {
     expect(await logs.text()).toBe("ok\n");
   });
 
+  it("accepts Go nil slices in passing test results", async () => {
+    const fleet = testFleet();
+    const create = await fleet.fetch(
+      request("POST", "/v1/runs", {
+        body: {
+          leaseID: "cbx_000000000001",
+          provider: "aws",
+          class: "beast",
+          serverType: "c7a.48xlarge",
+          command: ["go", "test", "./..."],
+        },
+      }),
+    );
+    expect(create.status).toBe(201);
+    const { run } = (await create.json()) as { run: { id: string } };
+
+    const finish = await fleet.fetch(
+      request("POST", `/v1/runs/${run.id}/finish`, {
+        body: {
+          exitCode: 0,
+          log: "ok\n",
+          results: {
+            format: "junit",
+            files: null,
+            suites: 1,
+            tests: 1,
+            failures: 0,
+            errors: 0,
+            skipped: 0,
+            timeSeconds: 0.001,
+            failed: null,
+          },
+        },
+      }),
+    );
+    expect(finish.status).toBe(200);
+    const finished = (await finish.json()) as {
+      run: { results?: { files: string[]; failed: unknown[] } };
+    };
+    expect(finished.run.results?.files).toEqual([]);
+    expect(finished.run.results?.failed).toEqual([]);
+  });
+
   it("records chunked run logs so failures do not disappear from long output", async () => {
     const storage = new MemoryStorage();
     const fleet = testFleet(storage);

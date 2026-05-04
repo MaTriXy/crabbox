@@ -19,6 +19,7 @@
 
 ### Fixed
 
+- Fixed `crabbox run --junit` so all-passing JUnit files record results instead of leaving the coordinator run stuck when the failure list is empty.
 - Fixed native Windows `--shell` runs so multi-statement PowerShell scripts keep their quotes instead of being re-parsed by a nested PowerShell process.
 - Removed the static macOS managed-login path so static host VNC cannot be mistaken for a Crabbox-created external instance.
 - Excluded macOS AppleDouble `._*` sidecar files from default sync manifests so native Windows archives do not transfer invalid TypeScript/package sidecars.

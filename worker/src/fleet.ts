@@ -1527,12 +1527,14 @@ function phaseForRunEvent(event: RunEventRecord): string {
 }
 
 function boundedTestResults(results: TestResultSummary): TestResultSummary {
+  const files = Array.isArray(results.files) ? results.files : [];
+  const failed = Array.isArray(results.failed) ? results.failed : [];
   return {
     ...results,
-    files: results.files
+    files: files
       .slice(0, MAX_RESULT_FILES)
       .map((file) => truncateString(file, MAX_RESULT_STRING_BYTES)),
-    failed: results.failed.slice(0, MAX_RESULT_FAILURES).map(boundedTestFailure),
+    failed: failed.slice(0, MAX_RESULT_FAILURES).map(boundedTestFailure),
   };
 }
 

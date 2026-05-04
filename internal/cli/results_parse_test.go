@@ -18,6 +18,24 @@ func TestParseJUnitResults(t *testing.T) {
 	}
 }
 
+func TestParseJUnitResultsInitializesEmptyFailureList(t *testing.T) {
+	results, err := parseJUnitResults(map[string]string{"junit.xml": `<testsuite name="pkg" tests="1" failures="0" errors="0" skipped="0" time="0.1">
+<testcase classname="pkg.TestThing" name="passes"/>
+</testsuite>`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if results == nil {
+		t.Fatal("results nil")
+	}
+	if results.Failed == nil {
+		t.Fatalf("failed slice is nil: %#v", results)
+	}
+	if len(results.Failed) != 0 {
+		t.Fatalf("failed=%#v", results.Failed)
+	}
+}
+
 func TestParseMarkedFiles(t *testing.T) {
 	files := parseMarkedFiles("\n__CRABBOX_RESULT_FILE__:a.xml\n<a/>\n__CRABBOX_RESULT_FILE__:b.xml\n<b/>\n")
 	if files["a.xml"] != "<a/>" || files["b.xml"] != "<b/>" {

@@ -49,7 +49,11 @@ func parseJUnitResults(files map[string]string) (*TestResultSummary, error) {
 	if len(files) == 0 {
 		return nil, nil
 	}
-	summary := &TestResultSummary{Format: "junit", Files: make([]string, 0, len(files))}
+	summary := &TestResultSummary{
+		Format: "junit",
+		Files:  make([]string, 0, len(files)),
+		Failed: []TestFailure{},
+	}
 	for name, data := range files {
 		trimmed := strings.TrimSpace(data)
 		if trimmed == "" {
