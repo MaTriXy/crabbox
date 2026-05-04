@@ -8,7 +8,6 @@ crabbox warmup --desktop
 crabbox vnc --id blue-lobster
 crabbox vnc --id blue-lobster --open
 crabbox vnc --provider ssh --target macos --static-host mac-studio.local
-crabbox vnc --provider ssh --target macos --static-host mac-studio.local --managed-login
 ```
 
 The command resolves the lease like `crabbox ssh`, claims and touches it like
@@ -40,24 +39,13 @@ hosts, Crabbox first tries the same SSH tunnel to
 `127.0.0.1:5900` on the target. If a static host exposes VNC directly on
 `host:5900`, Crabbox prints that endpoint instead. Direct static VNC is
 operator-managed and should be limited to a trusted network such as Tailscale or
-LAN.
+LAN. Opening a static macOS or Windows target means opening that existing
+machine, not an external Crabbox instance.
 
 Static host credentials are host-managed. On macOS, the built-in Screen Sharing
 server uses the host's Screen Sharing or macOS account authentication. On
 Windows, the prompt belongs to the installed VNC server. Crabbox does not print
 or synthesize those passwords.
-
-For static macOS hosts reachable over SSH, `--managed-login` creates or reuses a
-dedicated local account, enables Apple Remote Desktop access for that account,
-skips first-run Setup Assistant panes, and prints the username/password that
-Crabbox generated. The password is stored on the target under the SSH user's
-Crabbox state directory and is reused on later calls. Override the account name
-with `--managed-user <name>`.
-
-Static Windows managed login is not automatic yet. Crabbox needs a management
-channel such as SSH/WinRM plus a known VNC server setup path before it can
-create a Windows account and set the VNC server password. Without that, Windows
-VNC remains host-managed and requires `--host-managed`.
 
 `--open` refuses host-managed static VNC by default so a host OS password prompt
 is not mistaken for a Crabbox-created box. Pass `--host-managed` only when you
@@ -73,18 +61,17 @@ Security boundary:
 
 Provider behavior:
 
-- Brokered and direct AWS/Hetzner Linux leases support `vnc` only when created
-  with `--desktop`.
+- Brokered and direct AWS/Hetzner leases are Linux-only in this release. They
+  support `vnc` only when created with `--desktop`.
 - Static Linux can participate if the operator already configured Xvfb and
   loopback-bound x11vnc.
 - Static macOS can participate when Screen Sharing or another VNC-compatible
   service is already available on `127.0.0.1:5900` over SSH or directly on
-  `host:5900`. `--managed-login` can create a dedicated local macOS account for
-  Crabbox-managed VNC authentication on that existing Mac.
+  `host:5900`. This reuses an existing Mac; it does not create a macOS Crabbox.
+  Credentials are host-managed.
 - Static native Windows can participate when a VNC server is already available
   on `127.0.0.1:5900` over SSH or directly on `host:5900`. Crabbox does not
-  create a Windows Crabbox, or install or configure the Windows VNC server in
-  this release.
+  create a Windows Crabbox, or install or configure the Windows VNC server.
 - Blacksmith Testbox does not support managed VNC in this release.
 
 Flags:
@@ -101,7 +88,5 @@ Flags:
 --local-port <port>
 --open
 --host-managed
---managed-login
---managed-user <user>
 --reclaim
 ```

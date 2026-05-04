@@ -6,7 +6,6 @@
 
 - Added `--desktop`, `--browser`, and `crabbox vnc` for optional Linux UI/browser leases, including loopback-only VNC with per-lease passwords and headless browser support without a desktop.
 - Added static macOS/Windows VNC endpoint discovery, including SSH-tunneled loopback VNC and trusted static direct VNC on `host:5900`.
-- Added `crabbox vnc --managed-login` for static macOS hosts, creating a dedicated Crabbox login and printing reusable VNC credentials.
 - Added `crabbox vnc --open` to start the SSH tunnel and launch the local VNC client for managed desktop leases.
 - Added a minimal XFCE desktop profile with panel/window manager for managed VNC leases.
 - Clarified static macOS/Windows VNC as existing-host access, not Crabbox-created boxes, so `--open` no longer launches an OS credential prompt unless `--host-managed` is passed.
@@ -14,6 +13,7 @@
 ### Fixed
 
 - Quoted `crabbox vnc` tunnel key paths so macOS `Application Support` lease keys can be pasted directly into a shell.
+- Removed the static macOS managed-login path so static host VNC cannot be mistaken for a Crabbox-created external instance.
 - Fixed native Windows `--shell` runs so multi-statement PowerShell scripts keep their quotes instead of being re-parsed by a nested PowerShell process.
 - Skipped Linux-only GitHub Actions hydration stop markers on native Windows static targets.
 
