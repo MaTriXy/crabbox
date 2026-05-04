@@ -100,6 +100,14 @@ CRABBOX_TAILSCALE_TAILNET=-              # or explicit tailnet/org
 CRABBOX_TAILSCALE_TAGS=tag:crabbox       # allowlist/default tags
 ```
 
+Operator checklist:
+
+1. Create a Tailscale OAuth client with the `auth_keys` scope.
+2. Limit the OAuth client to tags Crabbox may assign, usually `tag:crabbox`.
+3. Store the client ID and secret as Worker secrets.
+4. Set `CRABBOX_TAILSCALE_TAGS` to the same allowed tag list.
+5. Verify with `crabbox warmup --tailscale --network tailscale`.
+
 The Worker mints one-off ephemeral pre-approved auth keys per lease and injects
 the key only into cloud-init. Lease records and provider labels store only
 non-secret Tailscale metadata such as hostname, FQDN, 100.x address, state, and

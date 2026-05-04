@@ -29,6 +29,13 @@ User config lives under the OS user config directory. Repo-local `crabbox.yaml` 
 
 ```yaml
 profile: project-check
+tailscale:
+  enabled: true
+  network: auto
+  tags:
+    - tag:crabbox
+  hostnameTemplate: crabbox-{slug}
+  authKeyEnv: CRABBOX_TAILSCALE_AUTH_KEY
 capacity:
   market: spot
   strategy: most-available
@@ -54,3 +61,14 @@ env:
     - NODE_OPTIONS
     - PROJECT_*
 ```
+
+`tailscale.enabled` requests tailnet join for new managed Linux leases.
+`tailscale.network` selects the SSH target resolution path:
+
+- `auto`: prefer Tailscale when lease metadata exists and SSH is reachable;
+- `tailscale`: require the tailnet path;
+- `public`: force the provider/public host.
+
+Brokered `--tailscale` leases use Worker-minted one-off auth keys. Direct
+provider leases read a local one-off key from `tailscale.authKeyEnv`; do not
+store that key in repo config.

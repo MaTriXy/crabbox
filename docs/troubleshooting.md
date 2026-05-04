@@ -4,6 +4,7 @@ Read when:
 
 - a lease fails to create;
 - SSH never becomes ready;
+- tailnet reachability behaves unexpectedly;
 - sync behaves unexpectedly;
 - Actions hydration times out;
 - docs deployment fails.
@@ -162,6 +163,45 @@ Fixes:
 - set `CRABBOX_SSH_FALLBACK_PORTS=none` when fallback port 22 should not be opened or tried;
 - inspect provider console output for cloud-init failures;
 - retry the lease if bootstrap failed before creating the ready marker.
+
+## Tailscale Path Fails
+
+Symptoms:
+
+- `--tailscale` lease creation fails with `tailscale_unavailable`,
+  `tailscale_disabled`, or `invalid_tailscale_tags`;
+- `--network tailscale` says the lease has no tailnet address;
+- `--network tailscale` says the tailnet host is unreachable over SSH;
+- `--network auto` falls back to `public`.
+
+Checks:
+
+```sh
+bin/crabbox config show
+bin/crabbox inspect --id blue-lobster
+bin/crabbox inspect --id blue-lobster --json
+bin/crabbox ssh --id blue-lobster --network tailscale
+tailscale status
+tailscale ping <tailscale-fqdn-or-100.x-address>
+```
+
+Fixes:
+
+- for brokered leases, configure Worker secrets
+  `CRABBOX_TAILSCALE_CLIENT_ID` and `CRABBOX_TAILSCALE_CLIENT_SECRET`;
+- keep `CRABBOX_TAILSCALE_ENABLED` unset or `1`; set it to `0` only to disable
+  brokered Tailscale intentionally;
+- ensure requested tags are in the Worker `CRABBOX_TAILSCALE_TAGS` allowlist;
+- ensure the local client is joined to the same tailnet and ACLs allow SSH to
+  the tagged node;
+- use `--network public` to prove the provider SSH path independently;
+- use `--network auto` when fallback to public is acceptable;
+- use `--network tailscale` when a missing or unreachable tailnet path should
+  fail the command.
+
+Crabbox still uses OpenSSH and per-lease SSH keys over the selected host.
+Tailscale SSH, Serve, Funnel, and direct VNC binding are not part of managed
+lease support.
 
 ## Sync Looks Wrong
 

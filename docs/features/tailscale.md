@@ -156,3 +156,4 @@ Related docs:
 - [Runner bootstrap](runner-bootstrap.md)
 - [Interactive desktop and VNC](interactive-desktop-vnc.md)
 - [Security](../security.md)
+- [Troubleshooting](../troubleshooting.md#tailscale-path-fails)
