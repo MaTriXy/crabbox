@@ -82,6 +82,32 @@ func TestCloudInitBrowserProfile(t *testing.T) {
 	}
 }
 
+func TestCloudInitTailscaleProfile(t *testing.T) {
+	cfg := baseConfig()
+	cfg.SSHUser = "runner"
+	cfg.Tailscale.Enabled = true
+	cfg.Tailscale.AuthKey = "tskey-secret"
+	cfg.Tailscale.Hostname = "crabbox-blue-lobster"
+	cfg.Tailscale.Tags = []string{"tag:crabbox"}
+	got := cloudInit(cfg, "ssh-ed25519 test")
+	for _, want := range []string{
+		"https://tailscale.com/install.sh",
+		"install -d -m 0750 -o 'runner' -g 'runner' /var/lib/crabbox",
+		"tailscale up --auth-key=\"$TS_AUTHKEY\" --hostname='crabbox-blue-lobster' --advertise-tags='tag:crabbox'",
+		"printf '%s\\n' 'crabbox-blue-lobster' > /var/lib/crabbox/tailscale-hostname",
+		"chown 'runner:runner' /var/lib/crabbox/tailscale-* || true",
+		"test -s /var/lib/crabbox/tailscale-ipv4",
+		"grep -Eq '^100\\.' /var/lib/crabbox/tailscale-ipv4",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("cloudInit(tailscale) missing %q", want)
+		}
+	}
+	if strings.Contains(cloudInit(baseConfig(), "ssh-ed25519 test"), "tailscale up") {
+		t.Fatal("cloudInit should not install Tailscale by default")
+	}
+}
+
 func TestAWSUserDataWindowsProfile(t *testing.T) {
 	cfg := baseConfig()
 	cfg.Provider = "aws"
