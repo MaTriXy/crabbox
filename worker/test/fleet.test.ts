@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { FleetDurableObject } from "../src/fleet";
+import {
+  FleetDurableObject,
+  flushPendingWebVNC,
+  forwardOrBufferWebVNC,
+  resetWebVNCBridge,
+  type WebVNCBuffer,
+} from "../src/fleet";
 import type { Env, LeaseRecord, ProvisioningAttempt, RunRecord } from "../src/types";
 
 class MemoryStorage {
@@ -309,6 +315,154 @@ describe("fleet lease identity and idle", () => {
     const list = await fleet.fetch(request("GET", "/v1/leases", { headers: friendHeaders }));
     const body = (await list.json()) as { leases: LeaseRecord[] };
     expect(body.leases.map((lease) => lease.id)).toEqual(["cbx_000000000002"]);
+  });
+
+  it("renders the portal with only the current owner leases", async () => {
+    const storage = new MemoryStorage();
+    const fleet = testFleet(storage);
+    storage.seed(
+      "lease:cbx_000000000001",
+      testLease({
+        id: "cbx_000000000001",
+        slug: "blue-lobster",
+        owner: "peter@example.com",
+        org: "openclaw",
+        desktop: true,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      }),
+    );
+    storage.seed(
+      "lease:cbx_000000000002",
+      testLease({
+        id: "cbx_000000000002",
+        slug: "amber-krill",
+        owner: "friend@example.com",
+        org: "openclaw",
+        desktop: true,
+      }),
+    );
+
+    const response = await fleet.fetch(
+      request("GET", "/portal", {
+        headers: {
+          "x-crabbox-owner": "peter@example.com",
+          "x-crabbox-org": "openclaw",
+        },
+      }),
+    );
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain("blue-lobster");
+    expect(body).toContain("/portal/leases/cbx_000000000001/vnc");
+    expect(body).not.toContain("amber-krill");
+  });
+
+  it("serves WebVNC pages only for desktop leases and requires an agent upgrade", async () => {
+    const storage = new MemoryStorage();
+    const fleet = testFleet(storage);
+    const headers = {
+      "x-crabbox-owner": "peter@example.com",
+      "x-crabbox-org": "openclaw",
+    };
+    storage.seed(
+      "lease:cbx_000000000001",
+      testLease({
+        id: "cbx_000000000001",
+        slug: "blue-lobster",
+        owner: "peter@example.com",
+        org: "openclaw",
+        desktop: true,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      }),
+    );
+    storage.seed(
+      "lease:cbx_000000000002",
+      testLease({
+        id: "cbx_000000000002",
+        slug: "plain-lobster",
+        owner: "peter@example.com",
+        org: "openclaw",
+        desktop: false,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      }),
+    );
+
+    const page = await fleet.fetch(request("GET", "/portal/leases/blue-lobster/vnc", { headers }));
+    expect(page.status).toBe(200);
+    expect(page.headers.get("content-security-policy")).toContain("script-src 'self' 'nonce-");
+    const pageBody = await page.text();
+    expect(pageBody).toContain("crabbox webvnc --id blue-lobster --open");
+    expect(pageBody).toContain("/portal/assets/novnc/rfb.js");
+    expect(pageBody).toContain("function scheduleRetry");
+    expect(pageBody).toContain('fragment.get("username")');
+    expect(pageBody).toContain('types.includes("username")');
+    expect(pageBody).not.toContain("cdn.jsdelivr.net");
+
+    const plain = await fleet.fetch(
+      request("GET", "/portal/leases/plain-lobster/vnc", { headers }),
+    );
+    expect(plain.status).toBe(409);
+
+    const ticket = await fleet.fetch(
+      request("POST", "/v1/leases/blue-lobster/webvnc/ticket", { headers, body: {} }),
+    );
+    expect(ticket.status).toBe(200);
+    const ticketBody = (await ticket.json()) as { ticket: string; leaseID: string };
+    expect(ticketBody.ticket).toMatch(/^wvnc_[a-f0-9]{32}$/);
+    expect(ticketBody.leaseID).toBe("cbx_000000000001");
+
+    const agent = await fleet.fetch(
+      request("GET", "/v1/leases/blue-lobster/webvnc/agent", { headers }),
+    );
+    expect(agent.status).toBe(426);
+
+    const missingTicket = await fleet.fetch(
+      request("GET", "/v1/leases/blue-lobster/webvnc/agent", {
+        headers: { upgrade: "websocket" },
+      }),
+    );
+    expect(missingTicket.status).toBe(401);
+  });
+
+  it("buffers initial WebVNC bridge bytes until the viewer attaches", () => {
+    const buffers = new Map<string, WebVNCBuffer>();
+    const sent: Array<string | ArrayBuffer> = [];
+    const viewer = {
+      readyState: WebSocket.OPEN,
+      send(data: string | ArrayBuffer) {
+        sent.push(data);
+      },
+    } as WebSocket;
+
+    forwardOrBufferWebVNC("RFB 003.008\n", undefined, buffers, "cbx_000000000001");
+    expect(sent).toEqual([]);
+    expect(buffers.get("cbx_000000000001")).toMatchObject({
+      chunks: ["RFB 003.008\n"],
+      bytes: 12,
+    });
+
+    flushPendingWebVNC(buffers, "cbx_000000000001", viewer);
+    expect(sent).toEqual(["RFB 003.008\n"]);
+    expect(buffers.has("cbx_000000000001")).toBe(false);
+  });
+
+  it("resets the WebVNC bridge when the viewer goes away", () => {
+    const buffers = new Map<string, WebVNCBuffer>();
+    buffers.set("cbx_000000000001", { chunks: ["RFB 003.008\n"], bytes: 12 });
+    const closed: Array<{ code: number; reason: string }> = [];
+    const agents = new Map<string, WebSocket>();
+    agents.set("cbx_000000000001", {
+      readyState: WebSocket.OPEN,
+      close(code: number, reason: string) {
+        closed.push({ code, reason });
+      },
+    } as WebSocket);
+
+    resetWebVNCBridge(agents, buffers, "cbx_000000000001", 1011, "WebVNC viewer disconnected");
+
+    expect(closed).toEqual([{ code: 1011, reason: "WebVNC viewer disconnected" }]);
+    expect(agents.has("cbx_000000000001")).toBe(false);
+    expect(buffers.has("cbx_000000000001")).toBe(false);
   });
 
   it("keeps pool inventory admin-only", async () => {
@@ -817,6 +971,47 @@ describe("fleet identity", () => {
     );
     expect(poll.status).toBe(200);
     await expect(poll.json()).resolves.toMatchObject({ status: "pending" });
+  });
+
+  it("sets a portal session cookie after GitHub login", async () => {
+    const storage = new MemoryStorage();
+    const fleet = new FleetDurableObject(
+      { storage } as unknown as DurableObjectState,
+      {
+        CRABBOX_DEFAULT_ORG: "openclaw",
+        CRABBOX_GITHUB_CLIENT_ID: "github-client",
+        CRABBOX_GITHUB_CLIENT_SECRET: "github-secret",
+        CRABBOX_SHARED_TOKEN: "shared",
+        CRABBOX_SESSION_SECRET: "session-secret",
+      } as Env,
+    );
+    const start = await fleet.fetch(
+      request("GET", "/portal/login?returnTo=/portal/leases/cbx_000000000001/vnc"),
+    );
+    expect(start.status).toBe(302);
+    const location = start.headers.get("location") ?? "";
+    const state = new URL(location).searchParams.get("state");
+    expect(state).toBeTruthy();
+
+    vi.stubGlobal("fetch", githubFetchMock({ member: true }));
+    const callback = await fleet.fetch(
+      request("GET", `/v1/auth/github/callback?code=ok&state=${state}`),
+    );
+    expect(callback.status).toBe(302);
+    expect(callback.headers.get("location")).toBe("/portal/leases/cbx_000000000001/vnc");
+    expect(callback.headers.get("set-cookie")).toContain("crabbox_session=cbxu_");
+  });
+
+  it("clears portal session on logout without restarting OAuth", async () => {
+    const fleet = testFleet();
+    const logout = await fleet.fetch(request("GET", "/portal/logout"));
+    expect(logout.status).toBe(200);
+    expect(logout.headers.get("location")).toBeNull();
+    expect(logout.headers.get("set-cookie")).toContain("crabbox_session=");
+    expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
+    const body = await logout.text();
+    expect(body).toContain("Crabbox logged out");
+    expect(body).toContain("/portal/login");
   });
 
   it("cleans expired GitHub login attempts before rate limiting", async () => {
