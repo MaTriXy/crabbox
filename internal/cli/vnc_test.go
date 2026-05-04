@@ -40,6 +40,22 @@ func TestVNCPasswordCommandSupportsManagedTargets(t *testing.T) {
 	}
 }
 
+func TestWindowsBrowserProbeScriptIsRawPowerShell(t *testing.T) {
+	got := windowsBrowserProbeScript()
+	for _, want := range []string{
+		"Get-Command msedge.exe",
+		`${Env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe`,
+		`Write-Output ("BROWSER=" + $path)`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("windows browser probe missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "EncodedCommand") {
+		t.Fatalf("browser probe should be raw PowerShell before SSH wrapping:\n%s", got)
+	}
+}
+
 func TestOpenURLCommandIncludesURL(t *testing.T) {
 	name, args := openURLCommand("vnc://localhost:5901")
 	if name == "" {

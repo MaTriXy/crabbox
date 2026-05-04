@@ -142,15 +142,30 @@ $bitmap.Dispose()
 '@.Replace("__CRABBOX_SCREENSHOT_OUT__", $out.Replace("\", "\\")) | Set-Content -Encoding ASCII -LiteralPath $script
 cmd.exe /c "schtasks.exe /Delete /TN $taskName /F 2>NUL" | Out-Null
 $startTime = (Get-Date).AddMinutes(1).ToString("HH:mm")
-schtasks.exe /Create /TN $taskName /SC ONCE /ST $startTime /TR "powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script" /RU $env:USERNAME /RP $password /RL HIGHEST /IT /F | Out-Null
+$createArgs = @("/Create", "/TN", $taskName, "/SC", "ONCE", "/ST", $startTime, "/TR", "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File $script", "/RU", $env:USERNAME, "/IT", "/F")
+& schtasks.exe @createArgs | Out-Null
+if ($LASTEXITCODE -ne 0 -and $password -ne "") {
+  & schtasks.exe @($createArgs + @("/RP", $password)) | Out-Null
+}
+if ($LASTEXITCODE -ne 0) { throw "failed to create interactive screenshot task" }
 schtasks.exe /Run /TN $taskName | Out-Null
 for ($i = 0; $i -lt 30; $i++) {
   if (Test-Path -LiteralPath $out) {
-    $bytes = [IO.File]::ReadAllBytes($out)
-    [Console]::OpenStandardOutput().Write($bytes, 0, $bytes.Length)
-    schtasks.exe /Delete /TN $taskName /F | Out-Null
-    Remove-Item -Force -LiteralPath $out, $script -ErrorAction SilentlyContinue
-    exit 0
+    try {
+      $stream = [IO.File]::Open($out, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+      try {
+        $bytes = New-Object byte[] $stream.Length
+        $read = $stream.Read($bytes, 0, $bytes.Length)
+        [Console]::OpenStandardOutput().Write($bytes, 0, $read)
+      } finally {
+        $stream.Dispose()
+      }
+      schtasks.exe /Delete /TN $taskName /F | Out-Null
+      Remove-Item -Force -LiteralPath $out, $script -ErrorAction SilentlyContinue
+      exit 0
+    } catch {
+      Start-Sleep -Milliseconds 500
+    }
   }
   Start-Sleep -Milliseconds 500
 }

@@ -34,7 +34,7 @@ func TestScreenshotRemoteCommandSupportsWindowsAndMacOS(t *testing.T) {
 	for _, want := range []string{
 		"System.Windows.Forms",
 		"ImageFormat]::Png",
-		"schtasks.exe /Create",
+		"& schtasks.exe @createArgs",
 		"/IT",
 		"windows.password",
 	} {

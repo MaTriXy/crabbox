@@ -40,6 +40,7 @@ This page maps user-facing behavior back to implementation files. Keep docs desc
 - CLI cloud-init bootstrap: `internal/cli/bootstrap.go`
 - Worker cloud-init bootstrap: `worker/src/bootstrap.ts`
 - Desktop/browser capability flags, env injection, and VNC checks: `internal/cli/capabilities.go`, `internal/cli/run.go`
+- Desktop app launch into visible sessions: `internal/cli/desktop.go`
 - VNC tunnel command: `internal/cli/vnc.go`
 - WebVNC portal bridge: `internal/cli/webvnc.go`, `worker/src/portal.ts`, `worker/src/fleet.ts`
 - Desktop screenshot command: `internal/cli/screenshot.go`

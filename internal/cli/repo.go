@@ -41,6 +41,7 @@ func findRepo() (Repo, error) {
 func defaultExcludes() []string {
 	return []string{
 		".git",
+		"._*",
 		"node_modules",
 		".turbo",
 		".next",

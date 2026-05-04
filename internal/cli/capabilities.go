@@ -126,22 +126,7 @@ func probeStaticDesktop(ctx context.Context, target SSHTarget) error {
 func probeBrowserEnv(ctx context.Context, cfg Config, target SSHTarget) (map[string]string, error) {
 	var script string
 	if isWindowsNativeTarget(target) {
-		script = powershellCommand(`$ErrorActionPreference = "SilentlyContinue"
-$paths = @()
-$cmd = Get-Command chrome.exe -ErrorAction SilentlyContinue
-if ($cmd) { $paths += $cmd.Source }
-$cmd = Get-Command msedge.exe -ErrorAction SilentlyContinue
-if ($cmd) { $paths += $cmd.Source }
-$paths += @(
-  "$Env:ProgramFiles\Google\Chrome\Application\chrome.exe",
-  "${Env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
-  "$Env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
-  "${Env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
-)
-$path = $paths | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
-if (-not $path) { exit 1 }
-Write-Output ("BROWSER=" + $path)
-Write-Output ("CHROME_BIN=" + $path)`)
+		script = windowsBrowserProbeScript()
 	} else if cfg.TargetOS == targetMacOS || target.TargetOS == targetMacOS {
 		script = `path="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"; test -x "$path" || exit 1; printf 'BROWSER=%s\nCHROME_BIN=%s\n' "$path" "$path"`
 	} else {
@@ -167,6 +152,25 @@ printf 'BROWSER=%s\nCHROME_BIN=%s\n' "$path" "$path"`
 		env["CHROME_BIN"] = env["BROWSER"]
 	}
 	return env, nil
+}
+
+func windowsBrowserProbeScript() string {
+	return `$ErrorActionPreference = "SilentlyContinue"
+$paths = @()
+$cmd = Get-Command chrome.exe -ErrorAction SilentlyContinue
+if ($cmd) { $paths += $cmd.Source }
+$cmd = Get-Command msedge.exe -ErrorAction SilentlyContinue
+if ($cmd) { $paths += $cmd.Source }
+$paths += @(
+  "$Env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+  "${Env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
+  "$Env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
+  "${Env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
+)
+$path = $paths | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+if (-not $path) { exit 1 }
+Write-Output ("BROWSER=" + $path)
+Write-Output ("CHROME_BIN=" + $path)`
 }
 
 func parseEnvLines(input string) map[string]string {

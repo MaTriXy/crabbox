@@ -27,6 +27,8 @@ The intended contract is:
   the desktop session;
 - `crabbox run --id <lease> --browser -- <command...>` injects browser env
   without requiring a desktop;
+- `crabbox desktop launch --id <lease> --browser --url <url>` opens a browser
+  or app in the visible desktop and detaches it from SSH;
 - desktop services bind to loopback on the runner and are reachable through SSH
   tunnels only;
 - screenshots, traces, videos, and browser profiles remain regular command

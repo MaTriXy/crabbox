@@ -66,6 +66,29 @@ func TestSyncManifestPrunesNestedDefaultExcludes(t *testing.T) {
 	}
 }
 
+func TestSyncManifestPrunesAppleDoubleSidecars(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@example.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	writeFile(t, filepath.Join(dir, "src", "index.ts"), "export const ok = true\n")
+	writeFile(t, filepath.Join(dir, "src", "._index.ts"), "appledouble")
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "init")
+
+	manifest, err := syncManifest(dir, configuredExcludes(baseConfig()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(manifest.Files, ",")
+	if !strings.Contains(got, "src/index.ts") {
+		t.Fatalf("manifest missing real source file: %q", got)
+	}
+	if strings.Contains(got, "._index.ts") {
+		t.Fatalf("manifest should exclude AppleDouble sidecars: %q", got)
+	}
+}
+
 func TestSyncManifestRecordsTrackedDeletes(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, "init")

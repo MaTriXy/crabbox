@@ -84,6 +84,8 @@ func (a App) Run(ctx context.Context, args []string) error {
 		return a.warmup(ctx, args[1:])
 	case "run":
 		return a.runCommand(ctx, args[1:])
+	case "desktop":
+		return a.desktop(ctx, args[1:])
 	case "sync-plan":
 		return a.syncPlan(ctx, args[1:])
 	case "status":
@@ -134,6 +136,7 @@ Commands:
   doctor      Check local and broker/provider readiness
   warmup      Lease a box and wait until it is ready
   run         Sync the repo, run a remote command, stream output
+  desktop     Launch apps into a visible desktop session
   sync-plan   Show local sync manifest size hotspots
   history     List recorded remote runs
   logs        Print recorded run logs
@@ -163,6 +166,7 @@ Common Flows:
   crabbox run --id blue-lobster --shell 'pnpm install --frozen-lockfile && pnpm test'
   crabbox ssh --id blue-lobster
   crabbox vnc --id blue-lobster --open
+  crabbox desktop launch --id blue-lobster --browser --url https://example.com
   crabbox webvnc --id blue-lobster --open
   crabbox screenshot --id blue-lobster --output desktop.png
   crabbox inspect --id blue-lobster --json
