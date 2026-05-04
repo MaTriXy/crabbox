@@ -8,7 +8,12 @@ import (
 
 func (a App) admin(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return exit(2, "usage: crabbox admin leases|release|delete")
+		a.printAdminHelp()
+		return exit(2, "missing admin subcommand")
+	}
+	if wantsHelp(args) {
+		a.printAdminHelp()
+		return nil
 	}
 	switch args[0] {
 	case "leases":
@@ -20,6 +25,26 @@ func (a App) admin(ctx context.Context, args []string) error {
 	default:
 		return exit(2, "unknown admin command %q", args[0])
 	}
+}
+
+func (a App) printAdminHelp() {
+	fmt.Fprintln(a.Stdout, `Usage:
+  crabbox admin leases [flags]
+  crabbox admin release <lease-id-or-slug> [flags]
+  crabbox admin delete <lease-id-or-slug> --force [flags]
+
+Subcommands:
+  leases   List coordinator lease records
+  release  Mark a lease released, optionally deleting the backing server
+  delete   Delete the backing server and mark the lease released
+
+Flags:
+  leases:   --state <state> --owner <email> --org <name> --limit <n> --json
+  release:  --id <lease-id-or-slug> --delete --json
+  delete:   --id <lease-id-or-slug> --force --json
+
+Docs:
+  docs/commands/admin.md`)
 }
 
 func (a App) adminLeases(ctx context.Context, args []string) error {

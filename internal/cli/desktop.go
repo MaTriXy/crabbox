@@ -9,7 +9,12 @@ import (
 
 func (a App) desktop(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return exit(2, "usage: crabbox desktop launch --id <lease-id-or-slug> [--browser] [--url <url>] -- <command...>")
+		a.printDesktopHelp()
+		return exit(2, "missing desktop subcommand")
+	}
+	if wantsHelp(args) {
+		a.printDesktopHelp()
+		return nil
 	}
 	switch args[0] {
 	case "launch":
@@ -17,6 +22,31 @@ func (a App) desktop(ctx context.Context, args []string) error {
 	default:
 		return exit(2, "unknown desktop command %q", args[0])
 	}
+}
+
+func (a App) printDesktopHelp() {
+	fmt.Fprintln(a.Stdout, `Usage:
+  crabbox desktop launch --id <lease-id-or-slug> [flags] -- <command...>
+  crabbox desktop launch --id <lease-id-or-slug> --browser [--url <url>]
+
+Subcommands:
+  launch  Start an app inside a desktop lease
+
+Flags:
+  --id <lease-id-or-slug>
+  --provider hetzner|aws|ssh
+  --target linux|macos|windows
+  --windows-mode normal|wsl2
+  --static-host <host>
+  --static-user <user>
+  --static-port <port>
+  --static-work-root <path>
+  --browser
+  --url <url>
+  --reclaim
+
+Docs:
+  docs/commands/desktop.md`)
 }
 
 func (a App) desktopLaunch(ctx context.Context, args []string) error {

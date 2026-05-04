@@ -29,9 +29,9 @@ crabbox run --id blue-lobster -- pnpm test
 Subcommands:
 
 ```text
-hydrate --id <lease-id-or-slug> [--repo owner/name] [--workflow <file|name|id>] [--ref <ref>] [--wait-timeout 20m] [--keep-alive-minutes 90] [--reclaim] [--timing-json] [-f key=value]
+hydrate --id <lease-id-or-slug> [--repo owner/name] [--workflow <file|name|id>] [--ref <ref>] [--wait-timeout 20m] [--keep-alive-minutes 90] [--reclaim] [--timing-json] [-f key=value] [--field key=value]
 register --id <lease-id-or-slug> [--repo owner/name] [--name <runner-name>] [--labels <csv>] [--version latest] [--ephemeral=true] [--reclaim]
-dispatch [--repo owner/name] [--workflow <file|name|id>] [--ref <ref>] [-f key=value]
+dispatch [--repo owner/name] [--workflow <file|name|id>] [--ref <ref>] [-f key=value] [--field key=value]
 ```
 
 Hydrate/register validate the local repo claim before touching the lease. Use `--reclaim` when intentionally moving a lease to the current repo.
@@ -54,7 +54,7 @@ actions:
 
 Workflow jobs should target the dynamic label printed by registration, for example `crabbox-cbx-123`, plus any static labels configured for the project.
 When `actions.job` is set and the workflow declares `crabbox_job`, Crabbox sends it and verifies that the ready marker came from that job. Older workflows can omit both.
-Use `actions.fields` for repository-specific workflow inputs that should be sent on every hydration. CLI `-f key=value` values override matching configured fields for that dispatch.
+Use `actions.fields` for repository-specific workflow inputs that should be sent on every hydration. CLI `-f key=value` / `--field key=value` values override matching configured fields for that dispatch.
 
 ## Hydration Flow
 

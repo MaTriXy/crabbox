@@ -81,6 +81,22 @@ func TestSubcommandHelpExitsZero(t *testing.T) {
 	}
 }
 
+func TestGroupedCommandHelpExitsZero(t *testing.T) {
+	for _, command := range []string{"actions", "admin", "cache", "config", "desktop", "pool", "machine"} {
+		t.Run(command, func(t *testing.T) {
+			var stdout bytes.Buffer
+			app := App{Stdout: &stdout, Stderr: &bytes.Buffer{}}
+			err := app.Run(context.Background(), []string{command, "--help"})
+			if err != nil {
+				t.Fatalf("%s --help error=%v, want nil", command, err)
+			}
+			if !strings.Contains(stdout.String(), "Usage:") {
+				t.Fatalf("%s --help output missing usage: %s", command, stdout.String())
+			}
+		})
+	}
+}
+
 func TestHelpSubcommandRoutesToCommandHelp(t *testing.T) {
 	var stderr bytes.Buffer
 	app := App{Stdout: &bytes.Buffer{}, Stderr: &stderr}

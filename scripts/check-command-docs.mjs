@@ -1,5 +1,7 @@
 #!/usr/bin/env node
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 const root = process.cwd();
@@ -10,6 +12,7 @@ const commands = readHelpCommands();
 const commandNames = commands.map((command) => command.name);
 const commandSet = new Set(commandNames);
 const indexEntries = readCommandIndex();
+const cliPath = buildCLIForHelp();
 
 for (const command of commands) {
   const file = path.join(commandDocsDir, `${command.name}.md`);
@@ -20,6 +23,12 @@ for (const command of commands) {
   const firstLine = fs.readFileSync(file, "utf8").split(/\r?\n/, 1)[0]?.trim();
   if (firstLine !== `# ${command.name}`) {
     failures.push(`${rel(file)} should start with "# ${command.name}"`);
+  }
+  const help = runCommandHelp(command.name);
+  if (help.status !== 0) {
+    failures.push(`crabbox ${command.name} --help should exit 0, got ${help.status}: ${help.output.trim()}`);
+  } else if (!help.output.includes("Usage:") && !help.output.includes("Usage of ")) {
+    failures.push(`crabbox ${command.name} --help should print usage text`);
   }
 }
 
@@ -91,6 +100,40 @@ function readHelpCommands() {
     fail(`could not parse any commands from ${rel(appPath)}`);
   }
   return commands;
+}
+
+function runCommandHelp(command) {
+  if (!cliPath) {
+    return {
+      status: 1,
+      output: "failed to build crabbox CLI for help checks",
+    };
+  }
+  const result = spawnSync(cliPath, [command, "--help"], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  return {
+    status: result.status ?? 1,
+    output: `${result.stdout ?? ""}${result.stderr ?? ""}`,
+  };
+}
+
+function buildCLIForHelp() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "crabbox-docs-"));
+  const binary = path.join(dir, process.platform === "win32" ? "crabbox.exe" : "crabbox");
+  process.on("exit", () => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  const result = spawnSync("go", ["build", "-o", binary, "./cmd/crabbox"], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    failures.push(`go build ./cmd/crabbox failed: ${`${result.stdout ?? ""}${result.stderr ?? ""}`.trim()}`);
+    return "";
+  }
+  return binary;
 }
 
 function readCommandIndex() {

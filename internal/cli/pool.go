@@ -9,6 +9,14 @@ import (
 )
 
 func (a App) pool(ctx context.Context, args []string) error {
+	if wantsHelp(args) {
+		fmt.Fprintln(a.Stdout, `Usage:
+  crabbox pool list [--json]
+
+Alias:
+  crabbox pool list is an alias for crabbox list`)
+		return nil
+	}
 	if len(args) == 0 || args[0] != "list" {
 		return exit(2, "usage: crabbox pool list [--json]")
 	}
@@ -141,7 +149,20 @@ func coordinatorMachineOrphanField(labels map[string]string, activeLeaseIDs map[
 
 func (a App) machine(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return exit(2, "usage: crabbox machine cleanup [--dry-run]")
+		fmt.Fprintln(a.Stdout, `Usage:
+  crabbox machine cleanup [--dry-run]
+
+Alias:
+  crabbox machine cleanup is an alias for crabbox cleanup`)
+		return exit(2, "missing machine subcommand")
+	}
+	if wantsHelp(args) {
+		fmt.Fprintln(a.Stdout, `Usage:
+  crabbox machine cleanup [--dry-run]
+
+Alias:
+  crabbox machine cleanup is an alias for crabbox cleanup`)
+		return nil
 	}
 	switch args[0] {
 	case "cleanup":

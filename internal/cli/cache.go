@@ -16,7 +16,12 @@ type cacheEntry struct {
 
 func (a App) cache(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return exit(2, "usage: crabbox cache list|stats|purge|warm")
+		a.printCacheHelp()
+		return exit(2, "missing cache subcommand")
+	}
+	if wantsHelp(args) {
+		a.printCacheHelp()
+		return nil
 	}
 	switch args[0] {
 	case "list", "stats":
@@ -28,6 +33,27 @@ func (a App) cache(ctx context.Context, args []string) error {
 	default:
 		return exit(2, "unknown cache command %q", args[0])
 	}
+}
+
+func (a App) printCacheHelp() {
+	fmt.Fprintln(a.Stdout, `Usage:
+  crabbox cache stats --id <lease-id-or-slug> [flags]
+  crabbox cache list --id <lease-id-or-slug> [flags]
+  crabbox cache purge --id <lease-id-or-slug> --kind <kind> --force [flags]
+  crabbox cache warm --id <lease-id-or-slug> -- <command...>
+
+Subcommands:
+  list, stats  Show remote cache usage
+  purge        Remove selected cache content
+  warm         Run a command that populates caches
+
+Flags:
+  stats/list:  --id <lease-id-or-slug> --reclaim --json
+  purge:       --id <lease-id-or-slug> --kind pnpm|npm|docker|git|all --force --reclaim
+  warm:        --id <lease-id-or-slug> --reclaim
+
+Docs:
+  docs/commands/cache.md`)
 }
 
 func (a App) cacheStats(ctx context.Context, args []string) error {

@@ -11,7 +11,12 @@ import (
 
 func (a App) config(_ context.Context, args []string) error {
 	if len(args) == 0 {
-		return exit(2, "usage: crabbox config show|path|set-broker")
+		a.printConfigHelp()
+		return exit(2, "missing config subcommand")
+	}
+	if wantsHelp(args) {
+		a.printConfigHelp()
+		return nil
 	}
 	switch args[0] {
 	case "path":
@@ -28,6 +33,25 @@ func (a App) config(_ context.Context, args []string) error {
 	default:
 		return exit(2, "unknown config command %q", args[0])
 	}
+}
+
+func (a App) printConfigHelp() {
+	fmt.Fprintln(a.Stdout, `Usage:
+  crabbox config path
+  crabbox config show [--json]
+  crabbox config set-broker --url <url> [flags]
+
+Subcommands:
+  path        Print the user config path
+  show        Print merged config without secret values
+  set-broker  Store broker URL and optional tokens in user config
+
+Flags:
+  show:        --json
+  set-broker:  --url <url> --provider hetzner|aws --token-stdin --admin-token-stdin
+
+Docs:
+  docs/commands/config.md`)
 }
 
 func (a App) configShow(args []string) error {

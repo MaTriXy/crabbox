@@ -246,3 +246,10 @@ func parseFlags(fs *flag.FlagSet, args []string) error {
 	}
 	return nil
 }
+
+func wantsHelp(args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	return args[0] == "-h" || args[0] == "--help" || args[0] == "help"
+}
