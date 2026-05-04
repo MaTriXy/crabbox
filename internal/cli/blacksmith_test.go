@@ -133,7 +133,11 @@ func TestBlacksmithWarmupFailureStopsNewListedTestbox(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	original := blacksmithCommandContext
 	originalDelay := blacksmithCleanupDelay
+	originalAttempts := blacksmithCleanupAttempts
+	originalQuiet := blacksmithCleanupQuiet
 	blacksmithCleanupDelay = time.Millisecond
+	blacksmithCleanupAttempts = 3
+	blacksmithCleanupQuiet = 1
 	var stopped string
 	listCalls := 0
 	blacksmithCommandContext = func(_ context.Context, _ string, args ...string) *exec.Cmd {
@@ -157,6 +161,8 @@ func TestBlacksmithWarmupFailureStopsNewListedTestbox(t *testing.T) {
 	t.Cleanup(func() {
 		blacksmithCommandContext = original
 		blacksmithCleanupDelay = originalDelay
+		blacksmithCleanupAttempts = originalAttempts
+		blacksmithCleanupQuiet = originalQuiet
 	})
 
 	cfg := baseConfig()
@@ -170,6 +176,62 @@ func TestBlacksmithWarmupFailureStopsNewListedTestbox(t *testing.T) {
 	}
 	if stopped != "tbx_async123" {
 		t.Fatalf("stopped=%q, want tbx_async123", stopped)
+	}
+}
+
+func TestBlacksmithWarmupFailureContinuesAfterFirstDelayedStop(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	original := blacksmithCommandContext
+	originalDelay := blacksmithCleanupDelay
+	originalAttempts := blacksmithCleanupAttempts
+	originalQuiet := blacksmithCleanupQuiet
+	blacksmithCleanupDelay = time.Millisecond
+	blacksmithCleanupAttempts = 5
+	blacksmithCleanupQuiet = 1
+	stopped := []string{}
+	listCalls := 0
+	blacksmithCommandContext = func(_ context.Context, _ string, args ...string) *exec.Cmd {
+		if len(args) >= 3 && args[0] == "testbox" && args[1] == "list" {
+			listCalls++
+			switch listCalls {
+			case 2:
+				return exec.Command("sh", "-c", "printf 'tbx_delayed1 queued openclaw .github/workflows/testbox.yml check main 2026-05-04T21:23:47.000000Z\\n'")
+			case 3:
+				return exec.Command("sh", "-c", "printf 'tbx_delayed2 queued openclaw .github/workflows/testbox.yml check main 2026-05-04T21:23:48.000000Z\\n'")
+			default:
+				return exec.Command("sh", "-c", "printf 'ID STATUS REPO WORKFLOW JOB REF CREATED\\n'")
+			}
+		}
+		if len(args) >= 3 && args[0] == "testbox" && args[1] == "stop" {
+			for i, arg := range args {
+				if arg == "--id" && i+1 < len(args) {
+					stopped = append(stopped, args[i+1])
+				}
+			}
+			return exec.Command("sh", "-c", "exit 0")
+		}
+		return exec.Command("sh", "-c", "printf 'workflow missing\\n'; exit 1")
+	}
+	t.Cleanup(func() {
+		blacksmithCommandContext = original
+		blacksmithCleanupDelay = originalDelay
+		blacksmithCleanupAttempts = originalAttempts
+		blacksmithCleanupQuiet = originalQuiet
+	})
+
+	cfg := baseConfig()
+	cfg.Blacksmith.Workflow = ".github/workflows/testbox.yml"
+	cfg.Blacksmith.Job = "check"
+	cfg.Blacksmith.Ref = "main"
+	app := App{Stdout: io.Discard, Stderr: io.Discard}
+	_, _, err := app.blacksmithWarmupLease(context.Background(), cfg, Repo{Root: "/repo"}, false)
+	if err == nil {
+		t.Fatal("expected warmup failure")
+	}
+	if !reflect.DeepEqual(stopped, []string{"tbx_delayed1", "tbx_delayed2"}) {
+		t.Fatalf("stopped=%v, want both delayed testboxes", stopped)
 	}
 }
 

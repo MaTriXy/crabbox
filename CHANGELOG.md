@@ -26,7 +26,7 @@
 
 - Fixed `crabbox run --junit` so all-passing JUnit files record results instead of leaving the coordinator run stuck when the failure list is empty.
 - Fixed `crabbox desktop launch --browser` on freshly warmed desktop leases by creating the remote workdir before launching the app.
-- Fixed failed Blacksmith Testbox warmups so printed or newly listed `tbx_...` boxes are stopped instead of being left queued after an upstream workflow error.
+- Fixed failed Blacksmith Testbox warmups so printed, newly listed, or delayed `tbx_...` boxes are stopped instead of being left queued after an upstream workflow error.
 - Fixed Worker deploy smoke to prefer the Crabbox-scoped Cloudflare token when it is present in the environment or local profile.
 - Fixed brokered Tailscale requests on coordinators without OAuth secrets so they fail as disabled instead of entering the auth-key minting path.
 - Fixed native Windows `--shell` runs so multi-statement PowerShell scripts keep their quotes instead of being re-parsed by a nested PowerShell process.

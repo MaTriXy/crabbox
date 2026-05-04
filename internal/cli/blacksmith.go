@@ -16,9 +16,11 @@ import (
 const blacksmithTestboxProvider = "blacksmith-testbox"
 
 var (
-	blacksmithCommandContext = exec.CommandContext
-	blacksmithIDPattern      = regexp.MustCompile(`\btbx_[A-Za-z0-9_-]+\b`)
-	blacksmithCleanupDelay   = time.Second
+	blacksmithCommandContext  = exec.CommandContext
+	blacksmithIDPattern       = regexp.MustCompile(`\btbx_[A-Za-z0-9_-]+\b`)
+	blacksmithCleanupAttempts = 36
+	blacksmithCleanupDelay    = 5 * time.Second
+	blacksmithCleanupQuiet    = 12
 )
 
 type blacksmithRunOptions struct {
@@ -350,7 +352,9 @@ func (a App) cleanupFailedBlacksmithWarmup(ctx context.Context, cfg Config, befo
 			before[leaseID] = true
 		}
 	}
-	for attempt := 0; attempt < 5; attempt++ {
+	stoppedAny := false
+	quietAttempts := 0
+	for attempt := 0; attempt < blacksmithCleanupAttempts; attempt++ {
 		if attempt > 0 {
 			select {
 			case <-ctx.Done():
@@ -372,7 +376,15 @@ func (a App) cleanupFailedBlacksmithWarmup(ctx context.Context, cfg Config, befo
 			stopped = true
 		}
 		if stopped {
-			return
+			stoppedAny = true
+			quietAttempts = 0
+			continue
+		}
+		if stoppedAny {
+			quietAttempts++
+			if quietAttempts >= blacksmithCleanupQuiet {
+				return
+			}
 		}
 	}
 }
