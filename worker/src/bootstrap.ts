@@ -175,7 +175,7 @@ function optionalWriteFiles(config: LeaseConfig): string {
 function optionalBootstrap(config: LeaseConfig): string {
   const parts: string[] = [];
   if (config.desktop) {
-    parts.push(`    retry apt-get install -y --no-install-recommends xvfb xfce4 xfce4-terminal x11vnc xauth dbus-x11 x11-xserver-utils xterm fonts-dejavu-core fonts-liberation iproute2 openssl
+    parts.push(`    retry apt-get install -y --no-install-recommends xvfb xfce4 xfce4-terminal x11vnc xauth dbus-x11 x11-xserver-utils xterm scrot fonts-dejavu-core fonts-liberation iproute2 openssl
     install -d -m 0750 -o crabbox -g crabbox /var/lib/crabbox
     if [ ! -s /var/lib/crabbox/vnc.password ]; then
       (umask 077 && openssl rand -base64 18 > /var/lib/crabbox/vnc.password)
