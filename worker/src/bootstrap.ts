@@ -332,3 +332,11 @@ function optionalBootstrap(config: LeaseConfig): string {
   }
   return parts.join("\n");
 }
+
+function psQuote(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}

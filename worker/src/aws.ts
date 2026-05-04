@@ -1,9 +1,9 @@
 import { AwsClient } from "aws4fetch";
 import { XMLParser } from "fast-xml-parser";
 
-import { cloudInit } from "./bootstrap";
+import { awsUserData } from "./bootstrap";
 import {
-  awsInstanceTypeCandidatesForClass,
+  awsInstanceTypeCandidatesForTargetClass,
   sshPorts,
   validCIDRs,
   type LeaseConfig,
@@ -327,7 +327,7 @@ export class EC2SpotClient {
       KeyName: config.providerKey,
       MaxCount: "1",
       MinCount: "1",
-      UserData: btoa(cloudInit(config)),
+      UserData: btoa(awsUserData(config)),
       "BlockDeviceMapping.1.DeviceName": "/dev/sda1",
       "BlockDeviceMapping.1.Ebs.DeleteOnTermination": "true",
       "BlockDeviceMapping.1.Ebs.Encrypted": "true",
@@ -351,6 +351,14 @@ export class EC2SpotClient {
     } else {
       params["SecurityGroupId.1"] = securityGroupID;
     }
+    if (config.target === "macos") {
+      const hostID = config.awsMacHostID || this.env.CRABBOX_AWS_MAC_HOST_ID || "";
+      if (!hostID) {
+        throw new Error("aws target=macos requires CRABBOX_AWS_MAC_HOST_ID");
+      }
+      params["Placement.HostId"] = hostID;
+      params["Placement.Tenancy"] = "host";
+    }
     addRunInstancesTagSpecifications(params, { ...labels, Name: name }, config.capacityMarket);
     const root = await this.ec2("RunInstances", params);
     const instance = items(record(root["instancesSet"])["item"])[0];
@@ -363,6 +371,15 @@ export class EC2SpotClient {
   private async resolveAMI(config: LeaseConfig): Promise<string> {
     if (config.awsAMI || this.env.CRABBOX_AWS_AMI) {
       return config.awsAMI || this.env.CRABBOX_AWS_AMI || "";
+    }
+    if (config.target === "windows") {
+      return "resolve:ssm:/aws/service/ami-windows-latest/Windows_Server-2022-English-Full-Base";
+    }
+    if (config.target === "macos") {
+      if (config.serverType.startsWith("mac1.")) {
+        return "resolve:ssm:/aws/service/ec2-macos/sonoma/x86_64_mac/latest/image_id";
+      }
+      return "resolve:ssm:/aws/service/ec2-macos/sonoma/arm64_mac/latest/image_id";
     }
     const root = await this.ec2("DescribeImages", {
       "Owner.1": awsUbuntuOwner,
@@ -631,15 +648,22 @@ function asString(value: unknown): string {
 }
 
 export function awsLaunchCandidates(
-  config: Pick<LeaseConfig, "serverType" | "serverTypeExplicit" | "class">,
+  config: Pick<LeaseConfig, "serverType" | "serverTypeExplicit" | "class" | "target">,
 ): string[] {
   if (config.serverTypeExplicit) {
     return [config.serverType];
   }
+  if (config.target === "macos") {
+    return uniqueStrings([
+      config.serverType,
+      ...awsInstanceTypeCandidatesForTargetClass(config.target, config.class),
+    ]);
+  }
+  const policyFallback = config.target === "windows" ? "t3.large" : "t3.small";
   return uniqueStrings([
     config.serverType,
-    ...awsInstanceTypeCandidatesForClass(config.class),
-    ...awsPolicyFallbackCandidates(),
+    ...awsInstanceTypeCandidatesForTargetClass(config.target, config.class),
+    policyFallback,
   ]);
 }
 
@@ -678,10 +702,6 @@ export function awsQuotaPreflightAttempt(
     category: "quota",
     message: `quota ${quotaCode} in ${region} is ${quotaValue} vCPUs; ${serverType} needs ${needed} vCPUs`,
   };
-}
-
-function awsPolicyFallbackCandidates(): string[] {
-  return ["t3.small"];
 }
 
 function uniqueStrings(values: string[]): string[] {

@@ -58,9 +58,6 @@ export function leaseConfig(input: LeaseRequest): LeaseConfig {
     if (provider !== "aws") {
       throw new Error(`unsupported target for brokered ${provider}: ${target}`);
     }
-    if (!input.awsMacHostID?.trim()) {
-      throw new Error("brokered aws target=macos requires awsMacHostID or CRABBOX_AWS_MAC_HOST_ID");
-    }
     if ((input.capacity?.market ?? "spot") !== "on-demand") {
       throw new Error("brokered aws target=macos requires capacity.market=on-demand");
     }
