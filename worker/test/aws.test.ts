@@ -60,6 +60,7 @@ describe("aws provider", () => {
     expect(
       awsLaunchCandidates({
         class: "beast",
+        target: "linux",
         serverType: "c7a.48xlarge",
         serverTypeExplicit: false,
       }),
@@ -67,6 +68,7 @@ describe("aws provider", () => {
     expect(
       awsLaunchCandidates({
         class: "beast",
+        target: "linux",
         serverType: "t3.small",
         serverTypeExplicit: true,
       }),

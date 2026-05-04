@@ -81,3 +81,45 @@ func TestCloudInitBrowserProfile(t *testing.T) {
 		}
 	}
 }
+
+func TestAWSUserDataWindowsProfile(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Provider = "aws"
+	cfg.TargetOS = targetWindows
+	cfg.WindowsMode = windowsModeNormal
+	cfg.WorkRoot = `C:\crabbox`
+	got := awsUserData(cfg, "ssh-ed25519 test")
+	for _, want := range []string{
+		"<powershell>",
+		"OpenSSH.Server~~~~0.0.1.0",
+		"administrators_authorized_keys",
+		"Git-2.52.0-64-bit.exe",
+		"tightvnc-2.8.85-gpl-setup-64bit.msi",
+		"VALUE_OF_PASSWORD=$vncPassword",
+		"VALUE_OF_ALLOWLOOPBACK=1",
+		`C:\ProgramData\crabbox\vnc.password`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("windows user data missing %q", want)
+		}
+	}
+}
+
+func TestAWSUserDataMacOSProfile(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Provider = "aws"
+	cfg.TargetOS = targetMacOS
+	cfg.SSHUser = "ec2-user"
+	got := awsUserData(cfg, "ssh-ed25519 test")
+	for _, want := range []string{
+		"#!/bin/bash",
+		"/var/db/crabbox/vnc.password",
+		"com.apple.screensharing",
+		"/usr/local/bin/crabbox-ready",
+		"nc -z 127.0.0.1 5900",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("macOS user data missing %q", want)
+		}
+	}
+}

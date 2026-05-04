@@ -13,8 +13,9 @@ hetzner     Hetzner Cloud servers
 aws         AWS EC2 one-time Spot instances
 ```
 
-Brokered Hetzner and AWS leases are Linux targets. macOS and Windows targets use
-the direct static SSH provider:
+Brokered Hetzner leases are Linux targets. Brokered AWS supports Linux, native
+Windows Server, and EC2 Mac when a Dedicated Host is configured. Static SSH
+still exists for reusing existing macOS and Windows machines:
 
 ```text
 ssh         Existing SSH host selected by static.host
@@ -34,6 +35,10 @@ AWS behavior:
 - imports or reuses an EC2 key pair;
 - creates or reuses the `crabbox-runners` security group with SSH ingress limited to configured CIDRs or the request source IP;
 - launches one-time Spot instances;
+- launches AWS Windows Server desktop leases with EC2Launch PowerShell user
+  data, OpenSSH, Git for Windows, and TightVNC when `target=windows`;
+- launches EC2 Mac leases only with an explicit Dedicated Host id
+  (`CRABBOX_AWS_MAC_HOST_ID` or `aws.macHostId`) and On-Demand capacity;
 - tags instances, volumes, and Spot requests;
 - falls back across broad C/M/R instance families for class requests, including account policy and capacity rejections;
 - can fall back to a small burstable type when account policy rejects the high-core class candidates;
@@ -64,6 +69,15 @@ standard  c7a.8xlarge, c7i.8xlarge, m7a.8xlarge, m7i.8xlarge, c7a.4xlarge
 fast      c7a.16xlarge, c7i.16xlarge, m7a.16xlarge, m7i.16xlarge, c7a.12xlarge, c7a.8xlarge
 large     c7a.24xlarge, c7i.24xlarge, m7a.24xlarge, m7i.24xlarge, r7a.24xlarge, c7a.16xlarge, c7a.12xlarge
 beast     c7a.48xlarge, c7i.48xlarge, m7a.48xlarge, m7i.48xlarge, r7a.48xlarge, c7a.32xlarge, c7i.32xlarge, m7a.32xlarge, c7a.24xlarge, c7a.16xlarge
+
+AWS Windows
+standard  m7i.large, m7a.large, t3.large
+fast      m7i.xlarge, m7a.xlarge, t3.xlarge
+large     m7i.2xlarge, m7a.2xlarge, t3.2xlarge
+beast     m7i.4xlarge, m7a.4xlarge, m7i.2xlarge
+
+AWS macOS
+all       mac2.metal unless `--type` is set
 ```
 
 Direct provider mode still exists when no coordinator is configured. It uses local AWS credentials or `HCLOUD_TOKEN`/`HETZNER_TOKEN` and should stay secondary to the brokered path.

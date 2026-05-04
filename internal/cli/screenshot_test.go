@@ -28,3 +28,14 @@ func TestScreenshotRemoteCommandUsesDesktopDisplayAndPNG(t *testing.T) {
 		}
 	}
 }
+
+func TestScreenshotRemoteCommandSupportsWindowsAndMacOS(t *testing.T) {
+	windows := screenshotRemoteCommand(SSHTarget{TargetOS: targetWindows, WindowsMode: windowsModeNormal})
+	if !strings.Contains(windows, "System.Windows.Forms") || !strings.Contains(windows, "ImageFormat]::Png") {
+		t.Fatalf("windows screenshot command=%s", windows)
+	}
+	mac := screenshotRemoteCommand(SSHTarget{TargetOS: targetMacOS})
+	if !strings.Contains(mac, "screencapture -x -t png -") {
+		t.Fatalf("mac screenshot command=%s", mac)
+	}
+}

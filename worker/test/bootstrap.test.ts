@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { cloudInit } from "../src/bootstrap";
+import { awsUserData, cloudInit } from "../src/bootstrap";
 import type { LeaseConfig } from "../src/config";
 
 const config: LeaseConfig = {
@@ -94,5 +94,31 @@ describe("cloud-init bootstrap", () => {
     expect(got).toContain("/var/lib/crabbox/browser.env");
     expect(got).toContain('test -x "$BROWSER"');
     expect(got).toContain('"$BROWSER" --version >/dev/null');
+  });
+
+  it("builds Windows EC2Launch user data for managed VNC", () => {
+    const got = awsUserData({
+      ...config,
+      target: "windows",
+      workRoot: "C:\\crabbox",
+    });
+    expect(got).toContain("<powershell>");
+    expect(got).toContain("OpenSSH.Server~~~~0.0.1.0");
+    expect(got).toContain("administrators_authorized_keys");
+    expect(got).toContain("tightvnc-2.8.85-gpl-setup-64bit.msi");
+    expect(got).toContain("VALUE_OF_PASSWORD=$vncPassword");
+    expect(got).toContain("VALUE_OF_ALLOWLOOPBACK=1");
+  });
+
+  it("builds macOS user data for managed screen sharing", () => {
+    const got = awsUserData({
+      ...config,
+      target: "macos",
+      sshUser: "ec2-user",
+    });
+    expect(got).toContain("#!/bin/bash");
+    expect(got).toContain("/var/db/crabbox/vnc.password");
+    expect(got).toContain("com.apple.screensharing");
+    expect(got).toContain("/usr/local/bin/crabbox-ready");
   });
 });

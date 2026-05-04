@@ -30,6 +30,16 @@ func TestVNCLoopbackCheckCommandSupportsWindows(t *testing.T) {
 	}
 }
 
+func TestVNCPasswordCommandSupportsManagedTargets(t *testing.T) {
+	windows := vncPasswordCommand(SSHTarget{TargetOS: targetWindows, WindowsMode: windowsModeNormal})
+	if !strings.Contains(windows, "EncodedCommand") {
+		t.Fatalf("windows password command should be encoded PowerShell: %q", windows)
+	}
+	if got := vncPasswordCommand(SSHTarget{TargetOS: targetMacOS}); got != "cat '/var/db/crabbox/vnc.password'" {
+		t.Fatalf("mac password command=%q", got)
+	}
+}
+
 func TestOpenURLCommandIncludesURL(t *testing.T) {
 	name, args := openURLCommand("vnc://localhost:5901")
 	if name == "" {

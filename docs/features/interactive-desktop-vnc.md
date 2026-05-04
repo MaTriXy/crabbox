@@ -14,8 +14,8 @@ inside that lease.
 
 The intended contract is:
 
-- `crabbox warmup --desktop` leases or reuses a Linux machine with the normal
-  Crabbox SSH contract plus a desktop profile;
+- `crabbox warmup --desktop` leases or reuses a machine with the normal Crabbox
+  SSH contract plus a desktop profile;
 - `crabbox warmup --browser` leases or reuses a Linux machine with a known
   browser binary for headless automation;
 - `crabbox warmup --desktop --browser` combines a visible session with a browser
@@ -69,16 +69,22 @@ Security rules:
 
 - never expose VNC directly to the public internet;
 - prefer SSH local forwarding such as `localhost:5901 -> 127.0.0.1:5900`;
-- generate per-lease VNC passwords for managed Linux desktop leases;
+- generate per-lease VNC passwords for managed desktop leases;
 - redact passwords from logs and run records;
 - stop desktop services when the lease stops;
 - keep the normal TTL and idle-timeout lifecycle in force.
 
 Provider notes:
 
-- Hetzner and AWS brokered Linux leases are the primary target because Crabbox
-  controls cloud-init and firewall shape there. Brokered macOS and Windows
-  desktop leases do not exist in this release.
+- Hetzner and AWS brokered Linux leases use cloud-init to install Xvfb, XFCE,
+  x11vnc, and optional Chrome/Chromium.
+- AWS brokered Windows desktop leases use EC2Launch PowerShell user data to
+  install OpenSSH, Git for Windows, TightVNC, and a local `crabbox`
+  administrator. VNC is reached through the SSH tunnel; the security group only
+  needs SSH.
+- AWS brokered macOS desktop leases require an allocated EC2 Mac Dedicated Host
+  and On-Demand capacity. Bootstrap enables Screen Sharing for `ec2-user` and
+  stores the generated password on the instance for `crabbox vnc`.
 - Static SSH Linux hosts can participate when the operator accepts responsibility
   for packages and display services.
 - Static macOS hosts are existing Macs, not Crabbox-created boxes. They can
@@ -94,8 +100,8 @@ Provider notes:
 - Blacksmith Testbox can run headless browser automation today, but VNC takeover
   needs a Blacksmith-supported SSH tunnel or connection-info API before Crabbox
   can offer the same `vnc` command there.
-- Crabbox-managed macOS and Windows VNC installers are still out of scope for
-  this release.
+- EC2 Mac host allocation, host scrubbing, and the AWS 24-hour host lifecycle
+  remain operator concerns; Crabbox only launches onto a host id it is given.
 
 For Mantis, the first consumer should be a Discord QA lane:
 

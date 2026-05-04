@@ -7,6 +7,8 @@ crabbox warmup --class beast
 crabbox warmup --provider aws --class beast --market on-demand
 crabbox warmup --browser
 crabbox warmup --desktop --browser
+crabbox warmup --provider aws --target windows --desktop --market on-demand
+crabbox warmup --provider aws --target macos --desktop --market on-demand --type mac2.metal
 crabbox warmup --actions-runner
 crabbox warmup --provider blacksmith-testbox --blacksmith-workflow .github/workflows/ci-check-testbox.yml --blacksmith-job test
 crabbox warmup --provider ssh --target macos --static-host mac-studio.local
@@ -24,6 +26,18 @@ remote command/sync contract. Native Windows static hosts must already have
 OpenSSH Server reachable, PowerShell, Git, `tar`, and a writable
 `static.workRoot`. Restart `sshd` after installing Git so new SSH sessions see
 the updated PATH.
+
+With `--provider aws --target windows --desktop`, Crabbox creates a real AWS
+Windows Server lease. EC2Launch user data installs OpenSSH Server, Git for
+Windows, TightVNC Server, a per-lease local administrator named `crabbox`, and a
+loopback VNC password retrievable through `crabbox vnc --id <lease>`.
+
+With `--provider aws --target macos --desktop`, Crabbox launches an EC2 Mac
+instance on an already allocated Dedicated Host. Set `CRABBOX_AWS_MAC_HOST_ID`
+or `aws.macHostId`, use `--market on-demand`, and expect EC2 Mac host lifecycle
+rules to dominate cleanup and cost. The default SSH user is `ec2-user`; the VNC
+password printed by `crabbox vnc` is the per-lease macOS account password set by
+bootstrap.
 
 On success, `warmup` prints a concise total duration line. Add `--timing-json` to emit a final JSON timing record with provider, lease ID, slug, total duration, and exit code.
 

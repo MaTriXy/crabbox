@@ -89,7 +89,7 @@ func validateProviderTarget(cfg Config) error {
 		return nil
 	}
 	if cfg.Provider == "aws" && cfg.TargetOS == targetMacOS {
-		if cfg.AWSMacHostID == "" {
+		if cfg.AWSMacHostID == "" && cfg.Coordinator == "" {
 			return exit(2, "provider=aws target=macos requires CRABBOX_AWS_MAC_HOST_ID or aws.macHostId for an allocated EC2 Mac Dedicated Host")
 		}
 		if cfg.Capacity.Market != "on-demand" {

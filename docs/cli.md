@@ -114,6 +114,15 @@ crabbox run --provider ssh --target windows --windows-mode normal --static-host 
 crabbox run --provider ssh --target windows --windows-mode wsl2 --static-host win-dev.local -- pnpm test
 ```
 
+Create managed AWS desktop boxes:
+
+```sh
+crabbox warmup --provider aws --target windows --desktop --market on-demand
+CRABBOX_AWS_MAC_HOST_ID=h-... crabbox warmup --provider aws --target macos --desktop --market on-demand
+crabbox vnc --id blue-lobster
+crabbox screenshot --id blue-lobster --output desktop.png
+```
+
 Inspect pool:
 
 ```sh
@@ -331,6 +340,17 @@ static:
   user: Peter
   port: "22"
   workRoot: C:\crabbox
+```
+
+AWS EC2 Mac target:
+
+```yaml
+provider: aws
+target: macos
+aws:
+  macHostId: h-0123456789abcdef0
+capacity:
+  market: on-demand
 ```
 
 `windows.mode: normal` runs native PowerShell over OpenSSH and syncs with a tar

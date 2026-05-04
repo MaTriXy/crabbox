@@ -99,7 +99,9 @@ export function leaseConfig(input: LeaseRequest): LeaseConfig {
     sshPort: input.sshPort ?? "2222",
     sshFallbackPorts: validPorts(input.sshFallbackPorts ?? ["22"]),
     providerKey: input.providerKey ?? "crabbox-steipete",
-    workRoot: input.workRoot ?? (target === "windows" && windowsMode === "normal" ? "C:\\crabbox" : "/work/crabbox"),
+    workRoot:
+      input.workRoot ??
+      (target === "windows" && windowsMode === "normal" ? "C:\\crabbox" : "/work/crabbox"),
     ttlSeconds,
     idleTimeoutSeconds,
     keep: input.keep ?? false,
