@@ -128,3 +128,20 @@ func TestTopLevelHelpIsWorkflowFirst(t *testing.T) {
 		}
 	}
 }
+
+func TestKongRouterPreservesVersionAndUsageExitCodes(t *testing.T) {
+	var stdout bytes.Buffer
+	app := App{Stdout: &stdout, Stderr: &bytes.Buffer{}}
+	if err := app.Run(context.Background(), []string{"--version"}); err != nil {
+		t.Fatalf("--version error: %v", err)
+	}
+	if strings.TrimSpace(stdout.String()) != version {
+		t.Fatalf("--version output=%q, want %q", stdout.String(), version)
+	}
+
+	err := app.Run(context.Background(), []string{"nope"})
+	var exitErr ExitError
+	if !AsExitError(err, &exitErr) || exitErr.Code != 2 {
+		t.Fatalf("unknown command error=%v, want exit 2", err)
+	}
+}

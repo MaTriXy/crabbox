@@ -8,21 +8,6 @@ import (
 	"time"
 )
 
-func (a App) pool(ctx context.Context, args []string) error {
-	if wantsHelp(args) {
-		fmt.Fprintln(a.Stdout, `Usage:
-  crabbox pool list [--json]
-
-Alias:
-  crabbox pool list is an alias for crabbox list`)
-		return nil
-	}
-	if len(args) == 0 || args[0] != "list" {
-		return exit(2, "usage: crabbox pool list [--json]")
-	}
-	return a.list(ctx, args[1:])
-}
-
 func (a App) list(ctx context.Context, args []string) error {
 	fs := newFlagSet("list", a.Stderr)
 	provider := fs.String("provider", defaultConfig().Provider, "provider: hetzner, aws, ssh, or blacksmith-testbox")
@@ -145,31 +130,6 @@ func coordinatorMachineOrphanField(labels map[string]string, activeLeaseIDs map[
 		return " orphan=no-active-lease"
 	}
 	return ""
-}
-
-func (a App) machine(ctx context.Context, args []string) error {
-	if len(args) == 0 {
-		fmt.Fprintln(a.Stdout, `Usage:
-  crabbox machine cleanup [--dry-run]
-
-Alias:
-  crabbox machine cleanup is an alias for crabbox cleanup`)
-		return exit(2, "missing machine subcommand")
-	}
-	if wantsHelp(args) {
-		fmt.Fprintln(a.Stdout, `Usage:
-  crabbox machine cleanup [--dry-run]
-
-Alias:
-  crabbox machine cleanup is an alias for crabbox cleanup`)
-		return nil
-	}
-	switch args[0] {
-	case "cleanup":
-		return a.cleanup(ctx, args[1:])
-	default:
-		return exit(2, "unknown machine command %q", args[0])
-	}
 }
 
 func (a App) cleanup(ctx context.Context, args []string) error {

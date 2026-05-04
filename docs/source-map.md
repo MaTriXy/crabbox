@@ -10,7 +10,7 @@ This page maps user-facing behavior back to implementation files. Keep docs desc
 
 ## CLI Surface
 
-- Command router and top-level help: `internal/cli/app.go`
+- Kong command router and top-level help: `internal/cli/cli_kong.go`, `internal/cli/app.go`
 - Shared flag parsing and exit helpers: `internal/cli/flags.go`, `internal/cli/errors.go`
 - Config defaults, YAML keys, env overrides, target selection, and class maps: `internal/cli/config.go`, `internal/cli/target.go`, `worker/src/config.ts`
 - Network target resolution and Tailscale metadata: `internal/cli/network.go`

@@ -1,58 +1,12 @@
 package cli
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 )
-
-func (a App) config(_ context.Context, args []string) error {
-	if len(args) == 0 {
-		a.printConfigHelp()
-		return exit(2, "missing config subcommand")
-	}
-	if wantsHelp(args) {
-		a.printConfigHelp()
-		return nil
-	}
-	switch args[0] {
-	case "path":
-		path := userConfigPath()
-		if path == "" {
-			return exit(2, "user config directory is unavailable")
-		}
-		fmt.Fprintln(a.Stdout, path)
-		return nil
-	case "show":
-		return a.configShow(args[1:])
-	case "set-broker":
-		return a.configSetBroker(args[1:])
-	default:
-		return exit(2, "unknown config command %q", args[0])
-	}
-}
-
-func (a App) printConfigHelp() {
-	fmt.Fprintln(a.Stdout, `Usage:
-  crabbox config path
-  crabbox config show [--json]
-  crabbox config set-broker --url <url> [flags]
-
-Subcommands:
-  path        Print the user config path
-  show        Print merged config without secret values
-  set-broker  Store broker URL and optional tokens in user config
-
-Flags:
-  show:        --json
-  set-broker:  --url <url> --provider hetzner|aws --token-stdin --admin-token-stdin
-
-Docs:
-  docs/commands/config.md`)
-}
 
 func (a App) configShow(args []string) error {
 	fs := newFlagSet("config show", a.Stderr)

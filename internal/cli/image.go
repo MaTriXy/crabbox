@@ -8,25 +8,6 @@ import (
 	"time"
 )
 
-func (a App) image(ctx context.Context, args []string) error {
-	if len(args) == 0 {
-		return exit(2, "usage: crabbox image <create|promote> [flags]")
-	}
-	switch args[0] {
-	case "-h", "--help", "help":
-		fmt.Fprintln(a.Stdout, `Usage:
-  crabbox image create --id <cbx_id> --name <ami-name> [--wait]
-  crabbox image promote <ami-id>`)
-		return nil
-	case "create":
-		return a.imageCreate(ctx, args[1:])
-	case "promote":
-		return a.imagePromote(ctx, args[1:])
-	default:
-		return exit(2, "unknown image command %q", args[0])
-	}
-}
-
 func (a App) imageCreate(ctx context.Context, args []string) error {
 	fs := newFlagSet("image create", a.Stderr)
 	id := fs.String("id", "", "AWS lease id to image")

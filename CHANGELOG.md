@@ -4,6 +4,7 @@
 
 ### Added
 
+- Added generated command help for grouped commands so `crabbox actions --help`, `crabbox cache --help`, `crabbox desktop --help`, and similar entrypoints exit cleanly.
 - Added optional Tailscale reachability for managed Linux leases with `--tailscale`, `--network auto|tailscale|public`, brokered OAuth auth-key minting, and non-secret tailnet metadata in status/inspect output.
 - Added managed AWS Windows desktop leases with OpenSSH, Git for Windows, loopback TightVNC, per-lease VNC passwords, and `crabbox vnc`.
 - Added AWS macOS desktop lease plumbing for EC2 Mac Dedicated Hosts, including Screen Sharing setup and per-lease credentials.
@@ -17,9 +18,14 @@
 - Added generated Windows console login details and auto-logon for managed AWS Windows desktop leases.
 - Added a minimal XFCE desktop profile with panel/window manager for managed VNC leases.
 
+### Changed
+
+- Switched top-level CLI routing to Kong while preserving existing per-command flags, passthrough remote commands, aliases, and exit-code behavior.
+
 ### Fixed
 
 - Fixed `crabbox run --junit` so all-passing JUnit files record results instead of leaving the coordinator run stuck when the failure list is empty.
+- Fixed `crabbox desktop launch --browser` on freshly warmed desktop leases by creating the remote workdir before launching the app.
 - Fixed failed Blacksmith Testbox warmups so printed or newly listed `tbx_...` boxes are stopped instead of being left queued after an upstream workflow error.
 - Fixed Worker deploy smoke to prefer the Crabbox-scoped Cloudflare token when it is present in the environment or local profile.
 - Fixed brokered Tailscale requests on coordinators without OAuth secrets so they fail as disabled instead of entering the auth-key minting path.

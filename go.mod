@@ -5,6 +5,7 @@ go 1.26
 toolchain go1.26.2
 
 require (
+	github.com/alecthomas/kong v1.15.0
 	github.com/aws/aws-sdk-go-v2 v1.41.7
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.299.1

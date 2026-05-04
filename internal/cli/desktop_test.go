@@ -13,6 +13,7 @@ func TestDesktopLaunchRemoteCommandUsesDetachedPOSIXSession(t *testing.T) {
 		[]string{"/usr/bin/chromium", "https://example.com"},
 	)
 	for _, want := range []string{
+		"mkdir -p '/work/crabbox/cbx_1/repo'",
 		"cd '/work/crabbox/cbx_1/repo'",
 		"DISPLAY=':99'",
 		"BROWSER='/usr/bin/chromium'",
@@ -52,6 +53,7 @@ func TestWindowsDesktopLaunchScriptStartsAndForegroundsProcess(t *testing.T) {
 		[]string{`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`, "https://example.com"},
 	)
 	for _, want := range []string{
+		`New-Item -ItemType Directory -Force -Path 'C:\crabbox\cbx_1\repo'`,
 		`Set-Location -LiteralPath 'C:\crabbox\cbx_1\repo'`,
 		`$env:BROWSER = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'`,
 		"Shell.Application",

@@ -7,48 +7,6 @@ import (
 	"strings"
 )
 
-func (a App) desktop(ctx context.Context, args []string) error {
-	if len(args) == 0 {
-		a.printDesktopHelp()
-		return exit(2, "missing desktop subcommand")
-	}
-	if wantsHelp(args) {
-		a.printDesktopHelp()
-		return nil
-	}
-	switch args[0] {
-	case "launch":
-		return a.desktopLaunch(ctx, args[1:])
-	default:
-		return exit(2, "unknown desktop command %q", args[0])
-	}
-}
-
-func (a App) printDesktopHelp() {
-	fmt.Fprintln(a.Stdout, `Usage:
-  crabbox desktop launch --id <lease-id-or-slug> [flags] -- <command...>
-  crabbox desktop launch --id <lease-id-or-slug> --browser [--url <url>]
-
-Subcommands:
-  launch  Start an app inside a desktop lease
-
-Flags:
-  --id <lease-id-or-slug>
-  --provider hetzner|aws|ssh
-  --target linux|macos|windows
-  --windows-mode normal|wsl2
-  --static-host <host>
-  --static-user <user>
-  --static-port <port>
-  --static-work-root <path>
-  --browser
-  --url <url>
-  --reclaim
-
-Docs:
-  docs/commands/desktop.md`)
-}
-
 func (a App) desktopLaunch(ctx context.Context, args []string) error {
 	defaults := defaultConfig()
 	fs := newFlagSet("desktop launch", a.Stderr)
@@ -146,6 +104,7 @@ func posixDesktopLaunchRemoteCommand(workdir string, env map[string]string, comm
 	var b bytes.Buffer
 	b.WriteString("set -eu\n")
 	if workdir != "" {
+		b.WriteString("mkdir -p " + shellQuote(workdir) + "\n")
 		b.WriteString("cd " + shellQuote(workdir) + "\n")
 	}
 	for key, value := range env {
@@ -205,6 +164,7 @@ func windowsDesktopLaunchScript(workdir string, env map[string]string, command [
 	var b bytes.Buffer
 	b.WriteString("$ErrorActionPreference = \"Stop\"\n")
 	if workdir != "" {
+		b.WriteString("New-Item -ItemType Directory -Force -Path " + psQuote(workdir) + " | Out-Null\n")
 		b.WriteString("Set-Location -LiteralPath " + psQuote(workdir) + "\n")
 	}
 	for key, value := range env {

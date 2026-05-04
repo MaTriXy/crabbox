@@ -27,68 +27,6 @@ func (r GitHubRepo) Slug() string {
 	return r.Owner + "/" + r.Name
 }
 
-func (a App) actions(ctx context.Context, args []string) error {
-	if len(args) == 0 {
-		a.printActionsHelp()
-		return exit(2, "missing actions subcommand")
-	}
-	if wantsHelp(args) {
-		a.printActionsHelp()
-		return nil
-	}
-	switch args[0] {
-	case "hydrate":
-		return a.actionsHydrate(ctx, args[1:])
-	case "register":
-		return a.actionsRegister(ctx, args[1:])
-	case "dispatch":
-		return a.actionsDispatch(ctx, args[1:])
-	default:
-		return exit(2, "unknown actions command %q", args[0])
-	}
-}
-
-func (a App) printActionsHelp() {
-	fmt.Fprintln(a.Stdout, `Usage:
-  crabbox actions hydrate --id <lease-id-or-slug> [flags]
-  crabbox actions register --id <lease-id-or-slug> [flags]
-  crabbox actions dispatch [flags]
-
-Subcommands:
-  hydrate   Register a runner, dispatch the hydrate workflow, wait for readiness
-  register  Register an existing Linux lease as a GitHub Actions runner
-  dispatch  Dispatch the configured GitHub Actions workflow
-
-Hydrate Flags:
-  --id <lease-id-or-slug>
-  --repo <owner/name>
-  --workflow <file|name|id>
-  --ref <ref>
-  --wait-timeout <duration>
-  --keep-alive-minutes <n>
-  --reclaim
-  --timing-json
-  -f, --field <key=value>
-
-Register Flags:
-  --id <lease-id-or-slug>
-  --repo <owner/name>
-  --name <runner-name>
-  --labels <csv>
-  --version <version|latest>
-  --ephemeral
-  --reclaim
-
-Dispatch Flags:
-  --repo <owner/name>
-  --workflow <file|name|id>
-  --ref <ref>
-  -f, --field <key=value>
-
-Docs:
-  docs/commands/actions.md`)
-}
-
 func (a App) actionsHydrate(ctx context.Context, args []string) error {
 	started := time.Now()
 	fs := newFlagSet("actions hydrate", a.Stderr)

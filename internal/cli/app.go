@@ -31,80 +31,13 @@ func (a App) Run(ctx context.Context, args []string) error {
 		return nil
 	case "help":
 		if len(args) > 1 {
-			next := append([]string{}, args[1:]...)
-			next = append(next, "--help")
-			return a.Run(ctx, next)
+			return a.runKong(ctx, args)
 		}
 		a.printHelp()
 		return nil
-	case "-v", "--version", "version":
-		fmt.Fprintln(a.Stdout, version)
-		return nil
-	case "doctor":
-		return a.doctor(ctx, args[1:])
-	case "login":
-		return a.login(ctx, args[1:])
-	case "logout":
-		return a.logout(ctx, args[1:])
-	case "whoami":
-		return a.whoami(ctx, args[1:])
-	case "admin":
-		return a.admin(ctx, args[1:])
-	case "history":
-		return a.history(ctx, args[1:])
-	case "logs":
-		return a.logs(ctx, args[1:])
-	case "events":
-		return a.events(ctx, args[1:])
-	case "attach":
-		return a.attach(ctx, args[1:])
-	case "results":
-		return a.results(ctx, args[1:])
-	case "cache":
-		return a.cache(ctx, args[1:])
-	case "config":
-		return a.config(ctx, args[1:])
-	case "init":
-		return a.initProject(ctx, args[1:])
-	case "image":
-		return a.image(ctx, args[1:])
-	case "pool":
-		return a.pool(ctx, args[1:])
-	case "machine":
-		return a.machine(ctx, args[1:])
-	case "list":
-		return a.list(ctx, args[1:])
-	case "usage":
-		return a.usage(ctx, args[1:])
-	case "actions":
-		return a.actions(ctx, args[1:])
-	case "cleanup":
-		return a.cleanup(ctx, args[1:])
-	case "warmup":
-		return a.warmup(ctx, args[1:])
-	case "run":
-		return a.runCommand(ctx, args[1:])
-	case "desktop":
-		return a.desktop(ctx, args[1:])
-	case "sync-plan":
-		return a.syncPlan(ctx, args[1:])
-	case "status":
-		return a.status(ctx, args[1:])
-	case "ssh":
-		return a.ssh(ctx, args[1:])
-	case "vnc":
-		return a.vnc(ctx, args[1:])
-	case "webvnc":
-		return a.webvnc(ctx, args[1:])
-	case "screenshot":
-		return a.screenshot(ctx, args[1:])
-	case "inspect":
-		return a.inspect(ctx, args[1:])
-	case "stop", "release":
-		return a.stop(ctx, args[1:])
-	default:
-		return exit(2, "unknown command %q", args[0])
 	}
+
+	return a.runKong(ctx, args)
 }
 
 func (a App) printHelp() {
@@ -245,11 +178,4 @@ func parseFlags(fs *flag.FlagSet, args []string) error {
 		return exit(2, "%v", err)
 	}
 	return nil
-}
-
-func wantsHelp(args []string) bool {
-	if len(args) == 0 {
-		return false
-	}
-	return args[0] == "-h" || args[0] == "--help" || args[0] == "help"
 }
