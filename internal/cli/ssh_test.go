@@ -111,9 +111,39 @@ func decodePowerShellCommand(t *testing.T, command string) string {
 
 func TestWSL2WrapsRemoteCommand(t *testing.T) {
 	target := SSHTarget{TargetOS: targetWindows, WindowsMode: windowsModeWSL2}
-	got := wrapRemoteForTarget(target, "echo ok")
-	if got != "wsl.exe --exec bash -lc 'echo ok'" {
-		t.Fatalf("wrapRemoteForTarget()=%q", got)
+	remote := `printf "ok\n"; echo 'quoted'`
+	got := wrapRemoteForTarget(target, remote)
+	if !strings.HasPrefix(got, "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ") {
+		t.Fatalf("WSL2 command should use encoded PowerShell: %q", got)
+	}
+	decoded := decodePowerShellCommand(t, got)
+	for _, want := range []string{
+		`[Convert]::FromBase64String("`,
+		`[System.IO.File]::WriteAllBytes($path, $scriptBytes)`,
+		`& wsl.exe --exec bash $wslPath`,
+		`$code = $LASTEXITCODE`,
+		`exit $code`,
+	} {
+		if !strings.Contains(decoded, want) {
+			t.Fatalf("WSL2 command missing %q in %q", want, decoded)
+		}
+	}
+	start := strings.Index(decoded, `[Convert]::FromBase64String("`)
+	if start < 0 {
+		t.Fatalf("WSL2 command missing base64 payload: %q", decoded)
+	}
+	start += len(`[Convert]::FromBase64String("`)
+	end := strings.Index(decoded[start:], `")`)
+	if end < 0 {
+		t.Fatalf("WSL2 command has unterminated base64 payload: %q", decoded)
+	}
+	payload := decoded[start : start+end]
+	raw, err := base64.StdEncoding.DecodeString(payload)
+	if err != nil {
+		t.Fatalf("WSL2 command payload is not base64: %v", err)
+	}
+	if string(raw) != remote {
+		t.Fatalf("WSL2 command payload=%q want %q", string(raw), remote)
 	}
 }
 
@@ -488,6 +518,12 @@ func TestAWSLaunchCandidatesAddsPolicyFallbackUnlessExact(t *testing.T) {
 	got := awsLaunchCandidates(Config{Provider: "aws", Class: "beast", ServerType: "c7a.48xlarge"})
 	if got[len(got)-1] != "t3.small" {
 		t.Fatalf("last fallback=%q want t3.small in %v", got[len(got)-1], got)
+	}
+	wsl2 := awsLaunchCandidates(Config{Provider: "aws", TargetOS: targetWindows, WindowsMode: windowsModeWSL2, Class: "standard", ServerType: "m8i.large"})
+	for _, candidate := range wsl2 {
+		if strings.HasPrefix(candidate, "t3.") || strings.HasPrefix(candidate, "m7") {
+			t.Fatalf("WSL2 candidate %q does not support nested virtualization: %v", candidate, wsl2)
+		}
 	}
 	exact := awsLaunchCandidates(Config{Provider: "aws", Class: "beast", ServerType: "t3.small", ServerTypeExplicit: true})
 	if len(exact) != 1 || exact[0] != "t3.small" {

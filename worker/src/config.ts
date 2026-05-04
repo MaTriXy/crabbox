@@ -53,12 +53,9 @@ export function leaseConfig(input: LeaseRequest): LeaseConfig {
   const windowsMode = normalizeWindowsMode(input.windowsMode ?? "normal");
   if (
     target !== "linux" &&
-    !(provider === "aws" && target === "windows" && windowsMode === "normal") &&
+    !(provider === "aws" && target === "windows") &&
     !(provider === "aws" && target === "macos")
   ) {
-    if (provider === "aws" && target === "windows") {
-      throw new Error("brokered aws target=windows requires windowsMode=normal");
-    }
     if (provider === "hetzner") {
       throw new Error(unsupportedManagedTargetMessage(provider, target));
     }
@@ -73,7 +70,8 @@ export function leaseConfig(input: LeaseRequest): LeaseConfig {
     }
   }
   const machineClass = input.class ?? "beast";
-  const serverType = input.serverType ?? serverTypeForConfig(provider, target, machineClass);
+  const serverType =
+    input.serverType ?? serverTypeForConfig(provider, target, windowsMode, machineClass);
   const ttlSeconds = clampTTL(input.ttlSeconds ?? 5400);
   const idleTimeoutSeconds = clampIdleTimeout(input.idleTimeoutSeconds ?? 1800);
   const sshPublicKey = input.sshPublicKey?.trim() ?? "";
@@ -109,7 +107,7 @@ export function leaseConfig(input: LeaseRequest): LeaseConfig {
     capacityFallback: input.capacity?.fallback ?? "on-demand-after-120s",
     capacityRegions: input.capacity?.regions ?? [],
     capacityAvailabilityZones: input.capacity?.availabilityZones ?? [],
-    sshUser: input.sshUser ?? (provider === "aws" && target === "macos" ? "ec2-user" : "crabbox"),
+    sshUser: input.sshUser ?? defaultSSHUser(provider, target, windowsMode),
     sshPort: input.sshPort ?? "2222",
     sshFallbackPorts: validPorts(input.sshFallbackPorts ?? ["22"]),
     providerKey: input.providerKey ?? "crabbox-steipete",
@@ -121,6 +119,16 @@ export function leaseConfig(input: LeaseRequest): LeaseConfig {
     keep: input.keep ?? false,
     sshPublicKey,
   };
+}
+
+function defaultSSHUser(provider: Provider, target: TargetOS, windowsMode: WindowsMode): string {
+  if (provider === "aws" && target === "macos") {
+    return "ec2-user";
+  }
+  if (provider === "aws" && target === "windows" && windowsMode === "wsl2") {
+    return "Administrator";
+  }
+  return "crabbox";
 }
 
 function unsupportedManagedTargetMessage(provider: Provider, target: TargetOS): string {
@@ -215,10 +223,13 @@ export function serverTypeForProviderClass(provider: Provider, machineClass: str
 export function serverTypeForConfig(
   provider: Provider,
   target: TargetOS,
+  windowsMode: WindowsMode,
   machineClass: string,
 ): string {
   if (provider === "aws") {
-    return awsInstanceTypeCandidatesForTargetClass(target, machineClass)[0] ?? machineClass;
+    return (
+      awsInstanceTypeCandidatesForTargetClass(target, machineClass, windowsMode)[0] ?? machineClass
+    );
   }
   return serverTypeForClass(machineClass);
 }
@@ -226,11 +237,26 @@ export function serverTypeForConfig(
 export function awsInstanceTypeCandidatesForTargetClass(
   target: TargetOS,
   machineClass: string,
+  windowsMode: WindowsMode = "normal",
 ): string[] {
   if (target === "macos") {
     return ["mac2.metal"];
   }
   if (target === "windows") {
+    if (windowsMode === "wsl2") {
+      switch (machineClass) {
+        case "standard":
+          return ["m8i.large", "m8i-flex.large", "c8i.large", "r8i.large"];
+        case "fast":
+          return ["m8i.xlarge", "m8i-flex.xlarge", "c8i.xlarge", "r8i.xlarge"];
+        case "large":
+          return ["m8i.2xlarge", "m8i-flex.2xlarge", "c8i.2xlarge", "r8i.2xlarge"];
+        case "beast":
+          return ["m8i.4xlarge", "m8i-flex.4xlarge", "c8i.4xlarge", "r8i.4xlarge", "m8i.2xlarge"];
+        default:
+          return [machineClass];
+      }
+    }
     switch (machineClass) {
       case "standard":
         return ["m7i.large", "m7a.large", "t3.large"];

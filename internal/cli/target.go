@@ -27,6 +27,9 @@ func normalizeTargetConfig(cfg *Config) {
 	if cfg.Provider == "aws" && cfg.TargetOS == targetMacOS && cfg.SSHUser == baseConfig().SSHUser {
 		cfg.SSHUser = "ec2-user"
 	}
+	if cfg.Provider == "aws" && cfg.TargetOS == targetWindows && cfg.WindowsMode == windowsModeWSL2 && cfg.SSHUser == baseConfig().SSHUser {
+		cfg.SSHUser = "Administrator"
+	}
 	if cfg.Static.User != "" && cfg.SSHUser == baseConfig().SSHUser {
 		cfg.SSHUser = cfg.Static.User
 	}
@@ -88,8 +91,8 @@ func validateProviderTarget(cfg Config) error {
 	if cfg.Provider == "aws" && cfg.TargetOS == targetWindows && cfg.WindowsMode == windowsModeNormal {
 		return nil
 	}
-	if cfg.Provider == "aws" && cfg.TargetOS == targetWindows {
-		return exit(2, "provider=aws managed Windows supports windows.mode=normal only; use provider=ssh for target=windows windows.mode=%s static hosts", cfg.WindowsMode)
+	if cfg.Provider == "aws" && cfg.TargetOS == targetWindows && cfg.WindowsMode == windowsModeWSL2 {
+		return nil
 	}
 	if cfg.Provider == "aws" && cfg.TargetOS == targetMacOS {
 		if cfg.AWSMacHostID == "" && cfg.Coordinator == "" {
