@@ -127,6 +127,52 @@ func TestBlacksmithWarmupFailureStopsPrintedTestbox(t *testing.T) {
 	}
 }
 
+func TestBlacksmithWarmupFailureStopsNewListedTestbox(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	original := blacksmithCommandContext
+	originalDelay := blacksmithCleanupDelay
+	blacksmithCleanupDelay = time.Millisecond
+	var stopped string
+	listCalls := 0
+	blacksmithCommandContext = func(_ context.Context, _ string, args ...string) *exec.Cmd {
+		if len(args) >= 3 && args[0] == "testbox" && args[1] == "list" {
+			listCalls++
+			if listCalls < 3 {
+				return exec.Command("sh", "-c", "printf 'ID STATUS REPO WORKFLOW JOB REF CREATED\\n'")
+			}
+			return exec.Command("sh", "-c", "printf 'tbx_async123 queued openclaw .github/workflows/testbox.yml check main 2026-05-04T21:23:47.000000Z\\n'")
+		}
+		if len(args) >= 3 && args[0] == "testbox" && args[1] == "stop" {
+			for i, arg := range args {
+				if arg == "--id" && i+1 < len(args) {
+					stopped = args[i+1]
+				}
+			}
+			return exec.Command("sh", "-c", "exit 0")
+		}
+		return exec.Command("sh", "-c", "printf 'workflow missing\\n'; exit 1")
+	}
+	t.Cleanup(func() {
+		blacksmithCommandContext = original
+		blacksmithCleanupDelay = originalDelay
+	})
+
+	cfg := baseConfig()
+	cfg.Blacksmith.Workflow = ".github/workflows/testbox.yml"
+	cfg.Blacksmith.Job = "check"
+	cfg.Blacksmith.Ref = "main"
+	app := App{Stdout: io.Discard, Stderr: io.Discard}
+	_, _, err := app.blacksmithWarmupLease(context.Background(), cfg, Repo{Root: "/repo"}, false)
+	if err == nil {
+		t.Fatal("expected warmup failure")
+	}
+	if stopped != "tbx_async123" {
+		t.Fatalf("stopped=%q, want tbx_async123", stopped)
+	}
+}
+
 func TestBlacksmithOneShotRunRemovesClaimAfterStop(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -154,8 +200,8 @@ func TestBlacksmithOneShotRunRemovesClaimAfterStop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls != 3 {
-		t.Fatalf("blacksmith calls=%d, want warmup/run/stop", calls)
+	if calls != 4 {
+		t.Fatalf("blacksmith calls=%d, want list/warmup/run/stop", calls)
 	}
 	if claim, err := readLeaseClaim("tbx_abc123"); err != nil {
 		t.Fatal(err)

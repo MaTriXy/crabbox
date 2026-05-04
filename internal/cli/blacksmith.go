@@ -18,6 +18,7 @@ const blacksmithTestboxProvider = "blacksmith-testbox"
 var (
 	blacksmithCommandContext = exec.CommandContext
 	blacksmithIDPattern      = regexp.MustCompile(`\btbx_[A-Za-z0-9_-]+\b`)
+	blacksmithCleanupDelay   = time.Second
 )
 
 type blacksmithRunOptions struct {
@@ -218,14 +219,13 @@ func (a App) blacksmithWarmupLease(ctx context.Context, cfg Config, repo Repo, r
 	if err != nil {
 		return "", "", err
 	}
+	beforeWarmup := a.blacksmithListIDsBestEffort(ctx, cfg)
 	var output bytes.Buffer
 	cmd := blacksmithCommandContext(ctx, "blacksmith", args...)
 	cmd.Stdout = io.MultiWriter(a.Stdout, &output)
 	cmd.Stderr = io.MultiWriter(a.Stderr, &output)
 	if err := cmd.Run(); err != nil {
-		if leaseID := parseBlacksmithID(output.String()); leaseID != "" {
-			_ = a.blacksmithStopLease(ctx, cfg, leaseID)
-		}
+		a.cleanupFailedBlacksmithWarmup(ctx, cfg, beforeWarmup, output.String())
 		return "", "", exit(exitCode(err), "blacksmith testbox warmup failed: %v", err)
 	}
 	leaseID := parseBlacksmithID(output.String())
@@ -326,6 +326,77 @@ func blacksmithStopArgs(cfg Config, leaseID string) []string {
 func blacksmithListArgs(cfg Config) []string {
 	args := blacksmithBaseArgs(cfg)
 	return append(args, "testbox", "list")
+}
+
+func blacksmithListAllArgs(cfg Config) []string {
+	return append(blacksmithListArgs(cfg), "--all")
+}
+
+func (a App) blacksmithListIDsBestEffort(ctx context.Context, cfg Config) map[string]bool {
+	out, err := blacksmithCommandOutput(ctx, cfg, blacksmithListAllArgs(cfg))
+	if err != nil {
+		return map[string]bool{}
+	}
+	ids := map[string]bool{}
+	for _, item := range parseBlacksmithList(out) {
+		ids[item.ID] = true
+	}
+	return ids
+}
+
+func (a App) cleanupFailedBlacksmithWarmup(ctx context.Context, cfg Config, before map[string]bool, output string) {
+	if leaseID := parseBlacksmithID(output); leaseID != "" {
+		if err := a.blacksmithStopLease(ctx, cfg, leaseID); err == nil {
+			before[leaseID] = true
+		}
+	}
+	for attempt := 0; attempt < 5; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(blacksmithCleanupDelay):
+			}
+		}
+		list, err := blacksmithCommandOutput(ctx, cfg, blacksmithListAllArgs(cfg))
+		if err != nil {
+			return
+		}
+		stopped := false
+		for _, item := range parseBlacksmithList(list) {
+			if before[item.ID] || !blacksmithMatchesConfig(item, cfg) {
+				continue
+			}
+			_ = a.blacksmithStopLease(ctx, cfg, item.ID)
+			before[item.ID] = true
+			stopped = true
+		}
+		if stopped {
+			return
+		}
+	}
+}
+
+func blacksmithMatchesConfig(item blacksmithListItem, cfg Config) bool {
+	if workflow := blacksmithWorkflow(cfg); workflow != "" && item.Workflow != workflow {
+		return false
+	}
+	if job := blacksmithJob(cfg); job != "" && item.Job != job {
+		return false
+	}
+	if ref := blacksmithRef(cfg); ref != "" && item.Ref != ref {
+		return false
+	}
+	return true
+}
+
+func blacksmithCommandOutput(ctx context.Context, cfg Config, args []string) (string, error) {
+	cmd := blacksmithCommandContext(ctx, "blacksmith", args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
 }
 
 func parseBlacksmithList(output string) []blacksmithListItem {
