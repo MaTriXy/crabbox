@@ -84,7 +84,7 @@ func defaultScreenshotPath(leaseID, slug string) string {
 }
 
 func captureDesktopScreenshot(ctx context.Context, target SSHTarget, outputPath string) error {
-	if err := os.MkdirAll(filepath.Dir(absOrDot(outputPath)), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
 		return exit(2, "create screenshot directory: %v", err)
 	}
 	file, err := os.Create(outputPath)
@@ -103,14 +103,6 @@ func captureDesktopScreenshot(ctx context.Context, target SSHTarget, outputPath 
 	}
 	ok = true
 	return nil
-}
-
-func absOrDot(path string) string {
-	dir := filepath.Dir(path)
-	if dir == "" {
-		return "."
-	}
-	return dir
 }
 
 func runSSHToWriter(ctx context.Context, target SSHTarget, remote string, stdout io.Writer) error {

@@ -92,6 +92,8 @@ func (a App) Run(ctx context.Context, args []string) error {
 		return a.ssh(ctx, args[1:])
 	case "vnc":
 		return a.vnc(ctx, args[1:])
+	case "screenshot":
+		return a.screenshot(ctx, args[1:])
 	case "inspect":
 		return a.inspect(ctx, args[1:])
 	case "stop", "release":
@@ -145,6 +147,7 @@ Commands:
   actions     Register GitHub Actions runners or dispatch workflows
   ssh         Print the SSH command for a lease
   vnc         Print or open VNC connection details for a desktop lease
+  screenshot  Capture a PNG from a desktop lease
   inspect     Print lease/provider details; add --json for scripts
   stop        Release a lease or delete a direct-provider machine
   cleanup     Sweep expired direct-provider machines
@@ -157,6 +160,7 @@ Common Flows:
   crabbox run --id blue-lobster --shell 'pnpm install --frozen-lockfile && pnpm test'
   crabbox ssh --id blue-lobster
   crabbox vnc --id blue-lobster --open
+  crabbox screenshot --id blue-lobster --output desktop.png
   crabbox inspect --id blue-lobster --json
   crabbox history --lease cbx_abcdef123456
   crabbox logs run_123
