@@ -391,6 +391,22 @@ func TestPOSIXPrepareWorkdirDeletesButPreservesGit(t *testing.T) {
 	}
 }
 
+func TestRemoteGitSeedRemovesFailedCheckout(t *testing.T) {
+	got := remoteGitSeed("/work/repo", "https://github.com/openclaw/crabbox.git", "missing-sha")
+	for _, want := range []string{
+		"if (cd \"$tmp\"",
+		"git checkout --quiet 'missing-sha' || git checkout --quiet FETCH_HEAD",
+		"else rm -rf \"$tmp\"; fi",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("remoteGitSeed missing %q in %q", want, got)
+		}
+	}
+	if strings.Contains(got, "git checkout --quiet FETCH_HEAD || true") {
+		t.Fatalf("remoteGitSeed should not keep failed checkouts: %q", got)
+	}
+}
+
 func TestRemoteGitHydrateStatusUsesMarkerAndRemoteBase(t *testing.T) {
 	got := remoteGitHydrateStatus("/work/repo", "main", "abc123")
 	for _, want := range []string{
