@@ -98,7 +98,19 @@ func normalizeKongHelpArgs(args []string) []string {
 		next = append(next, "--help")
 		return next
 	}
+	if isKongCommandGroup(args[0]) && (len(args) == 1 || args[1] == "help") {
+		return []string{args[0], "--help"}
+	}
 	return args
+}
+
+func isKongCommandGroup(command string) bool {
+	switch command {
+	case "actions", "admin", "cache", "config", "desktop", "image", "machine", "pool":
+		return true
+	default:
+		return false
+	}
 }
 
 type initKongCmd struct {
