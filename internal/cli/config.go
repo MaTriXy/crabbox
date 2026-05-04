@@ -35,6 +35,7 @@ type Config struct {
 	AWSProfile         string
 	AWSRootGB          int32
 	AWSSSHCIDRs        []string
+	AWSMacHostID       string
 	SSHUser            string
 	SSHKey             string
 	SSHPort            string
@@ -145,7 +146,7 @@ func loadConfig() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.ServerType == "" {
-		cfg.ServerType = serverTypeForProviderClass(cfg.Provider, cfg.Class)
+		cfg.ServerType = serverTypeForConfig(cfg)
 	}
 	return cfg, nil
 }
@@ -271,6 +272,7 @@ type fileAWSConfig struct {
 	InstanceProfile string   `yaml:"instanceProfile,omitempty"`
 	RootGB          int32    `yaml:"rootGB,omitempty"`
 	SSHCIDRs        []string `yaml:"sshCIDRs,omitempty"`
+	MacHostID       string   `yaml:"macHostId,omitempty"`
 }
 
 type fileSSHConfig struct {
@@ -543,6 +545,9 @@ func applyFileConfig(cfg *Config, file fileConfig) {
 		if len(file.AWS.SSHCIDRs) > 0 {
 			cfg.AWSSSHCIDRs = file.AWS.SSHCIDRs
 		}
+		if file.AWS.MacHostID != "" {
+			cfg.AWSMacHostID = file.AWS.MacHostID
+		}
 	}
 	if file.SSH != nil {
 		if file.SSH.User != "" {
@@ -754,6 +759,7 @@ func applyEnv(cfg *Config) {
 	cfg.AWSSubnetID = getenv("CRABBOX_AWS_SUBNET_ID", cfg.AWSSubnetID)
 	cfg.AWSProfile = getenv("CRABBOX_AWS_INSTANCE_PROFILE", cfg.AWSProfile)
 	cfg.AWSRootGB = int32(getenvInt("CRABBOX_AWS_ROOT_GB", int(cfg.AWSRootGB)))
+	cfg.AWSMacHostID = getenv("CRABBOX_AWS_MAC_HOST_ID", cfg.AWSMacHostID)
 	if cidrs := os.Getenv("CRABBOX_AWS_SSH_CIDRS"); cidrs != "" {
 		cfg.AWSSSHCIDRs = splitCommaList(cidrs)
 	}
@@ -876,6 +882,16 @@ func serverTypeForClass(class string) string {
 	return serverTypeCandidatesForClass(class)[0]
 }
 
+func serverTypeForConfig(cfg Config) string {
+	if isBlacksmithProvider(cfg.Provider) || isStaticProvider(cfg.Provider) {
+		return ""
+	}
+	if cfg.Provider == "aws" {
+		return awsInstanceTypeCandidatesForTargetClass(cfg.TargetOS, cfg.Class)[0]
+	}
+	return serverTypeForClass(cfg.Class)
+}
+
 func serverTypeForProviderClass(provider, class string) string {
 	if isBlacksmithProvider(provider) || isStaticProvider(provider) {
 		return ""
@@ -898,6 +914,28 @@ func serverTypeCandidatesForClass(class string) []string {
 		return []string{"ccx63", "ccx53", "ccx43", "cpx62", "cx53"}
 	default:
 		return []string{class}
+	}
+}
+
+func awsInstanceTypeCandidatesForTargetClass(target, class string) []string {
+	switch target {
+	case targetMacOS:
+		return []string{"mac2.metal"}
+	case targetWindows:
+		switch class {
+		case "standard":
+			return []string{"m7i.large", "m7a.large", "t3.large"}
+		case "fast":
+			return []string{"m7i.xlarge", "m7a.xlarge", "t3.xlarge"}
+		case "large":
+			return []string{"m7i.2xlarge", "m7a.2xlarge", "t3.2xlarge"}
+		case "beast":
+			return []string{"m7i.4xlarge", "m7a.4xlarge", "m7i.2xlarge"}
+		default:
+			return []string{class}
+		}
+	default:
+		return awsInstanceTypeCandidatesForClass(class)
 	}
 }
 

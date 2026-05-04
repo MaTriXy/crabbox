@@ -5,6 +5,22 @@ import (
 	"strings"
 )
 
+const (
+	tightVNCMSIURL        = "https://www.tightvnc.com/download/2.8.85/tightvnc-2.8.85-gpl-setup-64bit.msi"
+	gitForWindowsSetupURL = "https://github.com/git-for-windows/git/releases/download/v2.52.0.windows.1/Git-2.52.0-64-bit.exe"
+)
+
+func awsUserData(cfg Config, publicKey string) string {
+	switch cfg.TargetOS {
+	case targetWindows:
+		return windowsUserData(cfg, publicKey)
+	case targetMacOS:
+		return macOSUserData(cfg, publicKey)
+	default:
+		return cloudInit(cfg, publicKey)
+	}
+}
+
 func cloudInit(cfg Config, publicKey string) string {
 	portLines := ""
 	for _, port := range sshPortCandidates(cfg.SSHPort, cfg.SSHFallbackPorts) {
@@ -73,6 +89,115 @@ runcmd:
     crabbox-ready
     BOOT
 `, cfg.SSHUser, publicKey, cfg.WorkRoot, portLines, readyChecks, writeFiles, bootstrap)
+}
+
+func windowsUserData(cfg Config, publicKey string) string {
+	workRoot := cfg.WorkRoot
+	if workRoot == "" {
+		workRoot = `C:\crabbox`
+	}
+	return `<powershell>
+$ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+function Retry($ScriptBlock) {
+  for ($i = 1; $i -le 8; $i++) {
+    try { & $ScriptBlock; return }
+    catch {
+      if ($i -eq 8) { throw }
+      Start-Sleep -Seconds ($i * 5)
+    }
+  }
+}
+$user = ` + psQuote(cfg.SSHUser) + `
+$publicKey = ` + psQuote(publicKey) + `
+$workRoot = ` + psQuote(workRoot) + `
+$vncPasswordPath = "C:\ProgramData\crabbox\vnc.password"
+$gitInstaller = "$env:TEMP\Git-2.52.0-64-bit.exe"
+$tightVNCInstaller = "$env:TEMP\tightvnc-2.8.85-gpl-setup-64bit.msi"
+New-Item -ItemType Directory -Force -Path "C:\ProgramData\crabbox", $workRoot | Out-Null
+if (-not (Test-Path -LiteralPath $vncPasswordPath)) {
+  $bytes = New-Object byte[] 12
+  [Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+  [Convert]::ToBase64String($bytes).Substring(0, 12) | Set-Content -NoNewline -Encoding ASCII -Path $vncPasswordPath
+}
+$userPassword = [Guid]::NewGuid().ToString("N") + "aA1!"
+if (-not (Get-LocalUser -Name $user -ErrorAction SilentlyContinue)) {
+  $secure = ConvertTo-SecureString $userPassword -AsPlainText -Force
+  New-LocalUser -Name $user -Password $secure -PasswordNeverExpires -AccountNeverExpires | Out-Null
+}
+Add-LocalGroupMember -Group "Administrators" -Member $user -ErrorAction SilentlyContinue
+$ssh = Get-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+if ($ssh.State -ne "Installed") {
+  Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 | Out-Null
+}
+New-Item -ItemType Directory -Force -Path "$env:ProgramData\ssh" | Out-Null
+Set-Content -Encoding ASCII -Path "$env:ProgramData\ssh\administrators_authorized_keys" -Value $publicKey
+icacls.exe "$env:ProgramData\ssh\administrators_authorized_keys" /inheritance:r /grant "*S-1-5-32-544:F" /grant "*S-1-5-18:F" | Out-Null
+if (-not (Get-NetFirewallRule -Name "crabbox-sshd" -ErrorAction SilentlyContinue)) {
+  New-NetFirewallRule -Name "crabbox-sshd" -DisplayName "Crabbox OpenSSH" -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 | Out-Null
+}
+Set-Service -Name sshd -StartupType Automatic
+Start-Service sshd
+if (-not (Test-Path -LiteralPath "C:\Program Files\Git\cmd\git.exe")) {
+  Retry { Invoke-WebRequest -Uri ` + psQuote(gitForWindowsSetupURL) + ` -OutFile $gitInstaller -UseBasicParsing }
+  Start-Process -FilePath $gitInstaller -ArgumentList "/VERYSILENT","/NORESTART","/NOCANCEL","/SP-" -Wait
+}
+$machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+foreach ($path in @("C:\Program Files\Git\cmd", "C:\Program Files\Git\usr\bin")) {
+  if ($machinePath -notlike "*$path*") { $machinePath = "$machinePath;$path" }
+  if ($env:Path -notlike "*$path*") { $env:Path = "$env:Path;$path" }
+}
+[Environment]::SetEnvironmentVariable("Path", $machinePath, "Machine")
+if (-not (Test-Path -LiteralPath "C:\Program Files\TightVNC\tvnserver.exe")) {
+  Retry { Invoke-WebRequest -Uri ` + psQuote(tightVNCMSIURL) + ` -OutFile $tightVNCInstaller -UseBasicParsing }
+  $vncPassword = Get-Content -Raw -Path $vncPasswordPath
+  Start-Process -FilePath msiexec.exe -ArgumentList @(
+    "/i", $tightVNCInstaller, "/quiet", "/norestart",
+    "ADDLOCAL=Server",
+    "SERVER_REGISTER_AS_SERVICE=1",
+    "SERVER_ADD_FIREWALL_EXCEPTION=0",
+    "SET_USEVNCAUTHENTICATION=1", "VALUE_OF_USEVNCAUTHENTICATION=1",
+    "SET_PASSWORD=1", "VALUE_OF_PASSWORD=$vncPassword",
+    "SET_USECONTROLAUTHENTICATION=1", "VALUE_OF_USECONTROLAUTHENTICATION=1",
+    "SET_CONTROLPASSWORD=1", "VALUE_OF_CONTROLPASSWORD=$vncPassword",
+    "SET_ALLOWLOOPBACK=1", "VALUE_OF_ALLOWLOOPBACK=1",
+    "SET_ACCEPTHTTPCONNECTIONS=1", "VALUE_OF_ACCEPTHTTPCONNECTIONS=0"
+  ) -Wait
+}
+Get-Service -Name tvnserver -ErrorAction SilentlyContinue | Set-Service -StartupType Automatic
+Start-Service -Name tvnserver -ErrorAction SilentlyContinue
+Restart-Service sshd
+</powershell>`
+}
+
+func macOSUserData(cfg Config, _ string) string {
+	workRoot := cfg.WorkRoot
+	if workRoot == "" {
+		workRoot = "/work/crabbox"
+	}
+	return `#!/bin/bash
+set -euxo pipefail
+install -d -m 0755 ` + shellQuote(workRoot) + ` /var/db/crabbox
+chown -R ` + shellQuote(cfg.SSHUser) + `:staff ` + shellQuote(workRoot) + `
+if [ ! -s /var/db/crabbox/vnc.password ]; then
+  pw="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16)"
+  printf '%s\n' "$pw" >/var/db/crabbox/vnc.password
+  dscl . -passwd /Users/` + shellQuote(cfg.SSHUser) + ` "$pw"
+fi
+chmod 0600 /var/db/crabbox/vnc.password
+launchctl enable system/com.apple.screensharing || true
+launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist || true
+cat >/usr/local/bin/crabbox-ready <<'READY'
+#!/bin/bash
+set -euo pipefail
+rsync --version >/dev/null
+curl --version >/dev/null
+test -w ` + shellQuote(workRoot) + `
+nc -z 127.0.0.1 5900
+READY
+chmod 0755 /usr/local/bin/crabbox-ready
+/usr/local/bin/crabbox-ready
+`
 }
 
 func cloudInitOptionalReadyChecks(cfg Config) string {

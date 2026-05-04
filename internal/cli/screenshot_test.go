@@ -15,7 +15,7 @@ func TestDefaultScreenshotPath(t *testing.T) {
 }
 
 func TestScreenshotRemoteCommandUsesDesktopDisplayAndPNG(t *testing.T) {
-	got := screenshotRemoteCommand()
+	got := screenshotRemoteCommand(SSHTarget{TargetOS: targetLinux})
 	for _, want := range []string{
 		`DISPLAY="${DISPLAY:-:99}"`,
 		"command -v scrot",

@@ -67,12 +67,10 @@ func (a App) vnc(ctx context.Context, args []string) error {
 	}
 	password := ""
 	if endpoint.Managed {
-		if target.TargetOS == targetLinux {
-			password, _ = runSSHOutput(ctx, target, "cat "+shellQuote(vncPasswordPath))
-		}
+		password, _ = runSSHOutput(ctx, target, vncPasswordCommand(target))
 	}
-	if target.TargetOS == targetLinux && !isStaticProvider(cfg.Provider) && password == "" {
-		password, _ = runSSHOutput(ctx, target, "cat "+shellQuote(vncPasswordPath))
+	if !isStaticProvider(cfg.Provider) && password == "" {
+		password, _ = runSSHOutput(ctx, target, vncPasswordCommand(target))
 	}
 	tunnel := vncTunnelCommand(target, *localPort)
 	staticHostVNC := isStaticProvider(cfg.Provider) && !endpoint.Managed

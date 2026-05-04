@@ -19,6 +19,7 @@ export interface LeaseConfig {
   awsProfile: string;
   awsRootGB: number;
   awsSSHCIDRs: string[];
+  awsMacHostID: string;
   capacityMarket: "spot" | "on-demand";
   capacityStrategy:
     | "most-available"
@@ -46,11 +47,26 @@ export function leaseConfig(input: LeaseRequest): LeaseConfig {
   }
   const target = normalizeTarget(input.target ?? input.targetOS ?? "linux");
   const windowsMode = normalizeWindowsMode(input.windowsMode ?? "normal");
-  if (target !== "linux") {
+  if (
+    target !== "linux" &&
+    !(provider === "aws" && target === "windows" && windowsMode === "normal") &&
+    !(provider === "aws" && target === "macos")
+  ) {
     throw new Error(`unsupported target for brokered ${provider}: ${target}`);
   }
+  if (target === "macos") {
+    if (provider !== "aws") {
+      throw new Error(`unsupported target for brokered ${provider}: ${target}`);
+    }
+    if (!input.awsMacHostID?.trim()) {
+      throw new Error("brokered aws target=macos requires awsMacHostID or CRABBOX_AWS_MAC_HOST_ID");
+    }
+    if ((input.capacity?.market ?? "spot") !== "on-demand") {
+      throw new Error("brokered aws target=macos requires capacity.market=on-demand");
+    }
+  }
   const machineClass = input.class ?? "beast";
-  const serverType = input.serverType ?? serverTypeForProviderClass(provider, machineClass);
+  const serverType = input.serverType ?? serverTypeForConfig(provider, target, machineClass);
   const ttlSeconds = clampTTL(input.ttlSeconds ?? 5400);
   const idleTimeoutSeconds = clampIdleTimeout(input.idleTimeoutSeconds ?? 1800);
   const sshPublicKey = input.sshPublicKey?.trim() ?? "";
@@ -76,16 +92,17 @@ export function leaseConfig(input: LeaseRequest): LeaseConfig {
     awsProfile: input.awsProfile ?? "",
     awsRootGB: input.awsRootGB ?? 400,
     awsSSHCIDRs: validCIDRs(input.awsSSHCIDRs ?? []),
+    awsMacHostID: input.awsMacHostID ?? "",
     capacityMarket: input.capacity?.market ?? "spot",
     capacityStrategy: input.capacity?.strategy ?? "most-available",
     capacityFallback: input.capacity?.fallback ?? "on-demand-after-120s",
     capacityRegions: input.capacity?.regions ?? [],
     capacityAvailabilityZones: input.capacity?.availabilityZones ?? [],
-    sshUser: input.sshUser ?? "crabbox",
+    sshUser: input.sshUser ?? (provider === "aws" && target === "macos" ? "ec2-user" : "crabbox"),
     sshPort: input.sshPort ?? "2222",
     sshFallbackPorts: validPorts(input.sshFallbackPorts ?? ["22"]),
     providerKey: input.providerKey ?? "crabbox-steipete",
-    workRoot: input.workRoot ?? "/work/crabbox",
+    workRoot: input.workRoot ?? (target === "windows" && windowsMode === "normal" ? "C:\\crabbox" : "/work/crabbox"),
     ttlSeconds,
     idleTimeoutSeconds,
     keep: input.keep ?? false,
@@ -162,6 +179,41 @@ export function serverTypeForProviderClass(provider: Provider, machineClass: str
     return awsInstanceTypeCandidatesForClass(machineClass)[0] ?? machineClass;
   }
   return serverTypeForClass(machineClass);
+}
+
+export function serverTypeForConfig(
+  provider: Provider,
+  target: TargetOS,
+  machineClass: string,
+): string {
+  if (provider === "aws") {
+    return awsInstanceTypeCandidatesForTargetClass(target, machineClass)[0] ?? machineClass;
+  }
+  return serverTypeForClass(machineClass);
+}
+
+export function awsInstanceTypeCandidatesForTargetClass(
+  target: TargetOS,
+  machineClass: string,
+): string[] {
+  if (target === "macos") {
+    return ["mac2.metal"];
+  }
+  if (target === "windows") {
+    switch (machineClass) {
+      case "standard":
+        return ["m7i.large", "m7a.large", "t3.large"];
+      case "fast":
+        return ["m7i.xlarge", "m7a.xlarge", "t3.xlarge"];
+      case "large":
+        return ["m7i.2xlarge", "m7a.2xlarge", "t3.2xlarge"];
+      case "beast":
+        return ["m7i.4xlarge", "m7a.4xlarge", "m7i.2xlarge"];
+      default:
+        return [machineClass];
+    }
+  }
+  return awsInstanceTypeCandidatesForClass(machineClass);
 }
 
 export function serverTypeCandidatesForClass(machineClass: string): string[] {

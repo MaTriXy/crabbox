@@ -9,10 +9,12 @@ import (
 )
 
 const (
-	desktopDisplay  = ":99"
-	managedVNCPort  = "5900"
-	vncPasswordPath = "/var/lib/crabbox/vnc.password"
-	browserEnvPath  = "/var/lib/crabbox/browser.env"
+	desktopDisplay         = ":99"
+	managedVNCPort         = "5900"
+	vncPasswordPath        = "/var/lib/crabbox/vnc.password"
+	windowsVNCPasswordPath = `C:\ProgramData\crabbox\vnc.password`
+	macOSVNCPasswordPath   = "/var/db/crabbox/vnc.password"
+	browserEnvPath         = "/var/lib/crabbox/browser.env"
 )
 
 type vncEndpoint struct {
@@ -235,6 +237,16 @@ if (-not $result.TcpTestSucceeded) { exit 1 }`)
 		return "nc -z 127.0.0.1 5900"
 	}
 	return "ss -ltn | grep -q '127.0.0.1:5900'"
+}
+
+func vncPasswordCommand(target SSHTarget) string {
+	if isWindowsNativeTarget(target) {
+		return powershellCommand("Get-Content -Raw -LiteralPath " + psQuote(windowsVNCPasswordPath))
+	}
+	if target.TargetOS == targetMacOS {
+		return "cat " + shellQuote(macOSVNCPasswordPath)
+	}
+	return "cat " + shellQuote(vncPasswordPath)
 }
 
 func tcpReachable(ctx context.Context, host, port string, timeout time.Duration) bool {

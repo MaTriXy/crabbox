@@ -183,7 +183,7 @@ func (c *AWSClient) createServer(ctx context.Context, cfg Config, publicKey, lea
 	name := leaseProviderName(leaseID, slug)
 	now := time.Now().UTC()
 	labels := directLeaseLabels(cfg, leaseID, slug, "aws", mapMarket(spot), keep, now)
-	userData := base64.StdEncoding.EncodeToString([]byte(cloudInit(cfg, publicKey)))
+	userData := base64.StdEncoding.EncodeToString([]byte(awsUserData(cfg, publicKey)))
 	rootGB := cfg.AWSRootGB
 	if rootGB <= 0 {
 		rootGB = 400
@@ -239,6 +239,9 @@ func (c *AWSClient) createServer(ctx context.Context, cfg Config, publicKey, lea
 				SubnetId:                 aws.String(cfg.AWSSubnetID),
 			},
 		}
+	}
+	if cfg.TargetOS == targetMacOS {
+		input.Placement = &types.Placement{HostId: aws.String(cfg.AWSMacHostID), Tenancy: types.TenancyHost}
 	}
 	out, err := c.ec2.RunInstances(ctx, input)
 	if err != nil {
@@ -307,6 +310,15 @@ func (c *AWSClient) SetTags(ctx context.Context, id string, labels map[string]st
 func (c *AWSClient) resolveAMI(ctx context.Context, cfg Config) (string, error) {
 	if cfg.AWSAMI != "" {
 		return cfg.AWSAMI, nil
+	}
+	if cfg.TargetOS == targetWindows && cfg.WindowsMode == windowsModeNormal {
+		return "resolve:ssm:/aws/service/ami-windows-latest/Windows_Server-2022-English-Full-Base", nil
+	}
+	if cfg.TargetOS == targetMacOS {
+		if strings.HasPrefix(cfg.ServerType, "mac1.") {
+			return "resolve:ssm:/aws/service/ec2-macos/sonoma/x86_64_mac/latest/image_id", nil
+		}
+		return "resolve:ssm:/aws/service/ec2-macos/sonoma/arm64_mac/latest/image_id", nil
 	}
 	out, err := c.ec2.DescribeImages(ctx, &ec2.DescribeImagesInput{
 		Owners: []string{awsUbuntuOwner},
@@ -494,7 +506,14 @@ func awsLaunchCandidates(cfg Config) []string {
 	if cfg.ServerTypeExplicit {
 		return []string{cfg.ServerType}
 	}
-	return appendUniqueStrings([]string{cfg.ServerType}, append(awsInstanceTypeCandidatesForClass(cfg.Class), "t3.small")...)
+	if cfg.TargetOS == targetMacOS {
+		return appendUniqueStrings([]string{cfg.ServerType}, awsInstanceTypeCandidatesForTargetClass(cfg.TargetOS, cfg.Class)...)
+	}
+	fallback := "t3.small"
+	if cfg.TargetOS == targetWindows {
+		fallback = "t3.large"
+	}
+	return appendUniqueStrings([]string{cfg.ServerType}, append(awsInstanceTypeCandidatesForTargetClass(cfg.TargetOS, cfg.Class), fallback)...)
 }
 
 func parsePort32(port string) (int32, bool) {

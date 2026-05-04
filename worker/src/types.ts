@@ -11,6 +11,7 @@ export interface Env {
   CRABBOX_AWS_INSTANCE_PROFILE?: string;
   CRABBOX_AWS_ROOT_GB?: string;
   CRABBOX_AWS_SSH_CIDRS?: string;
+  CRABBOX_AWS_MAC_HOST_ID?: string;
   CRABBOX_SHARED_TOKEN?: string;
   CRABBOX_ADMIN_TOKEN?: string;
   CRABBOX_SESSION_SECRET?: string;
@@ -57,6 +58,7 @@ export interface LeaseRequest {
   awsProfile?: string;
   awsRootGB?: number;
   awsSSHCIDRs?: string[];
+  awsMacHostID?: string;
   capacity?: {
     market?: "spot" | "on-demand";
     strategy?: "most-available" | "price-capacity-optimized" | "capacity-optimized" | "sequential";

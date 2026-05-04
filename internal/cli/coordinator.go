@@ -320,6 +320,7 @@ func (c *CoordinatorClient) CreateLease(ctx context.Context, cfg Config, publicK
 		"awsProfile":         cfg.AWSProfile,
 		"awsRootGB":          cfg.AWSRootGB,
 		"awsSSHCIDRs":        cfg.AWSSSHCIDRs,
+		"awsMacHostID":       cfg.AWSMacHostID,
 		"capacity": map[string]any{
 			"market":            cfg.Capacity.Market,
 			"strategy":          cfg.Capacity.Strategy,

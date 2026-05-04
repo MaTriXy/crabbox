@@ -24,6 +24,9 @@ func normalizeTargetConfig(cfg *Config) {
 			cfg.WorkRoot = `C:\crabbox`
 		}
 	}
+	if cfg.Provider == "aws" && cfg.TargetOS == targetMacOS && cfg.SSHUser == baseConfig().SSHUser {
+		cfg.SSHUser = "ec2-user"
+	}
 	if cfg.Static.User != "" && cfg.SSHUser == baseConfig().SSHUser {
 		cfg.SSHUser = cfg.Static.User
 	}
@@ -80,6 +83,18 @@ func validateTargetConfig(cfg Config) error {
 
 func validateProviderTarget(cfg Config) error {
 	if isStaticProvider(cfg.Provider) || isBlacksmithProvider(cfg.Provider) {
+		return nil
+	}
+	if cfg.Provider == "aws" && cfg.TargetOS == targetWindows && cfg.WindowsMode == windowsModeNormal {
+		return nil
+	}
+	if cfg.Provider == "aws" && cfg.TargetOS == targetMacOS {
+		if cfg.AWSMacHostID == "" {
+			return exit(2, "provider=aws target=macos requires CRABBOX_AWS_MAC_HOST_ID or aws.macHostId for an allocated EC2 Mac Dedicated Host")
+		}
+		if cfg.Capacity.Market != "on-demand" {
+			return exit(2, "provider=aws target=macos requires --market on-demand; EC2 Mac instances are not Spot")
+		}
 		return nil
 	}
 	if cfg.TargetOS != targetLinux {

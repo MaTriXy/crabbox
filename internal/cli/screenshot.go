@@ -44,8 +44,8 @@ func (a App) screenshot(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if target.TargetOS != targetLinux {
-		return exit(2, "desktop screenshots are currently supported for Linux desktop leases only; target=%s is not a Crabbox-created desktop", target.TargetOS)
+	if isStaticProvider(cfg.Provider) && target.TargetOS != targetLinux {
+		return exit(2, "desktop screenshots are not captured from static %s hosts because those are existing host machines, not Crabbox-created desktops", target.TargetOS)
 	}
 	if err := enforceManagedLeaseCapabilities(cfg, server, leaseID); err != nil {
 		return err
@@ -98,7 +98,7 @@ func captureDesktopScreenshot(ctx context.Context, target SSHTarget, outputPath 
 			_ = os.Remove(outputPath)
 		}
 	}()
-	if err := runSSHToWriter(ctx, target, screenshotRemoteCommand(), file); err != nil {
+	if err := runSSHToWriter(ctx, target, screenshotRemoteCommand(target), file); err != nil {
 		return exit(5, "capture screenshot: %v", err)
 	}
 	ok = true
@@ -121,7 +121,32 @@ func runSSHToWriter(ctx context.Context, target SSHTarget, remote string, stdout
 	return nil
 }
 
-func screenshotRemoteCommand() string {
+func screenshotRemoteCommand(target SSHTarget) string {
+	if isWindowsNativeTarget(target) {
+		return `$ErrorActionPreference = "Stop"
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+$bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+$graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+$graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+$stream = New-Object System.IO.MemoryStream
+$bitmap.Save($stream, [System.Drawing.Imaging.ImageFormat]::Png)
+$bytes = $stream.ToArray()
+[Console]::OpenStandardOutput().Write($bytes, 0, $bytes.Length)
+$graphics.Dispose()
+$bitmap.Dispose()
+$stream.Dispose()`
+	}
+	if target.TargetOS == targetMacOS {
+		return `set -eu
+if command -v screencapture >/dev/null 2>&1; then
+  screencapture -x -t png -
+else
+  echo "no screenshot tool found; EC2 macOS should provide screencapture" >&2
+  exit 127
+fi`
+	}
 	return `set -eu
 export DISPLAY="${DISPLAY:-:99}"
 if command -v scrot >/dev/null 2>&1; then
