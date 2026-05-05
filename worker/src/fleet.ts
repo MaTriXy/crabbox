@@ -659,7 +659,10 @@ export class FleetDurableObject implements DurableObject {
     }
     const ticket = await this.consumeCodeTicket(request);
     if (!ticket) {
-      return json({ error: "code_ticket_required", message: "valid code bridge ticket required" }, { status: 401 });
+      return json(
+        { error: "code_ticket_required", message: "valid code bridge ticket required" },
+        { status: 401 },
+      );
     }
     const lease = await this.getLease(ticket.leaseID);
     if (!lease || !identifierMatchesLease(identifier, lease)) {
@@ -692,7 +695,11 @@ export class FleetDurableObject implements DurableObject {
   ): Promise<Response> {
     const lease = await this.resolveLease(identifier, request, false);
     if (!lease) {
-      return portalError("Lease not found", "That lease is not active or is not visible to you.", 404);
+      return portalError(
+        "Lease not found",
+        "That lease is not active or is not visible to you.",
+        404,
+      );
     }
     const error = codeLeaseError(lease);
     if (error) {
@@ -738,7 +745,10 @@ export class FleetDurableObject implements DurableObject {
       agent.send(JSON.stringify(message));
     });
     if (response.error) {
-      return json({ error: "code_proxy_error", message: response.error }, { status: response.status || 502 });
+      return json(
+        { error: "code_proxy_error", message: response.error },
+        { status: response.status || 502 },
+      );
     }
     return new Response(response.body ? base64ToBytes(response.body) : null, {
       status: response.status || 502,
@@ -746,11 +756,7 @@ export class FleetDurableObject implements DurableObject {
     });
   }
 
-  private codeViewerWebSocket(
-    request: Request,
-    lease: LeaseRecord,
-    agent: WebSocket,
-  ): Response {
+  private codeViewerWebSocket(request: Request, lease: LeaseRecord, agent: WebSocket): Response {
     const pair = new WebSocketPair();
     const client = pair[0];
     const viewer = pair[1];
@@ -766,11 +772,12 @@ export class FleetDurableObject implements DurableObject {
     };
     agent.send(JSON.stringify(open));
     viewer.addEventListener("message", (event) => {
-      void normalizeWebVNCData(event.data).then((data) => {
+      void (async () => {
+        const data = await normalizeWebVNCData(event.data);
         const bytes = typeof data === "string" ? textEncoder.encode(data) : new Uint8Array(data);
         const message: CodeWebSocketData = { type: "ws_data", id, body: bytesToBase64(bytes) };
         agent.send(JSON.stringify(message));
-      });
+      })();
     });
     const close = (code = 1000, reason = "viewer closed") => {
       this.codeViewers.delete(id);
@@ -817,7 +824,11 @@ export class FleetDurableObject implements DurableObject {
     if (message.type === "ws_close" && message.id) {
       const viewer = this.codeViewers.get(message.id);
       this.codeViewers.delete(message.id);
-      closeSocket(viewer, (message as CodeWebSocketClose).code ?? 1000, (message as CodeWebSocketClose).reason ?? "code socket closed");
+      closeSocket(
+        viewer,
+        (message as CodeWebSocketClose).code ?? 1000,
+        (message as CodeWebSocketClose).reason ?? "code socket closed",
+      );
       return;
     }
     void leaseID;

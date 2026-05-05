@@ -534,7 +534,9 @@ describe("fleet lease identity and idle", () => {
       }),
     );
 
-    const page = await fleet.fetch(request("GET", "/portal/leases/blue-lobster/code/", { headers }));
+    const page = await fleet.fetch(
+      request("GET", "/portal/leases/blue-lobster/code/", { headers }),
+    );
     expect(page.status).toBe(200);
     const pageBody = await page.text();
     expect(pageBody).toContain("crabbox code --id blue-lobster --open");
