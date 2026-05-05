@@ -22,6 +22,12 @@ capability. `crabbox code` then resolves the lease, starts `code-server` on
 runner loopback, opens an SSH tunnel, mints a short-lived bridge ticket, and
 registers a local bridge with the coordinator.
 
+The editor opens the synced workspace by default. If you run `crabbox code`
+from a subdirectory inside the local checkout, Crabbox maps that relative path
+onto the remote workspace and opens the matching folder. Actions-hydrated
+leases use the hydration workspace instead of the default `/work/crabbox/...`
+path.
+
 The browser URL is lease-scoped:
 
 ```text
@@ -41,6 +47,10 @@ browser
 Keep the local `crabbox code` process running while using the editor. The
 coordinator authenticates the browser through portal auth and authenticates the
 local bridge with a one-use, short-lived ticket.
+
+Managed code-server starts with `Default Dark Modern` as the default theme. The
+bridge also chunks large HTTP responses and websocket frames so VS Code assets
+and extension-host traffic stay below coordinator websocket frame limits.
 
 ## Flags
 
@@ -76,3 +86,12 @@ The portal shows a bridge command
 
 The browser can reach the coordinator, but no local bridge is registered. Start
 `crabbox code --id <lease>` locally and keep it running.
+
+Check bridge health with:
+
+```sh
+curl https://crabbox.openclaw.ai/portal/leases/<lease>/code/health
+```
+
+When authenticated, the health response includes whether the code bridge agent
+is currently connected.
