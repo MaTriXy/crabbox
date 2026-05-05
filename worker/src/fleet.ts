@@ -65,6 +65,10 @@ export class FleetDurableObject implements DurableObject {
     try {
       const parts = pathParts(request);
       const method = request.method.toUpperCase();
+      const adminError = adminRouteError(request, method, parts);
+      if (adminError) {
+        return adminError;
+      }
       if (method === "GET" && parts.join("/") === "v1/health") {
         return json({ ok: true, fleet: fleetID });
       }
@@ -81,9 +85,6 @@ export class FleetDurableObject implements DurableObject {
         return await this.portalRoute(request, parts);
       }
       if (method === "GET" && parts.join("/") === "v1/pool") {
-        if (!isAdminRequest(request)) {
-          return json({ error: "forbidden", message: "admin token required" }, { status: 403 });
-        }
         return await this.pool(request);
       }
       if (method === "GET" && parts.join("/") === "v1/usage") {
@@ -93,15 +94,9 @@ export class FleetDurableObject implements DurableObject {
         return this.whoami(request);
       }
       if (method === "GET" && parts.join("/") === "v1/admin/leases") {
-        if (!isAdminRequest(request)) {
-          return json({ error: "forbidden", message: "admin token required" }, { status: 403 });
-        }
         return await this.adminLeases(request);
       }
       if (parts[0] === "v1" && parts[1] === "admin" && parts[2] === "leases" && parts[3]) {
-        if (!isAdminRequest(request)) {
-          return json({ error: "forbidden", message: "admin token required" }, { status: 403 });
-        }
         return await this.adminLeaseRoute(request, parts[3], parts[4]);
       }
       if (method === "GET" && parts.join("/") === "v1/runs") {
@@ -114,15 +109,9 @@ export class FleetDurableObject implements DurableObject {
         return await this.runRoute(request, parts[2], parts[3]);
       }
       if (method === "POST" && parts.join("/") === "v1/images") {
-        if (!isAdminRequest(request)) {
-          return json({ error: "forbidden", message: "admin token required" }, { status: 403 });
-        }
         return await this.createImage(request);
       }
       if (parts[0] === "v1" && parts[1] === "images" && parts[2]) {
-        if (!isAdminRequest(request)) {
-          return json({ error: "forbidden", message: "admin token required" }, { status: 403 });
-        }
         return await this.imageRoute(request, parts[2], parts[3]);
       }
       if (method === "GET" && parts.join("/") === "v1/leases") {
@@ -1207,6 +1196,29 @@ function clampLimit(value: string | null, fallback: number): number {
 
 function notFound(): Response {
   return json({ error: "not_found" }, { status: 404 });
+}
+
+function adminRouteError(request: Request, method: string, parts: string[]): Response | undefined {
+  if (!isAdminRoute(method, parts) || isAdminRequest(request)) {
+    return undefined;
+  }
+  return json({ error: "forbidden", message: "admin token required" }, { status: 403 });
+}
+
+function isAdminRoute(method: string, parts: string[]): boolean {
+  if (method === "GET" && parts.join("/") === "v1/pool") {
+    return true;
+  }
+  if (method === "GET" && parts.join("/") === "v1/admin/leases") {
+    return true;
+  }
+  if (parts[0] === "v1" && parts[1] === "admin" && parts[2] === "leases" && Boolean(parts[3])) {
+    return true;
+  }
+  if (method === "POST" && parts.join("/") === "v1/images") {
+    return true;
+  }
+  return parts[0] === "v1" && parts[1] === "images" && Boolean(parts[2]);
 }
 
 function mergeTailscaleMetadata(

@@ -382,30 +382,31 @@ export class EC2SpotClient {
       }
       return this.resolveLatestAmazonAMI("amzn-ec2-macos-14.*-arm64", "arm64_mac");
     }
-    const root = await this.ec2("DescribeImages", {
-      "Owner.1": awsUbuntuOwner,
-      "Filter.1.Name": "architecture",
-      "Filter.1.Value.1": "x86_64",
-      "Filter.2.Name": "name",
-      "Filter.2.Value.1": "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*",
-      "Filter.3.Name": "root-device-type",
-      "Filter.3.Value.1": "ebs",
-      "Filter.4.Name": "virtualization-type",
-      "Filter.4.Value.1": "hvm",
-    });
-    const images = items(record(root["imagesSet"])["item"]).toSorted((left, right) =>
-      asString(record(right)["creationDate"]).localeCompare(asString(record(left)["creationDate"])),
+    return this.resolveLatestAMI(
+      awsUbuntuOwner,
+      "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*",
+      "x86_64",
+      `no Ubuntu 24.04 x86_64 AMI found in ${this.region}`,
     );
-    const imageID = asString(record(images[0])["imageId"]);
-    if (!imageID) {
-      throw new Error(`no Ubuntu 24.04 x86_64 AMI found in ${this.region}`);
-    }
-    return imageID;
   }
 
   private async resolveLatestAmazonAMI(name: string, architecture: string): Promise<string> {
+    return this.resolveLatestAMI(
+      "amazon",
+      name,
+      architecture,
+      `no AWS AMI found in ${this.region} for name=${name} architecture=${architecture}`,
+    );
+  }
+
+  private async resolveLatestAMI(
+    owner: string,
+    name: string,
+    architecture: string,
+    emptyMessage: string,
+  ): Promise<string> {
     const root = await this.ec2("DescribeImages", {
-      "Owner.1": "amazon",
+      "Owner.1": owner,
       "Filter.1.Name": "architecture",
       "Filter.1.Value.1": architecture,
       "Filter.2.Name": "name",
@@ -420,9 +421,7 @@ export class EC2SpotClient {
     );
     const imageID = asString(record(images[0])["imageId"]);
     if (!imageID) {
-      throw new Error(
-        `no AWS AMI found in ${this.region} for name=${name} architecture=${architecture}`,
-      );
+      throw new Error(emptyMessage);
     }
     return imageID;
   }

@@ -27,22 +27,12 @@ func (a App) webvnc(ctx context.Context, args []string) error {
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
-	if *id == "" && fs.NArg() > 0 {
-		*id = fs.Arg(0)
-	}
+	setIDFromFirstArg(fs, id)
 	if *id == "" {
 		return exit(2, "usage: crabbox webvnc --id <lease-id-or-slug>")
 	}
-	cfg, err := loadConfig()
+	cfg, err := loadLeaseTargetConfig(fs, *provider, targetFlags, networkFlags, leaseTargetConfigOptions{Desktop: true})
 	if err != nil {
-		return err
-	}
-	cfg.Provider = *provider
-	if err := applyNetworkModeFlagOverride(&cfg, fs, networkFlags); err != nil {
-		return err
-	}
-	cfg.Desktop = true
-	if err := applyTargetFlagOverrides(&cfg, fs, targetFlags); err != nil {
 		return err
 	}
 	if isBlacksmithProvider(cfg.Provider) || isStaticProvider(cfg.Provider) {
@@ -55,26 +45,18 @@ func (a App) webvnc(ctx context.Context, args []string) error {
 	if !useCoordinator || coord == nil || coord.Token == "" {
 		return exit(2, "webvnc requires a configured coordinator login; run crabbox login first")
 	}
-	server, target, leaseID, err := a.resolveLeaseTarget(ctx, cfg, *id)
+	server, target, leaseID, err := a.resolveNetworkLeaseTarget(ctx, cfg, *id, false)
 	if err != nil {
 		return err
-	}
-	if resolved, err := resolveNetworkTarget(ctx, cfg, server, target); err != nil {
-		return err
-	} else {
-		target = resolved.Target
 	}
 	if err := enforceManagedLeaseCapabilities(cfg, server, leaseID); err != nil {
 		return err
 	}
-	repo, err := findRepo()
-	if err != nil {
+	if err := a.claimAndTouchLeaseTarget(ctx, cfg, server, leaseID, *reclaim); err != nil {
 		return err
 	}
-	if err := claimLeaseForRepoConfig(leaseID, serverSlug(server), cfg, repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
-		return err
-	}
-	a.touchActiveLeaseBestEffort(ctx, cfg, server, leaseID)
+	fmt.Fprintf(a.Stdout, "lease: %s slug=%s provider=%s target=%s\n", leaseID, blank(serverSlug(server), "-"), blank(server.Provider, cfg.Provider), blank(target.TargetOS, cfg.TargetOS))
+	fmt.Fprintln(a.Stdout, "bridge: probing VNC on target loopback 127.0.0.1:5900 over SSH")
 	endpoint, err := resolveVNCEndpoint(ctx, cfg, &target)
 	if err != nil {
 		return err
@@ -95,6 +77,7 @@ func (a App) webvnc(ctx context.Context, args []string) error {
 	connPort := endpoint.Port
 	var tunnel *exec.Cmd
 	if !endpoint.Direct {
+		fmt.Fprintf(a.Stdout, "bridge: starting SSH tunnel localhost:%s -> %s:%s\n", *localPort, endpoint.Host, endpoint.Port)
 		tunnel, err = startVNCForegroundTunnel(ctx, target, *localPort, endpoint.Host, endpoint.Port)
 		if err != nil {
 			return err

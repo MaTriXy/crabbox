@@ -41,22 +41,11 @@ func (a App) warmup(ctx context.Context, args []string) error {
 	started := time.Now()
 	defaults := defaultConfig()
 	fs := newFlagSet("warmup", a.Stderr)
-	provider := fs.String("provider", defaults.Provider, "provider: hetzner, aws, ssh, or blacksmith-testbox")
-	profile := fs.String("profile", defaults.Profile, "profile")
-	class := fs.String("class", defaults.Class, "machine class")
-	serverType := fs.String("type", getenv("CRABBOX_SERVER_TYPE", ""), "provider server/instance type")
-	market := fs.String("market", defaults.Capacity.Market, "capacity market: spot or on-demand")
-	ttl := fs.Duration("ttl", defaults.TTL, "maximum lease lifetime")
-	idleTimeout := fs.Duration("idle-timeout", defaults.IdleTimeout, "idle timeout")
-	desktop := fs.Bool("desktop", defaults.Desktop, "provision or require a visible desktop/VNC session")
-	browser := fs.Bool("browser", defaults.Browser, "provision or require a browser binary")
+	leaseFlags := registerLeaseCreateFlags(fs, defaults)
 	keep := fs.Bool("keep", true, "keep server after warmup")
 	actionsRunner := fs.Bool("actions-runner", false, "register this box as an ephemeral GitHub Actions runner")
 	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
 	timingJSON := fs.Bool("timing-json", false, "print final timing as JSON")
-	blacksmithFlags := registerBlacksmithFlags(fs, defaults)
-	targetFlags := registerTargetFlags(fs, defaults)
-	networkFlags := registerNetworkFlags(fs, defaults)
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
@@ -64,38 +53,8 @@ func (a App) warmup(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	cfg.Provider = *provider
-	cfg.Profile = *profile
-	cfg.Class = *class
-	applyCapabilityFlags(&cfg, *desktop, *browser)
-	if err := applyTargetFlagOverrides(&cfg, fs, targetFlags); err != nil {
+	if err := applyLeaseCreateFlags(&cfg, fs, leaseFlags); err != nil {
 		return err
-	}
-	if err := applyNetworkFlagOverrides(&cfg, fs, networkFlags); err != nil {
-		return err
-	}
-	if err := applyCapacityMarketFlag(&cfg, fs, *market); err != nil {
-		return err
-	}
-	applyServerTypeFlagOverrides(&cfg, fs, *serverType)
-	if flagWasSet(fs, "ttl") {
-		cfg.TTL = *ttl
-	}
-	if flagWasSet(fs, "idle-timeout") {
-		cfg.IdleTimeout = *idleTimeout
-	}
-	applyBlacksmithFlagOverrides(&cfg, fs, blacksmithFlags)
-	if err := validateProviderTarget(cfg); err != nil {
-		return err
-	}
-	if err := validateRequestedCapabilities(cfg); err != nil {
-		return err
-	}
-	if cfg.TTL <= 0 {
-		return exit(2, "ttl must be positive")
-	}
-	if cfg.IdleTimeout <= 0 {
-		return exit(2, "idle timeout must be positive")
 	}
 	repo, err := findRepo()
 	if err != nil {
@@ -183,15 +142,7 @@ func (a App) warmup(ctx context.Context, args []string) error {
 func (a App) runCommand(ctx context.Context, args []string) (err error) {
 	defaults := defaultConfig()
 	fs := newFlagSet("run", a.Stderr)
-	provider := fs.String("provider", defaults.Provider, "provider: hetzner, aws, ssh, or blacksmith-testbox")
-	profile := fs.String("profile", defaults.Profile, "profile")
-	class := fs.String("class", defaults.Class, "machine class")
-	serverType := fs.String("type", getenv("CRABBOX_SERVER_TYPE", ""), "provider server/instance type")
-	market := fs.String("market", defaults.Capacity.Market, "capacity market: spot or on-demand")
-	ttl := fs.Duration("ttl", defaults.TTL, "maximum lease lifetime")
-	idleTimeout := fs.Duration("idle-timeout", defaults.IdleTimeout, "idle timeout")
-	desktop := fs.Bool("desktop", defaults.Desktop, "provision or require a visible desktop/VNC session")
-	browser := fs.Bool("browser", defaults.Browser, "provision or require a browser binary")
+	leaseFlags := registerLeaseCreateFlags(fs, defaults)
 	leaseIDFlag := fs.String("id", "", "existing lease or server id")
 	keep := fs.Bool("keep", false, "keep server after command")
 	noSync := fs.Bool("no-sync", false, "skip rsync")
@@ -203,9 +154,6 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 	junitResults := fs.String("junit", "", "comma-separated remote JUnit XML paths to record")
 	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
 	timingJSON := fs.Bool("timing-json", false, "print final timing as JSON")
-	blacksmithFlags := registerBlacksmithFlags(fs, defaults)
-	targetFlags := registerTargetFlags(fs, defaults)
-	networkFlags := registerNetworkFlags(fs, defaults)
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
@@ -221,44 +169,14 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 	if err != nil {
 		return err
 	}
-	cfg.Provider = *provider
-	cfg.Profile = *profile
-	cfg.Class = *class
-	applyCapabilityFlags(&cfg, *desktop, *browser)
-	if err := applyTargetFlagOverrides(&cfg, fs, targetFlags); err != nil {
+	if err := applyLeaseCreateFlags(&cfg, fs, leaseFlags); err != nil {
 		return err
-	}
-	if err := applyNetworkFlagOverrides(&cfg, fs, networkFlags); err != nil {
-		return err
-	}
-	if err := applyCapacityMarketFlag(&cfg, fs, *market); err != nil {
-		return err
-	}
-	applyServerTypeFlagOverrides(&cfg, fs, *serverType)
-	if flagWasSet(fs, "ttl") {
-		cfg.TTL = *ttl
-	}
-	if flagWasSet(fs, "idle-timeout") {
-		cfg.IdleTimeout = *idleTimeout
 	}
 	if flagWasSet(fs, "checksum") {
 		cfg.Sync.Checksum = *checksumSync
 	}
 	if *junitResults != "" {
 		cfg.Results.JUnit = splitCommaList(*junitResults)
-	}
-	applyBlacksmithFlagOverrides(&cfg, fs, blacksmithFlags)
-	if err := validateProviderTarget(cfg); err != nil {
-		return err
-	}
-	if err := validateRequestedCapabilities(cfg); err != nil {
-		return err
-	}
-	if cfg.TTL <= 0 {
-		return exit(2, "ttl must be positive")
-	}
-	if cfg.IdleTimeout <= 0 {
-		return exit(2, "idle timeout must be positive")
 	}
 	repo, err := findRepo()
 	if err != nil {

@@ -45,6 +45,7 @@ export function portalVNC(lease: LeaseRecord): Response {
   const nonce = scriptNonce();
   const title = `WebVNC ${lease.slug || lease.id}`;
   const wsPath = `/portal/leases/${encodeURIComponent(lease.id)}/vnc/viewer`;
+  const bridgeCmd = webVNCBridgeCommand(lease);
   return html(
     title,
     `<main class="vnc-page">
@@ -63,7 +64,7 @@ export function portalVNC(lease: LeaseRecord): Response {
       <section class="panel commands">
         <h2>bridge</h2>
         <p>run this locally while the browser tab is open:</p>
-        <code>crabbox webvnc --id ${escapeHTML(lease.slug || lease.id)} --open</code>
+        <code>${escapeHTML(bridgeCmd)}</code>
       </section>
     </main>
     <script type="module" nonce="${nonce}">
@@ -162,6 +163,32 @@ export function portalError(title: string, message: string, status = 400): Respo
     </main>`,
     status,
   );
+}
+
+function webVNCBridgeCommand(lease: LeaseRecord): string {
+  const target = lease.target || "linux";
+  const args = [
+    "crabbox",
+    "webvnc",
+    "--provider",
+    lease.provider,
+    "--target",
+    target,
+    "--id",
+    lease.slug || lease.id,
+  ];
+  if (target === "windows" && lease.windowsMode && lease.windowsMode !== "normal") {
+    args.push("--windows-mode", lease.windowsMode);
+  }
+  args.push("--open");
+  return args.map(shellArg).join(" ");
+}
+
+function shellArg(value: string): string {
+  if (/^[A-Za-z0-9_./:@=-]+$/.test(value)) {
+    return value;
+  }
+  return `'${value.replaceAll("'", "'\"'\"'")}'`;
 }
 
 function leaseRow(lease: LeaseRecord): string {

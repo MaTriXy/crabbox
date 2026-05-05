@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -50,7 +52,92 @@ describe("machine class config", () => {
     ]);
     expect(awsInstanceTypeCandidatesForTargetClass("macos", "standard")).toEqual(["mac2.metal"]);
   });
+
+  it("matches the Go CLI machine class tables", () => {
+    const go = readFileSync(new URL("../../internal/cli/config.go", import.meta.url), "utf8");
+    const classes = ["standard", "fast", "large", "beast"];
+    const hetzner = parseGoStringArrayCases(goFunctionBody(go, "serverTypeCandidatesForClass"));
+    const awsLinux = parseGoStringArrayCases(
+      goFunctionBody(go, "awsInstanceTypeCandidatesForClass"),
+    );
+    const awsTarget = goFunctionBody(go, "awsInstanceTypeCandidatesForTargetModeClass");
+    const awsWSL2 = parseGoStringArrayCases(
+      goSwitchAfter(awsTarget, "if windowsMode == windowsModeWSL2"),
+    );
+    const awsWindows = parseGoStringArrayCases(goSwitchAfter(awsTarget, "switch class", 1));
+
+    for (const name of classes) {
+      expect(serverTypeCandidatesForClass(name)).toEqual(hetzner[name]);
+      expect(awsInstanceTypeCandidatesForClass(name)).toEqual(awsLinux[name]);
+      expect(awsInstanceTypeCandidatesForTargetClass("windows", name)).toEqual(awsWindows[name]);
+      expect(awsInstanceTypeCandidatesForTargetClass("windows", name, "wsl2")).toEqual(
+        awsWSL2[name],
+      );
+    }
+    expect(awsInstanceTypeCandidatesForTargetClass("macos", "standard")).toEqual(["mac2.metal"]);
+  });
 });
+
+function goFunctionBody(source: string, name: string): string {
+  const start = source.indexOf(`func ${name}(`);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const open = source.indexOf("{", start);
+  expect(open).toBeGreaterThanOrEqual(0);
+  let depth = 0;
+  for (let index = open; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(open + 1, index);
+      }
+    }
+  }
+  throw new Error(`unterminated Go function ${name}`);
+}
+
+function goSwitchAfter(source: string, marker: string, occurrence = 0): string {
+  let cursor = -1;
+  for (let index = 0; index <= occurrence; index += 1) {
+    cursor = source.indexOf(marker, cursor + 1);
+    expect(cursor).toBeGreaterThanOrEqual(0);
+  }
+  const open = source.indexOf("{", cursor);
+  expect(open).toBeGreaterThanOrEqual(0);
+  let depth = 0;
+  for (let index = open; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(open + 1, index);
+      }
+    }
+  }
+  throw new Error(`unterminated Go switch after ${marker}`);
+}
+
+function parseGoStringArrayCases(source: string): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  const pattern = /case "([^"]+)":\s*return \[\]string\{([^}]*)\}/g;
+  for (const match of source.matchAll(pattern)) {
+    const key = match[1];
+    const body = match[2];
+    if (key === undefined || body === undefined) {
+      continue;
+    }
+    out[key] = [...body.matchAll(/"([^"]+)"/g)].map((item) => item[1]).filter(isString);
+  }
+  return out;
+}
+
+function isString(value: string | undefined): value is string {
+  return value !== undefined;
+}
 
 describe("lease config", () => {
   it("requires an ssh public key", () => {

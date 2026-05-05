@@ -23,53 +23,30 @@ func (a App) vnc(ctx context.Context, args []string) error {
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
-	if *id == "" && fs.NArg() > 0 {
-		*id = fs.Arg(0)
-	}
-	cfg, err := loadConfig()
+	setIDFromFirstArg(fs, id)
+	cfg, err := loadLeaseTargetConfig(fs, *provider, targetFlags, networkFlags, leaseTargetConfigOptions{Desktop: true})
 	if err != nil {
-		return err
-	}
-	cfg.Provider = *provider
-	cfg.Desktop = true
-	if err := applyTargetFlagOverrides(&cfg, fs, targetFlags); err != nil {
-		return err
-	}
-	if err := applyNetworkModeFlagOverride(&cfg, fs, networkFlags); err != nil {
 		return err
 	}
 	if isBlacksmithProvider(cfg.Provider) {
 		return exit(2, "desktop/VNC is not supported for provider=%s; Blacksmith owns machine connectivity", cfg.Provider)
 	}
-	if *id == "" && !isStaticProvider(cfg.Provider) {
-		return exit(2, "usage: crabbox vnc --id <lease-id-or-slug>")
+	if err := requireLeaseID(*id, "crabbox vnc --id <lease-id-or-slug>", cfg); err != nil {
+		return err
 	}
 	if *openClient && isStaticProvider(cfg.Provider) && !*hostManaged {
 		return exit(2, "static %s VNC is an existing host, not a Crabbox-created box; rerun with --host-managed only if you want to open that host's OS login prompt", cfg.TargetOS)
 	}
-	server, target, leaseID, err := a.resolveLeaseTarget(ctx, cfg, *id)
+	server, target, leaseID, err := a.resolveNetworkLeaseTarget(ctx, cfg, *id, true)
 	if err != nil {
 		return err
-	}
-	if resolved, err := resolveNetworkTarget(ctx, cfg, server, target); err != nil {
-		return err
-	} else {
-		target = resolved.Target
-		if resolved.FallbackReason != "" {
-			fmt.Fprintf(a.Stderr, "network fallback %s\n", resolved.FallbackReason)
-		}
 	}
 	if err := enforceManagedLeaseCapabilities(cfg, server, leaseID); err != nil {
 		return err
 	}
-	repo, err := findRepo()
-	if err != nil {
+	if err := a.claimAndTouchLeaseTarget(ctx, cfg, server, leaseID, *reclaim); err != nil {
 		return err
 	}
-	if err := claimLeaseForRepoConfig(leaseID, serverSlug(server), cfg, repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
-		return err
-	}
-	a.touchActiveLeaseBestEffort(ctx, cfg, server, leaseID)
 	endpoint, err := resolveVNCEndpoint(ctx, cfg, &target)
 	if err != nil {
 		return err

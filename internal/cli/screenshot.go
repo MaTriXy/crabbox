@@ -23,35 +23,20 @@ func (a App) screenshot(ctx context.Context, args []string) error {
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
-	if *id == "" && fs.NArg() > 0 {
-		*id = fs.Arg(0)
-	}
-	cfg, err := loadConfig()
+	setIDFromFirstArg(fs, id)
+	cfg, err := loadLeaseTargetConfig(fs, *provider, targetFlags, networkFlags, leaseTargetConfigOptions{Desktop: true})
 	if err != nil {
-		return err
-	}
-	cfg.Provider = *provider
-	cfg.Desktop = true
-	if err := applyTargetFlagOverrides(&cfg, fs, targetFlags); err != nil {
-		return err
-	}
-	if err := applyNetworkModeFlagOverride(&cfg, fs, networkFlags); err != nil {
 		return err
 	}
 	if isBlacksmithProvider(cfg.Provider) {
 		return exit(2, "desktop screenshots are not supported for provider=%s; Blacksmith owns machine connectivity", cfg.Provider)
 	}
-	if *id == "" && !isStaticProvider(cfg.Provider) {
-		return exit(2, "usage: crabbox screenshot --id <lease-id-or-slug> [--output <path>]")
+	if err := requireLeaseID(*id, "crabbox screenshot --id <lease-id-or-slug> [--output <path>]", cfg); err != nil {
+		return err
 	}
-	server, target, leaseID, err := a.resolveLeaseTarget(ctx, cfg, *id)
+	server, target, leaseID, err := a.resolveNetworkLeaseTarget(ctx, cfg, *id, false)
 	if err != nil {
 		return err
-	}
-	if resolved, err := resolveNetworkTarget(ctx, cfg, server, target); err != nil {
-		return err
-	} else {
-		target = resolved.Target
 	}
 	if isStaticProvider(cfg.Provider) && target.TargetOS != targetLinux {
 		return exit(2, "desktop screenshots are not captured from static %s hosts because those are existing host machines, not Crabbox-created desktops", target.TargetOS)
@@ -59,14 +44,9 @@ func (a App) screenshot(ctx context.Context, args []string) error {
 	if err := enforceManagedLeaseCapabilities(cfg, server, leaseID); err != nil {
 		return err
 	}
-	repo, err := findRepo()
-	if err != nil {
+	if err := a.claimAndTouchLeaseTarget(ctx, cfg, server, leaseID, *reclaim); err != nil {
 		return err
 	}
-	if err := claimLeaseForRepoConfig(leaseID, serverSlug(server), cfg, repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
-		return err
-	}
-	a.touchActiveLeaseBestEffort(ctx, cfg, server, leaseID)
 	if err := waitForLoopbackVNC(ctx, &target); err != nil {
 		return err
 	}

@@ -6,49 +6,31 @@ import (
 )
 
 func (a App) ssh(ctx context.Context, args []string) error {
+	defaults := defaultConfig()
 	fs := newFlagSet("ssh", a.Stderr)
-	provider := fs.String("provider", defaultConfig().Provider, "provider: hetzner, aws, or ssh")
+	provider := fs.String("provider", defaults.Provider, "provider: hetzner, aws, or ssh")
 	id := fs.String("id", "", "lease id or slug")
 	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
-	targetFlags := registerTargetFlags(fs, defaultConfig())
-	networkFlags := registerNetworkModeFlag(fs, defaultConfig())
+	targetFlags := registerTargetFlags(fs, defaults)
+	networkFlags := registerNetworkModeFlag(fs, defaults)
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
-	if *id == "" && fs.NArg() > 0 {
-		*id = fs.Arg(0)
-	}
-	cfg, err := loadConfig()
+	setIDFromFirstArg(fs, id)
+	cfg, err := loadLeaseTargetConfig(fs, *provider, targetFlags, networkFlags, leaseTargetConfigOptions{})
 	if err != nil {
 		return err
 	}
-	cfg.Provider = *provider
-	if err := applyTargetFlagOverrides(&cfg, fs, targetFlags); err != nil {
+	if err := requireLeaseID(*id, "crabbox ssh --id <lease-id-or-slug>", cfg); err != nil {
 		return err
 	}
-	if err := applyNetworkModeFlagOverride(&cfg, fs, networkFlags); err != nil {
-		return err
-	}
-	if *id == "" && !isStaticProvider(cfg.Provider) {
-		return exit(2, "usage: crabbox ssh --id <lease-id-or-slug>")
-	}
-	server, target, leaseID, err := a.resolveLeaseTarget(ctx, cfg, *id)
+	server, target, leaseID, err := a.resolveNetworkLeaseTarget(ctx, cfg, *id, false)
 	if err != nil {
 		return err
 	}
-	if resolved, err := resolveNetworkTarget(ctx, cfg, server, target); err != nil {
-		return err
-	} else {
-		target = resolved.Target
-	}
-	repo, err := findRepo()
-	if err != nil {
+	if err := a.claimAndTouchLeaseTarget(ctx, cfg, server, leaseID, *reclaim); err != nil {
 		return err
 	}
-	if err := claimLeaseForRepoConfig(leaseID, serverSlug(server), cfg, repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
-		return err
-	}
-	a.touchActiveLeaseBestEffort(ctx, cfg, server, leaseID)
 	fmt.Fprintf(a.Stdout, "ssh -i %s -p %s %s@%s\n", target.Key, target.Port, target.User, target.Host)
 	return nil
 }

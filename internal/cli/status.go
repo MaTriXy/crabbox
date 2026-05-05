@@ -8,33 +8,25 @@ import (
 )
 
 func (a App) status(ctx context.Context, args []string) error {
+	defaults := defaultConfig()
 	fs := newFlagSet("status", a.Stderr)
-	provider := fs.String("provider", defaultConfig().Provider, "provider: hetzner, aws, ssh, or blacksmith-testbox")
+	provider := fs.String("provider", defaults.Provider, "provider: hetzner, aws, ssh, or blacksmith-testbox")
 	id := fs.String("id", "", "lease id or slug")
 	wait := fs.Bool("wait", false, "wait until ready")
 	waitTimeout := fs.Duration("wait-timeout", 5*time.Minute, "maximum wait duration")
 	jsonOut := fs.Bool("json", false, "print JSON")
-	targetFlags := registerTargetFlags(fs, defaultConfig())
-	networkFlags := registerNetworkModeFlag(fs, defaultConfig())
+	targetFlags := registerTargetFlags(fs, defaults)
+	networkFlags := registerNetworkModeFlag(fs, defaults)
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
-	if *id == "" && fs.NArg() > 0 {
-		*id = fs.Arg(0)
-	}
-	cfg, err := loadConfig()
+	setIDFromFirstArg(fs, id)
+	cfg, err := loadLeaseTargetConfig(fs, *provider, targetFlags, networkFlags, leaseTargetConfigOptions{})
 	if err != nil {
 		return err
 	}
-	cfg.Provider = *provider
-	if err := applyTargetFlagOverrides(&cfg, fs, targetFlags); err != nil {
+	if err := requireLeaseID(*id, "crabbox status --id <lease-id-or-slug>", cfg); err != nil {
 		return err
-	}
-	if err := applyNetworkModeFlagOverride(&cfg, fs, networkFlags); err != nil {
-		return err
-	}
-	if *id == "" && !isStaticProvider(cfg.Provider) {
-		return exit(2, "usage: crabbox status --id <lease-id-or-slug>")
 	}
 	if isBlacksmithProvider(cfg.Provider) {
 		return a.blacksmithStatus(ctx, cfg, *id, *wait, *waitTimeout, *jsonOut)

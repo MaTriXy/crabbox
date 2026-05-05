@@ -65,20 +65,7 @@ func (a App) loginWithToken(ctx context.Context, brokerURL, provider string, jso
 	if !ok {
 		return exit(2, "login wrote config but broker is not configured")
 	}
-	who, err := coord.Whoami(ctx)
-	if err != nil {
-		return err
-	}
-	if jsonOut {
-		return json.NewEncoder(a.Stdout).Encode(map[string]any{
-			"config":   path,
-			"broker":   cfg.Coordinator,
-			"provider": cfg.Provider,
-			"identity": who,
-		})
-	}
-	fmt.Fprintf(a.Stdout, "logged in broker=%s provider=%s user=%s org=%s config=%s\n", cfg.Coordinator, cfg.Provider, who.Owner, who.Org, path)
-	return nil
+	return a.finishLogin(ctx, coord, path, cfg, jsonOut)
 }
 
 func (a App) loginWithGitHub(ctx context.Context, brokerURL, provider string, noBrowser, jsonOut bool) error {
@@ -147,20 +134,7 @@ func (a App) loginWithGitHub(ctx context.Context, brokerURL, provider string, no
 			if !ok {
 				return exit(2, "login wrote config but broker is not configured")
 			}
-			who, err := coord.Whoami(ctx)
-			if err != nil {
-				return err
-			}
-			if jsonOut {
-				return json.NewEncoder(a.Stdout).Encode(map[string]any{
-					"config":   path,
-					"broker":   cfg.Coordinator,
-					"provider": cfg.Provider,
-					"identity": who,
-				})
-			}
-			fmt.Fprintf(a.Stdout, "logged in broker=%s provider=%s user=%s org=%s config=%s\n", cfg.Coordinator, cfg.Provider, who.Owner, who.Org, path)
-			return nil
+			return a.finishLogin(ctx, coord, path, cfg, jsonOut)
 		case "expired":
 			return exit(3, "GitHub login expired")
 		case "failed":
@@ -176,6 +150,23 @@ func (a App) loginWithGitHub(ctx context.Context, brokerURL, provider string, no
 		case <-timer.C:
 		}
 	}
+}
+
+func (a App) finishLogin(ctx context.Context, coord *CoordinatorClient, path string, cfg Config, jsonOut bool) error {
+	who, err := coord.Whoami(ctx)
+	if err != nil {
+		return err
+	}
+	if jsonOut {
+		return json.NewEncoder(a.Stdout).Encode(map[string]any{
+			"config":   path,
+			"broker":   cfg.Coordinator,
+			"provider": cfg.Provider,
+			"identity": who,
+		})
+	}
+	fmt.Fprintf(a.Stdout, "logged in broker=%s provider=%s user=%s org=%s config=%s\n", cfg.Coordinator, cfg.Provider, who.Owner, who.Org, path)
+	return nil
 }
 
 func coordinatorClientForLogin(brokerURL string) (*CoordinatorClient, error) {

@@ -82,27 +82,13 @@ export async function githubPortalLogin(
     return html("Crabbox login busy", "Too many pending GitHub logins. Try again shortly.", 429);
   }
   const url = new URL(request.url);
-  const id = randomID("login");
-  const state = randomID("state");
-  const now = new Date();
-  const expiresAt = new Date(now.getTime() + 10 * 60 * 1000);
-  const pending: OAuthPending = {
-    id,
-    state,
+  const pending = newPendingOAuth({
     mode: "portal",
     returnTo: safePortalReturnTo(url.searchParams.get("returnTo")),
-    createdAt: now.toISOString(),
-    expiresAt: expiresAt.toISOString(),
-  };
-  await storage.put(oauthKey(id), pending);
-  await storage.put(oauthStateKey(state), id);
+  });
+  await storePendingOAuth(storage, pending);
 
-  const authorize = new URL(githubAuthorizeURL);
-  authorize.searchParams.set("client_id", clientID);
-  authorize.searchParams.set("redirect_uri", githubRedirectURI(request, env));
-  authorize.searchParams.set("scope", "read:user user:email read:org");
-  authorize.searchParams.set("state", state);
-  return redirect(authorize.toString(), 302);
+  return redirect(githubAuthorizeURLFor(request, env, clientID, pending.state), 302);
 }
 
 export function githubPortalLogout(): Response {
@@ -146,34 +132,55 @@ async function githubAuthStart(
       { status: 429 },
     );
   }
-  const id = randomID("login");
-  const state = randomID("state");
-  const now = new Date();
-  const expiresAt = new Date(now.getTime() + 10 * 60 * 1000);
-  const pending: OAuthPending = {
-    id,
-    state,
+  const pending = newPendingOAuth({
     mode: "cli",
     pollSecretHash: input.pollSecretHash,
-    createdAt: now.toISOString(),
-    expiresAt: expiresAt.toISOString(),
-  };
+  });
   if (input.provider === "aws" || input.provider === "hetzner") {
     pending.provider = input.provider;
   }
-  await storage.put(oauthKey(id), pending);
-  await storage.put(oauthStateKey(state), id);
+  await storePendingOAuth(storage, pending);
 
+  return json({
+    loginID: pending.id,
+    url: githubAuthorizeURLFor(request, env, clientID, pending.state),
+    expiresAt: pending.expiresAt,
+  });
+}
+
+function newPendingOAuth(
+  input: Omit<OAuthPending, "id" | "state" | "createdAt" | "expiresAt">,
+): OAuthPending {
+  const now = new Date();
+  return {
+    ...input,
+    id: randomID("login"),
+    state: randomID("state"),
+    createdAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + 10 * 60 * 1000).toISOString(),
+  };
+}
+
+async function storePendingOAuth(
+  storage: DurableObjectStorage,
+  pending: OAuthPending,
+): Promise<void> {
+  await storage.put(oauthKey(pending.id), pending);
+  await storage.put(oauthStateKey(pending.state), pending.id);
+}
+
+function githubAuthorizeURLFor(
+  request: Request,
+  env: Env,
+  clientID: string,
+  state: string,
+): string {
   const authorize = new URL(githubAuthorizeURL);
   authorize.searchParams.set("client_id", clientID);
   authorize.searchParams.set("redirect_uri", githubRedirectURI(request, env));
   authorize.searchParams.set("scope", "read:user user:email read:org");
   authorize.searchParams.set("state", state);
-  return json({
-    loginID: id,
-    url: authorize.toString(),
-    expiresAt: expiresAt.toISOString(),
-  });
+  return authorize.toString();
 }
 
 async function githubAuthCallback(
