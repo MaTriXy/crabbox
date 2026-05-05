@@ -38,9 +38,13 @@ func TestStartCodeServerCommand(t *testing.T) {
 		"--bind-addr 127.0.0.1:8080",
 		"VSCODE_PROXY_URI='./proxy/{{port}}'",
 		"/tmp/crabbox-code-server.log",
+		"/tmp/crabbox-code-server.pid",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("startCodeServerCommand missing %q:\n%s", want, got)
 		}
+	}
+	if strings.Contains(got, "pkill -f") {
+		t.Fatalf("startCodeServerCommand should not use pkill -f:\n%s", got)
 	}
 }

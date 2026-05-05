@@ -168,13 +168,14 @@ func codeServerReadyCommand() string {
 }
 
 func startCodeServerCommand(workdir string) string {
+	pidfile := "/tmp/crabbox-code-server.pid"
 	return strings.Join([]string{
 		"mkdir -p " + shellQuote(workdir),
-		"pkill -f '" + codeServerBinary + ".*127.0.0.1:" + managedCodePort + "' >/dev/null 2>&1 || true",
-		"nohup env VSCODE_PROXY_URI='./proxy/{{port}}' " + codeServerBinary +
+		"pidfile=" + shellQuote(pidfile) + "; if [ -s \"$pidfile\" ]; then oldpid=$(cat \"$pidfile\" 2>/dev/null || true); if [ -n \"$oldpid\" ] && kill -0 \"$oldpid\" 2>/dev/null; then kill \"$oldpid\" 2>/dev/null || true; fi; fi",
+		"(nohup env VSCODE_PROXY_URI='./proxy/{{port}}' " + codeServerBinary +
 			" --auth none --bind-addr 127.0.0.1:" + managedCodePort +
 			" --disable-telemetry --disable-update-check " + shellQuote(workdir) +
-			" >/tmp/crabbox-code-server.log 2>&1 &",
+			" >/tmp/crabbox-code-server.log 2>&1 & echo $! >" + shellQuote(pidfile) + ")",
 	}, " && ")
 }
 
