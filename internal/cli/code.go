@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -186,6 +187,7 @@ type codeBridge struct {
 	ws       *websocket.Conn
 	baseURL  string
 	client   *http.Client
+	debug    bool
 	mu       sync.Mutex
 	writeMu  sync.Mutex
 	upstream map[string]*websocket.Conn
@@ -208,6 +210,7 @@ func connectCodeBridge(ctx context.Context, coord *CoordinatorClient, leaseID, h
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
+		debug:    os.Getenv("CRABBOX_CODE_DEBUG") == "1",
 		upstream: map[string]*websocket.Conn{},
 	}, nil
 }
@@ -319,12 +322,14 @@ func (b *codeBridge) handleHTTP(ctx context.Context, msg codeProxyMessage) {
 
 func (b *codeBridge) openUpstreamWebSocket(ctx context.Context, msg codeProxyMessage) {
 	upstream := "ws" + strings.TrimPrefix(b.baseURL, "http") + codeUpstreamPath(msg.Path)
+	b.trace("ws_open id=%s path=%s upstream=%s", msg.ID, msg.Path, upstream)
 	header := http.Header{}
 	for key, value := range msg.Headers {
 		header.Set(key, value)
 	}
 	conn, _, err := websocket.Dial(ctx, upstream, &websocket.DialOptions{HTTPHeader: header})
 	if err != nil {
+		b.trace("ws_open_error id=%s error=%v", msg.ID, err)
 		_ = b.writeJSON(ctx, codeProxyMessage{Type: "ws_close", ID: msg.ID, Code: int(websocket.StatusInternalError), Reason: err.Error()})
 		return
 	}
@@ -345,10 +350,12 @@ func (b *codeBridge) readUpstreamWebSocket(ctx context.Context, id string, conn 
 				code = int(closeErr.Code)
 				reason = closeErr.Reason
 			}
+			b.trace("ws_upstream_close id=%s code=%d reason=%s", id, code, reason)
 			_ = b.writeJSON(ctx, codeProxyMessage{Type: "ws_close", ID: id, Code: code, Reason: reason})
 			b.closeUpstreamWebSocket(id, websocket.StatusNormalClosure, "closed")
 			return
 		}
+		b.trace("ws_upstream_data id=%s frame=%s bytes=%d", id, codeFrameType(typ), len(data))
 		_ = b.writeJSON(ctx, codeProxyMessage{Type: "ws_data", ID: id, Frame: codeFrameType(typ), Body: base64.StdEncoding.EncodeToString(data)})
 	}
 }
@@ -359,8 +366,10 @@ func (b *codeBridge) writeUpstreamWebSocket(ctx context.Context, msg codeProxyMe
 	conn := b.upstream[msg.ID]
 	b.mu.Unlock()
 	if conn == nil {
+		b.trace("ws_downstream_missing id=%s frame=%s bytes=%d", msg.ID, msg.Frame, len(data))
 		return
 	}
+	b.trace("ws_downstream_data id=%s frame=%s bytes=%d", msg.ID, websocketMessageType(msg.Frame), len(data))
 	_ = conn.Write(ctx, websocketMessageType(msg.Frame), data)
 }
 
@@ -385,6 +394,13 @@ func (b *codeBridge) writeJSON(ctx context.Context, msg codeProxyMessage) error 
 	b.writeMu.Lock()
 	defer b.writeMu.Unlock()
 	return b.ws.Write(ctx, websocket.MessageText, data)
+}
+
+func (b *codeBridge) trace(format string, args ...any) {
+	if !b.debug {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "code-debug: "+format+"\n", args...)
 }
 
 func isRetryableCodeBridgeError(err error) bool {
@@ -434,11 +450,11 @@ func codeServerStaticFallback(path string, status int) ([]byte, http.Header, boo
 	switch {
 	case strings.HasSuffix(path, "/node_modules/vsda/rust/web/vsda.js"):
 		headers.Set("content-type", "text/javascript")
-		headers.Set("cache-control", "public, max-age=31536000")
+		headers.Set("cache-control", "no-store")
 		return []byte(`define([],()=>globalThis.vsda_web={default:async()=>{},sign:v=>v,validator:class{createNewMessage(v){return v}validate(){return "ok"}free(){}}});`), headers, true
 	case strings.HasSuffix(path, "/node_modules/vsda/rust/web/vsda_bg.wasm"):
 		headers.Set("content-type", "application/wasm")
-		headers.Set("cache-control", "public, max-age=31536000")
+		headers.Set("cache-control", "no-store")
 		return []byte{0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00}, headers, true
 	default:
 		return nil, nil, false
