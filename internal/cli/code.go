@@ -37,7 +37,7 @@ type codeProxyMessage struct {
 	Reason  string            `json:"reason,omitempty"`
 }
 
-const maxCodeBridgeBodyChunkBytes = 512 * 1024
+const maxCodeBridgeBodyChunkBytes = 64 * 1024
 
 func (a App) webCode(ctx context.Context, args []string) error {
 	defaults := defaultConfig()
