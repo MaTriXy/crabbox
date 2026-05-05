@@ -83,6 +83,19 @@ func TestRecordRemoteUntilStopCommandUsesStopFile(t *testing.T) {
 	}
 }
 
+func TestRecordRemoteCommandDefaultsToAutoSize(t *testing.T) {
+	for _, size := range []string{"", "auto"} {
+		got := recordRemoteCommand(SSHTarget{TargetOS: targetLinux}, recordDesktopOptions{
+			Duration: time.Second,
+			FPS:      10,
+			Size:     size,
+		})
+		if strings.Contains(got, "-video_size") {
+			t.Fatalf("default/auto size should omit -video_size:\n%s", got)
+		}
+	}
+}
+
 func TestRecordRemoteCommandSupportsWindowsInteractiveTask(t *testing.T) {
 	for _, target := range []SSHTarget{
 		{TargetOS: targetWindows, WindowsMode: windowsModeNormal},
