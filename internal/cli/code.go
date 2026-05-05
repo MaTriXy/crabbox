@@ -252,7 +252,8 @@ func (b *codeBridge) Close(code websocket.StatusCode, reason string) {
 
 func (b *codeBridge) handleHTTP(ctx context.Context, msg codeProxyMessage) {
 	body, _ := base64.StdEncoding.DecodeString(msg.Body)
-	upstream := b.baseURL + codeUpstreamPath(msg.Path)
+	upstreamPath := codeUpstreamPath(msg.Path)
+	upstream := b.baseURL + upstreamPath
 	req, err := http.NewRequestWithContext(ctx, msg.Method, upstream, bytes.NewReader(body))
 	if err != nil {
 		_ = b.writeJSON(ctx, codeProxyMessage{Type: "http", ID: msg.ID, Status: 502, Error: err.Error()})
@@ -271,6 +272,11 @@ func (b *codeBridge) handleHTTP(ctx context.Context, msg codeProxyMessage) {
 	if err != nil {
 		_ = b.writeJSON(ctx, codeProxyMessage{Type: "http", ID: msg.ID, Status: 502, Error: err.Error()})
 		return
+	}
+	if fallbackBody, fallbackHeaders, ok := codeServerStaticFallback(upstreamPath, resp.StatusCode); ok {
+		respBody = fallbackBody
+		resp.Header = fallbackHeaders
+		resp.StatusCode = http.StatusOK
 	}
 	if isCodeHTML(resp.Header.Get("content-type")) {
 		respBody = rewriteCodeHTML(respBody)
@@ -417,6 +423,25 @@ func isCodeHTML(contentType string) bool {
 
 func rewriteCodeHTML(body []byte) []byte {
 	return bytes.ReplaceAll(body, []byte(`<script type="module" src=""></script>`), nil)
+}
+
+func codeServerStaticFallback(path string, status int) ([]byte, http.Header, bool) {
+	if status != http.StatusNotFound {
+		return nil, nil, false
+	}
+	headers := http.Header{}
+	switch {
+	case strings.HasSuffix(path, "/node_modules/vsda/rust/web/vsda.js"):
+		headers.Set("content-type", "text/javascript")
+		headers.Set("cache-control", "public, max-age=31536000")
+		return []byte(`globalThis.vsda_web={default:async()=>{},sign:v=>v,validator:class{createNewMessage(v){return v}validate(){return "ok"}free(){}}};`), headers, true
+	case strings.HasSuffix(path, "/node_modules/vsda/rust/web/vsda_bg.wasm"):
+		headers.Set("content-type", "application/wasm")
+		headers.Set("cache-control", "public, max-age=31536000")
+		return []byte{0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00}, headers, true
+	default:
+		return nil, nil, false
+	}
 }
 
 func availableLocalCodePort() string {

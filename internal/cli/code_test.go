@@ -59,3 +59,34 @@ func TestRewriteCodeHTMLRemovesEmptyLocaleScript(t *testing.T) {
 		t.Fatalf("rewriteCodeHTML removed non-empty script:\n%s", got)
 	}
 }
+
+func TestCodeServerStaticFallbackServesVSDAStub(t *testing.T) {
+	body, headers, ok := codeServerStaticFallback("/stable/static/node_modules/vsda/rust/web/vsda.js", 404)
+	if !ok {
+		t.Fatal("expected vsda.js fallback")
+	}
+	if headers.Get("content-type") != "text/javascript" {
+		t.Fatalf("content-type=%q", headers.Get("content-type"))
+	}
+	if !strings.Contains(string(body), "globalThis.vsda_web") {
+		t.Fatalf("fallback body missing vsda_web:\n%s", body)
+	}
+
+	wasm, headers, ok := codeServerStaticFallback("/stable/static/node_modules/vsda/rust/web/vsda_bg.wasm", 404)
+	if !ok {
+		t.Fatal("expected vsda wasm fallback")
+	}
+	if headers.Get("content-type") != "application/wasm" {
+		t.Fatalf("wasm content-type=%q", headers.Get("content-type"))
+	}
+	if string(wasm[:4]) != "\x00asm" {
+		t.Fatalf("wasm header=%v", wasm[:4])
+	}
+
+	if _, _, ok := codeServerStaticFallback("/missing.js", 404); ok {
+		t.Fatal("unexpected fallback for unrelated path")
+	}
+	if _, _, ok := codeServerStaticFallback("/stable/static/node_modules/vsda/rust/web/vsda.js", 500); ok {
+		t.Fatal("unexpected fallback for non-404")
+	}
+}
