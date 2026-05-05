@@ -440,6 +440,27 @@ func TestIsBootstrapWaitError(t *testing.T) {
 	}
 }
 
+func TestAcquireAttemptsRetriesWarmupBootstrapFailures(t *testing.T) {
+	if got := acquireAttempts(true); got != 2 {
+		t.Fatalf("warmup keep=true attempts=%d want 2", got)
+	}
+	if got := acquireAttempts(false); got != 2 {
+		t.Fatalf("one-shot attempts=%d want 2", got)
+	}
+}
+
+func TestBootstrapWaitTimeoutExtendsForDesktopBrowser(t *testing.T) {
+	if got := bootstrapWaitTimeout(Config{}); got != 20*time.Minute {
+		t.Fatalf("plain bootstrap timeout=%s want 20m", got)
+	}
+	if got := bootstrapWaitTimeout(Config{Desktop: true}); got != 45*time.Minute {
+		t.Fatalf("desktop bootstrap timeout=%s want 45m", got)
+	}
+	if got := bootstrapWaitTimeout(Config{Browser: true}); got != 45*time.Minute {
+		t.Fatalf("browser bootstrap timeout=%s want 45m", got)
+	}
+}
+
 func TestServerProviderKeyUsesOnlyCrabboxLeaseKeys(t *testing.T) {
 	server := Server{Labels: map[string]string{"lease": "cbx_123456abcdef"}}
 	if got := serverProviderKey(server); got != "crabbox-cbx-123456abcdef" {

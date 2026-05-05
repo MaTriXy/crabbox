@@ -729,10 +729,8 @@ func (a App) acquireCoordinator(ctx context.Context, cfg Config, coord *Coordina
 	stopLeaseWatch := startCoordinatorLeaseWatch(waitCtx, coord, leaseID, cancelWait, a.Stderr)
 	defer stopLeaseWatch()
 	if err := bootstrapAWSWindowsDesktop(waitCtx, cfg, &target, publicKey, a.Stderr); err != nil {
-		if !keep {
-			if releaseErr := releaseCoordinatorLease(context.Background(), coord, leaseID); releaseErr != nil {
-				fmt.Fprintf(a.Stderr, "warning: release failed after bootstrap error for %s: %v\n", leaseID, releaseErr)
-			}
+		if releaseErr := releaseCoordinatorLease(context.Background(), coord, leaseID); releaseErr != nil {
+			fmt.Fprintf(a.Stderr, "warning: release failed after bootstrap error for %s: %v\n", leaseID, releaseErr)
 		}
 		return Server{}, SSHTarget{}, "", err
 	}
@@ -816,10 +814,7 @@ func (a App) acquireWithRetry(ctx context.Context, cfg Config, keep bool) (Serve
 	return Server{}, SSHTarget{}, "", lastErr
 }
 
-func acquireAttempts(keep bool) int {
-	if keep {
-		return 1
-	}
+func acquireAttempts(bool) int {
 	return 2
 }
 
@@ -1063,10 +1058,8 @@ func (a App) acquire(ctx context.Context, cfg Config, keep bool) (Server, SSHTar
 		return Server{}, SSHTarget{}, "", err
 	}
 	target := sshTargetFromConfig(cfg, server.PublicNet.IPv4.IP)
-	if err := waitForSSH(ctx, &target, a.Stderr); err != nil {
-		if !keep {
-			_ = deleteServer(context.Background(), cfg, server)
-		}
+	if err := waitForSSHReady(ctx, &target, a.Stderr, "bootstrap", bootstrapWaitTimeout(cfg)); err != nil {
+		_ = deleteServer(context.Background(), cfg, server)
 		return Server{}, SSHTarget{}, "", err
 	}
 	server.Labels["state"] = "ready"
@@ -1109,9 +1102,7 @@ func (a App) acquireAWS(ctx context.Context, cfg Config, keep bool) (Server, SSH
 	}
 	target := sshTargetFromConfig(cfg, server.PublicNet.IPv4.IP)
 	if err := bootstrapAWSWindowsDesktop(ctx, cfg, &target, publicKey, a.Stderr); err != nil {
-		if !keep {
-			_ = client.DeleteServer(context.Background(), server.CloudID)
-		}
+		_ = client.DeleteServer(context.Background(), server.CloudID)
 		return Server{}, SSHTarget{}, "", err
 	}
 	server.Labels["state"] = "ready"

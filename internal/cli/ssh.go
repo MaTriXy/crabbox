@@ -56,6 +56,13 @@ func waitForSSH(ctx context.Context, target *SSHTarget, stderr io.Writer) error 
 	return waitForSSHReady(ctx, target, stderr, "bootstrap", 20*time.Minute)
 }
 
+func bootstrapWaitTimeout(cfg Config) time.Duration {
+	if cfg.Desktop || cfg.Browser {
+		return 45 * time.Minute
+	}
+	return 20 * time.Minute
+}
+
 func waitForSSHReady(ctx context.Context, target *SSHTarget, stderr io.Writer, phase string, timeout time.Duration) error {
 	start := time.Now()
 	deadline := time.Now().Add(timeout)

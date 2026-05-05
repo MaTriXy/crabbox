@@ -11,6 +11,7 @@
 ### Fixed
 
 - Fixed auto-shell command reconstruction so arguments with spaces stay quoted when shell operators such as `&&` are present.
+- Fixed managed desktop/browser warmups so slow cloud-init bootstraps get a longer readiness window, retry once after SSH timeout, and clean up failed leases instead of leaking unusable VMs.
 - Fixed brokered cloud server names so friendly-slug collisions with stale provider VMs do not block new leases.
 - Fixed human WebVNC desktop launches to keep browser windows windowed by default and reserve fullscreen for explicit capture/video workflows.
 - Fixed WebVNC portal status text and bridge commands so waiting/reset states explain the exact local bridge command to run.

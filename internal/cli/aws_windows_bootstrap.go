@@ -9,7 +9,7 @@ import (
 
 func bootstrapAWSWindowsDesktop(ctx context.Context, cfg Config, target *SSHTarget, publicKey string, stderr io.Writer) error {
 	if cfg.Provider != "aws" || cfg.TargetOS != targetWindows {
-		return waitForSSH(ctx, target, stderr)
+		return waitForSSHReady(ctx, target, stderr, "bootstrap", bootstrapWaitTimeout(cfg))
 	}
 	bootstrapTarget := *target
 	bootstrapTarget.User = "Administrator"
@@ -33,7 +33,7 @@ exit $LASTEXITCODE`)
 	if err != nil {
 		fmt.Fprintf(stderr, "warning: Windows bootstrap SSH command ended before completion; waiting for reboot/ready state: %v\n", err)
 	}
-	return waitForSSH(ctx, target, stderr)
+	return waitForSSHReady(ctx, target, stderr, "bootstrap", bootstrapWaitTimeout(cfg))
 }
 
 func bootstrapAWSWindowsWSL2(ctx context.Context, cfg Config, target *SSHTarget, bootstrapTarget SSHTarget, publicKey string, stderr io.Writer) error {
@@ -59,5 +59,5 @@ exit $LASTEXITCODE`)
 			return nil
 		}
 	}
-	return waitForSSH(ctx, target, stderr)
+	return waitForSSHReady(ctx, target, stderr, "bootstrap", bootstrapWaitTimeout(cfg))
 }
