@@ -117,6 +117,15 @@ describe("cloud-init bootstrap", () => {
     expect(got).toContain("/var/lib/crabbox/browser.env");
     expect(got).toContain('test -x "$BROWSER"');
     expect(got).toContain('"$BROWSER" --version >/dev/null');
+    expect(got).toContain(
+      `printf '%s\\n' '{"DefaultBrowserSettingEnabled":false,"MetricsReportingEnabled":false,"PromotionalTabsEnabled":false}' > /etc/opt/chrome/policies/managed/crabbox.json`,
+    );
+    expect(got).toContain(
+      `printf '%s\\n' '#!/bin/sh' "exec \\"$browser_path\\" --no-first-run --no-default-browser-check --disable-default-apps \\"\\$@\\"" > "$browser_wrapper"`,
+    );
+    expect(got).not.toContain("<<'EOF'");
+    expect(got).not.toContain("<<EOF");
+    expect(got).not.toContain("\nEOF");
   });
 
   it("adds Tailscale setup only when requested", () => {

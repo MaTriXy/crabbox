@@ -564,14 +564,9 @@ func cloudInitOptionalBootstrap(cfg Config) string {
     if [ -n "$browser_path" ]; then
       browser_wrapper=/usr/local/bin/crabbox-browser
       install -d -m 0755 /etc/opt/chrome/policies/managed /etc/chromium/policies/managed
-      cat > /etc/opt/chrome/policies/managed/crabbox.json <<'EOF'
-{"DefaultBrowserSettingEnabled":false,"MetricsReportingEnabled":false,"PromotionalTabsEnabled":false}
-EOF
+      printf '%s\n' '{"DefaultBrowserSettingEnabled":false,"MetricsReportingEnabled":false,"PromotionalTabsEnabled":false}' > /etc/opt/chrome/policies/managed/crabbox.json
       cp /etc/opt/chrome/policies/managed/crabbox.json /etc/chromium/policies/managed/crabbox.json
-      cat > "$browser_wrapper" <<EOF
-#!/bin/sh
-exec "$browser_path" --no-first-run --no-default-browser-check --disable-default-apps "\$@"
-EOF
+      printf '%s\n' '#!/bin/sh' "exec \"$browser_path\" --no-first-run --no-default-browser-check --disable-default-apps \"\$@\"" > "$browser_wrapper"
       chmod 0755 "$browser_wrapper"
       printf 'CHROME_BIN=%s\nBROWSER=%s\n' "$browser_wrapper" "$browser_wrapper" > /var/lib/crabbox/browser.env
       chown crabbox:crabbox /var/lib/crabbox/browser.env

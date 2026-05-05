@@ -96,9 +96,20 @@ func TestCloudInitBrowserProfile(t *testing.T) {
 		"/var/lib/crabbox/browser.env",
 		"test -x \"$BROWSER\"",
 		"\"$BROWSER\" --version >/dev/null",
+		"printf '%s\\n' '{\"DefaultBrowserSettingEnabled\":false,\"MetricsReportingEnabled\":false,\"PromotionalTabsEnabled\":false}' > /etc/opt/chrome/policies/managed/crabbox.json",
+		"printf '%s\\n' '#!/bin/sh' \"exec \\\"$browser_path\\\" --no-first-run --no-default-browser-check --disable-default-apps \\\"\\$@\\\"\" > \"$browser_wrapper\"",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("cloudInit(browser) missing %q", want)
+		}
+	}
+	for _, notWant := range []string{
+		"<<'EOF'",
+		"<<EOF",
+		"\nEOF",
+	} {
+		if strings.Contains(got, notWant) {
+			t.Fatalf("cloudInit(browser) contains browser heredoc content %q", notWant)
 		}
 	}
 }

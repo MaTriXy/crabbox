@@ -20,6 +20,7 @@
 - Fixed WebVNC portal status text and bridge commands so waiting/reset states explain the exact local bridge command to run.
 - Fixed Windows WebVNC credential handling so generated portal links preserve special characters and managed TightVNC sessions copy service passwords into the logged-in user's registry profile.
 - Fixed managed Linux browser setup so Chrome/Chromium launches skip first-run and default-browser prompts.
+- Fixed managed Linux browser cloud-init setup so Chrome/Chromium policy and wrapper generation cannot break YAML parsing.
 - Fixed WebVNC portal passwords with escaped special characters and kept the bridge alive across viewer resets and transient coordinator EOFs.
 
 ## 0.5.0 - 2026-05-04
