@@ -11,6 +11,8 @@ import (
 const (
 	desktopDisplay         = ":99"
 	managedVNCPort         = "5900"
+	managedCodePort        = "8080"
+	codeServerBinary       = "/usr/local/bin/code-server"
 	vncPasswordPath        = "/var/lib/crabbox/vnc.password"
 	windowsVNCPasswordPath = `C:\ProgramData\crabbox\vnc.password`
 	macOSVNCPasswordPath   = "/var/db/crabbox/vnc.password"
@@ -24,9 +26,10 @@ type vncEndpoint struct {
 	Managed bool
 }
 
-func applyCapabilityFlags(cfg *Config, desktop, browser bool) {
+func applyCapabilityFlags(cfg *Config, desktop, browser, code bool) {
 	cfg.Desktop = desktop
 	cfg.Browser = browser
+	cfg.Code = code
 }
 
 func validateRequestedCapabilities(cfg Config) error {
@@ -35,6 +38,12 @@ func validateRequestedCapabilities(cfg Config) error {
 	}
 	if cfg.Browser && isBlacksmithProvider(cfg.Provider) {
 		return exit(2, "browser provisioning is not supported for provider=%s; use Blacksmith workflow setup for headless browser automation", cfg.Provider)
+	}
+	if cfg.Code && isBlacksmithProvider(cfg.Provider) {
+		return exit(2, "web code is not supported for provider=%s; Blacksmith owns machine connectivity", cfg.Provider)
+	}
+	if cfg.Code && cfg.TargetOS != targetLinux {
+		return exit(2, "web code currently supports managed Linux leases only")
 	}
 	return nil
 }
@@ -48,6 +57,9 @@ func enforceManagedLeaseCapabilities(cfg Config, server Server, leaseID string) 
 	}
 	if cfg.Browser && !labelBool(server.Labels["browser"]) {
 		return exit(2, "lease %s was not created with browser=true; warm a new lease with --browser", leaseID)
+	}
+	if cfg.Code && !labelBool(server.Labels["code"]) {
+		return exit(2, "lease %s was not created with code=true; warm a new lease with --code", leaseID)
 	}
 	return nil
 }

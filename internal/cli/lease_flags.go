@@ -17,6 +17,7 @@ type leaseCreateFlagValues struct {
 	Idle       *time.Duration
 	Desktop    *bool
 	Browser    *bool
+	Code       *bool
 	Blacksmith blacksmithFlagValues
 	Target     targetFlagValues
 	Network    networkFlagValues
@@ -33,6 +34,7 @@ func registerLeaseCreateFlags(fs *flag.FlagSet, defaults Config) leaseCreateFlag
 		Idle:       fs.Duration("idle-timeout", defaults.IdleTimeout, "idle timeout"),
 		Desktop:    fs.Bool("desktop", defaults.Desktop, "provision or require a visible desktop/VNC session"),
 		Browser:    fs.Bool("browser", defaults.Browser, "provision or require a browser binary"),
+		Code:       fs.Bool("code", defaults.Code, "provision or require web code-server capability"),
 		Blacksmith: registerBlacksmithFlags(fs, defaults),
 		Target:     registerTargetFlags(fs, defaults),
 		Network:    registerNetworkFlags(fs, defaults),
@@ -43,7 +45,7 @@ func applyLeaseCreateFlags(cfg *Config, fs *flag.FlagSet, values leaseCreateFlag
 	cfg.Provider = *values.Provider
 	cfg.Profile = *values.Profile
 	cfg.Class = *values.Class
-	applyCapabilityFlags(cfg, *values.Desktop, *values.Browser)
+	applyCapabilityFlags(cfg, *values.Desktop, *values.Browser, *values.Code)
 	if err := applyTargetFlagOverrides(cfg, fs, values.Target); err != nil {
 		return err
 	}

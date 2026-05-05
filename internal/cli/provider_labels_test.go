@@ -16,6 +16,7 @@ func TestDirectLeaseLabelsAreProviderSafe(t *testing.T) {
 		ServerType:  "cpx62",
 		Desktop:     true,
 		Browser:     true,
+		Code:        true,
 		TTL:         15 * time.Minute,
 		IdleTimeout: 4 * time.Minute,
 	}
@@ -35,7 +36,7 @@ func TestDirectLeaseLabelsAreProviderSafe(t *testing.T) {
 	if labels["ttl_secs"] != "900" {
 		t.Fatalf("ttl_secs=%q want 900", labels["ttl_secs"])
 	}
-	if labels["desktop"] != "true" || labels["browser"] != "true" {
+	if labels["desktop"] != "true" || labels["browser"] != "true" || labels["code"] != "true" {
 		t.Fatalf("capability labels missing: %#v", labels)
 	}
 	if labels["expires_at"] != "1777637040" {

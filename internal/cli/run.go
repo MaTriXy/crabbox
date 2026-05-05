@@ -732,6 +732,9 @@ func validateCoordinatorLeaseCapabilities(cfg Config, lease CoordinatorLease) er
 	if cfg.Browser && !lease.Browser {
 		return exit(5, "coordinator did not provision browser=true for lease %s; deploy the coordinator with browser support", blank(lease.ID, "-"))
 	}
+	if cfg.Code && !lease.Code {
+		return exit(5, "coordinator did not provision code=true for lease %s; deploy the coordinator with web code support", blank(lease.ID, "-"))
+	}
 	if cfg.Tailscale.Enabled && (lease.Tailscale == nil || !lease.Tailscale.Enabled) {
 		return exit(5, "coordinator did not provision tailscale=true for lease %s; deploy the coordinator with Tailscale support", blank(lease.ID, "-"))
 	}

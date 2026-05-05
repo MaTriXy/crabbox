@@ -16,11 +16,19 @@ func TestValidateCoordinatorLeaseCapabilitiesRequiresBrowserEcho(t *testing.T) {
 	}
 }
 
+func TestValidateCoordinatorLeaseCapabilitiesRequiresCodeEcho(t *testing.T) {
+	err := validateCoordinatorLeaseCapabilities(Config{Code: true}, CoordinatorLease{ID: "cbx_test"})
+	if err == nil {
+		t.Fatal("expected code capability mismatch")
+	}
+}
+
 func TestValidateCoordinatorLeaseCapabilitiesAcceptsRequestedCapabilities(t *testing.T) {
-	err := validateCoordinatorLeaseCapabilities(Config{Desktop: true, Browser: true}, CoordinatorLease{
+	err := validateCoordinatorLeaseCapabilities(Config{Desktop: true, Browser: true, Code: true}, CoordinatorLease{
 		ID:      "cbx_test",
 		Desktop: true,
 		Browser: true,
+		Code:    true,
 	})
 	if err != nil {
 		t.Fatalf("validateCoordinatorLeaseCapabilities error: %v", err)
