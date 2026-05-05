@@ -19,6 +19,7 @@ Core features:
 - [Tailscale](tailscale.md): optional tailnet reachability for managed Linux leases and static hosts.
 - [Runner bootstrap](runner-bootstrap.md): cloud-init, installed tools, SSH port, and readiness.
 - [Prebaked runner images](prebaked-images.md): provider-owned image storage and the image/cache/state boundary.
+- [Image bake runbook](image-bake-runbook.md): exact AWS bake, candidate smoke, promotion, rollback, and cleanup flow.
 - [Sync](sync.md): Git file-list manifests, rsync, fingerprints, excludes, guardrails, and sanity checks.
 - [Actions hydration](actions-hydration.md): let GitHub Actions prepare a runner, then sync local work into that workspace.
 - [Interactive desktop and VNC](interactive-desktop-vnc.md): VNC hub, support matrix, tunnel model, and QA boundaries.

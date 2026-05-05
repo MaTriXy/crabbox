@@ -49,6 +49,8 @@ crabbox image create --id <cbx_id> --name openclaw-crabbox-YYYYMMDD-HHMM --wait
 Use a fresh, intentionally warmed lease as the source. Do not bake personal
 workspace state, local secrets, repository checkouts, or one-off debugging
 artifacts into the image.
+For desktop/browser or Mantis images, follow the full [Image bake runbook](../features/image-bake-runbook.md)
+instead of relying only on the short smoke above.
 
 Failure handling:
 
@@ -63,6 +65,8 @@ Failure handling:
   Keep the previous promoted AMI and debug bootstrap on a normal lease first.
 - Cleanup of stale candidate AMIs is an AWS operator task. Promotion does not
   delete old images or snapshots.
+- If a Mantis timing report does not improve after promotion, treat that as a
+  failed performance bake even if the AMI boots.
 
 ## promote
 
@@ -94,6 +98,7 @@ on the new image.
 
 Related docs:
 
+- [Image bake runbook](../features/image-bake-runbook.md)
 - [Prebaked runner images](../features/prebaked-images.md)
 - [Infrastructure](../infrastructure.md)
 - [Runner bootstrap](../features/runner-bootstrap.md)

@@ -61,8 +61,26 @@ This split keeps images reusable across repositories while still letting slow QA
 systems skip repeated dependency work when they deliberately reuse a warm lease
 or a keyed external cache.
 
+## Operator Flow
+
+Use the [Image bake runbook](image-bake-runbook.md) for the exact AWS bake,
+candidate smoke, promotion, rollback, and cleanup commands. At a high level:
+
+1. Warm a fresh `--desktop --browser` AWS lease.
+2. Verify the machine capability contract on that lease.
+3. Create an AMI with `crabbox image create --wait`.
+4. Boot the AMI explicitly through an image override and smoke it.
+5. Promote the AMI with `crabbox image promote`.
+6. Run a normal brokered lease and the relevant QA lane.
+7. Keep the previous known-good AMI until the new image has real QA proof.
+
+For Mantis, image bake success is not just "Chrome exists." A useful image must
+reduce `crabbox.warmup` or `crabbox.remote_run` time in the Mantis timing
+report while keeping Slack/browser login state outside the image.
+
 Related docs:
 
+- [Image bake runbook](image-bake-runbook.md)
 - [image command](../commands/image.md)
 - [Runner bootstrap](runner-bootstrap.md)
 - [Interactive desktop and VNC](interactive-desktop-vnc.md)
