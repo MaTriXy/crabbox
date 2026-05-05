@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -104,28 +105,42 @@ func (a App) webvnc(ctx context.Context, args []string) error {
 		connPort = *localPort
 	}
 
-	bridge, err := connectWebVNCBridge(ctx, coord, leaseID, connHost, connPort)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintln(a.Stdout, "bridge: connected; keep this process running while using WebVNC")
-
 	portal := webVNCPortalURL(coord.BaseURL, leaseID, username, password)
-	fmt.Fprintf(a.Stdout, "webvnc: %s\n", portal)
-	if strings.TrimSpace(password) != "" {
-		fmt.Fprintf(a.Stdout, "password: %s\n", strings.TrimSpace(password))
-		if strings.TrimSpace(username) != "" {
-			fmt.Fprintf(a.Stdout, "username: %s\n", strings.TrimSpace(username))
-		}
-	}
-	if *openPortal {
-		if err := openLocalURL(portal); err != nil {
-			bridge.Close()
+
+	opened := false
+	printedCredentials := false
+	for {
+		bridge, err := connectWebVNCBridge(ctx, coord, leaseID, connHost, connPort)
+		if err != nil {
 			return err
 		}
-		fmt.Fprintf(a.Stdout, "opened: %s\n", portal)
+		fmt.Fprintln(a.Stdout, "bridge: connected; keep this process running while using WebVNC")
+		fmt.Fprintf(a.Stdout, "webvnc: %s\n", portal)
+		if !printedCredentials && strings.TrimSpace(password) != "" {
+			fmt.Fprintf(a.Stdout, "password: %s\n", strings.TrimSpace(password))
+			if strings.TrimSpace(username) != "" {
+				fmt.Fprintf(a.Stdout, "username: %s\n", strings.TrimSpace(username))
+			}
+			printedCredentials = true
+		}
+		if *openPortal && !opened {
+			if err := openLocalURL(portal); err != nil {
+				bridge.Close()
+				return err
+			}
+			opened = true
+			fmt.Fprintf(a.Stdout, "opened: %s\n", portal)
+		}
+		err = bridge.Serve(ctx)
+		if ctx.Err() != nil {
+			return context.Cause(ctx)
+		}
+		if !isRetryableWebVNCBridgeError(err) {
+			return err
+		}
+		fmt.Fprintln(a.Stdout, "bridge: viewer disconnected; waiting for browser reconnect")
+		time.Sleep(300 * time.Millisecond)
 	}
-	return bridge.Serve(ctx)
 }
 
 func startVNCForegroundTunnel(ctx context.Context, target SSHTarget, localPort, remoteHost, remotePort string) (*exec.Cmd, error) {
@@ -202,6 +217,24 @@ func (b *webVNCBridge) Close() {
 	if b.tcp != nil {
 		_ = b.tcp.Close()
 	}
+}
+
+func isRetryableWebVNCBridgeError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var closeErr websocket.CloseError
+	if errors.As(err, &closeErr) {
+		switch closeErr.Code {
+		case websocket.StatusInternalError, websocket.StatusServiceRestart:
+			return strings.Contains(closeErr.Reason, "WebVNC viewer disconnected") ||
+				strings.Contains(closeErr.Reason, "replaced by a newer WebVNC")
+		}
+	}
+	message := err.Error()
+	return strings.Contains(message, "WebVNC viewer disconnected") ||
+		strings.Contains(message, "replaced by a newer WebVNC") ||
+		strings.Contains(message, "failed to read frame header: EOF")
 }
 
 func copyWebSocketToTCP(ctx context.Context, ws *websocket.Conn, tcp net.Conn) error {

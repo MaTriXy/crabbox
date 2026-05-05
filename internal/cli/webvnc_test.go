@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -21,6 +22,56 @@ func TestWebVNCURLs(t *testing.T) {
 	}
 	if got := webVNCPortalURL("https://crabbox.openclaw.ai/", "cbx_abcdef123456", "ec2-user", "secret value"); got != "https://crabbox.openclaw.ai/portal/leases/cbx_abcdef123456/vnc#password=secret+value&username=ec2-user" {
 		t.Fatalf("portal URL=%q", got)
+	}
+}
+
+func TestRetryableWebVNCBridgeErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "viewer disconnect close",
+			err: websocket.CloseError{
+				Code:   websocket.StatusInternalError,
+				Reason: "WebVNC viewer disconnected",
+			},
+			want: true,
+		},
+		{
+			name: "viewer replaced close",
+			err: websocket.CloseError{
+				Code:   websocket.StatusServiceRestart,
+				Reason: "replaced by a newer WebVNC viewer",
+			},
+			want: true,
+		},
+		{
+			name: "wrapped viewer disconnect",
+			err:  errors.New(`failed to get reader: received close frame: status = StatusInternalError and reason = "WebVNC viewer disconnected"`),
+			want: true,
+		},
+		{
+			name: "worker connection EOF",
+			err:  errors.New("failed to get reader: failed to read frame header: EOF"),
+			want: true,
+		},
+		{
+			name: "normal close",
+			err: websocket.CloseError{
+				Code:   websocket.StatusNormalClosure,
+				Reason: "bridge stopped",
+			},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isRetryableWebVNCBridgeError(tt.err); got != tt.want {
+				t.Fatalf("retryable=%v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 

@@ -477,7 +477,7 @@ export class FleetDurableObject implements DurableObject {
     this.pendingWebVNCToViewer.delete(lease.id);
     this.webVNCAgents.set(lease.id, agent);
     agent.addEventListener("message", (event) => {
-      forwardOrBufferWebVNC(
+      void forwardOrBufferWebVNC(
         event.data,
         this.webVNCViewers.get(lease.id),
         this.pendingWebVNCToViewer,
@@ -565,7 +565,7 @@ export class FleetDurableObject implements DurableObject {
     this.webVNCViewers.set(lease.id, viewer);
     flushPendingWebVNC(this.pendingWebVNCToViewer, lease.id, viewer);
     viewer.addEventListener("message", (event) => {
-      forwardWebVNC(event.data, this.webVNCAgents.get(lease.id));
+      void forwardWebVNC(event.data, this.webVNCAgents.get(lease.id));
     });
     viewer.addEventListener("close", () => this.clearWebVNCViewer(lease.id, viewer));
     viewer.addEventListener("error", () => this.clearWebVNCViewer(lease.id, viewer));
@@ -1274,12 +1274,13 @@ export interface WebVNCBuffer {
   bytes: number;
 }
 
-export function forwardOrBufferWebVNC(
-  data: string | ArrayBuffer,
+export async function forwardOrBufferWebVNC(
+  rawData: unknown,
   socket: WebSocket | undefined,
   buffers: Map<string, WebVNCBuffer>,
   leaseID: string,
-): void {
+): Promise<void> {
+  const data = await normalizeWebVNCData(rawData);
   if (socket && socket.readyState === WebSocket.OPEN) {
     socket.send(data);
     return;
@@ -1322,11 +1323,22 @@ export function resetWebVNCBridge(
   buffers.delete(leaseID);
 }
 
-function forwardWebVNC(data: string | ArrayBuffer, socket: WebSocket | undefined): void {
+async function forwardWebVNC(rawData: unknown, socket: WebSocket | undefined): Promise<void> {
   if (!socket || socket.readyState !== WebSocket.OPEN) {
     return;
   }
+  const data = await normalizeWebVNCData(rawData);
   socket.send(data);
+}
+
+async function normalizeWebVNCData(data: unknown): Promise<string | ArrayBuffer> {
+  if (typeof data === "string" || data instanceof ArrayBuffer) {
+    return data;
+  }
+  if (data instanceof Blob) {
+    return await data.arrayBuffer();
+  }
+  return String(data);
 }
 
 function webVNCDataBytes(data: string | ArrayBuffer): number {
