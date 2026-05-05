@@ -14,10 +14,15 @@ func (a App) desktopLaunch(ctx context.Context, args []string) error {
 	id := fs.String("id", "", "lease id or slug")
 	browser := fs.Bool("browser", false, "launch the target browser")
 	url := fs.String("url", "", "URL to pass to the launched browser")
+	webvnc := fs.Bool("webvnc", false, "bridge the launched desktop into the authenticated WebVNC portal")
+	openPortal := fs.Bool("open", false, "open the WebVNC portal when --webvnc is set")
 	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
 	targetFlags := registerTargetFlags(fs, defaults)
 	if err := parseFlags(fs, args); err != nil {
 		return err
+	}
+	if *openPortal && !*webvnc {
+		return exit(2, "desktop launch --open requires --webvnc")
 	}
 	positionalID := false
 	if *id == "" && fs.NArg() > 0 {
@@ -36,6 +41,9 @@ func (a App) desktopLaunch(ctx context.Context, args []string) error {
 	}
 	if err := validateRequestedCapabilities(cfg); err != nil {
 		return err
+	}
+	if *webvnc && (isBlacksmithProvider(cfg.Provider) || isStaticProvider(cfg.Provider)) {
+		return exit(2, "desktop launch --webvnc currently supports coordinator-backed hetzner/aws desktop leases")
 	}
 	if *id == "" && !isStaticProvider(cfg.Provider) {
 		return exit(2, "usage: crabbox desktop launch --id <lease-id-or-slug> [--browser] [--url <url>] -- <command...>")
@@ -87,7 +95,32 @@ func (a App) desktopLaunch(ctx context.Context, args []string) error {
 		return exit(5, "launch desktop command: %v", err)
 	}
 	fmt.Fprintf(a.Stdout, "launched: %s\n", strings.Join(command, " "))
+	if *webvnc {
+		return a.webvnc(ctx, desktopLaunchWebVNCArgs(cfg, target, leaseID, *openPortal))
+	}
 	return nil
+}
+
+func desktopLaunchWebVNCArgs(cfg Config, target SSHTarget, leaseID string, openPortal bool) []string {
+	targetOS := firstNonBlank(target.TargetOS, cfg.TargetOS)
+	args := []string{"--provider", cfg.Provider, "--target", targetOS, "--id", leaseID}
+	windowsMode := firstNonBlank(target.WindowsMode, cfg.WindowsMode)
+	if targetOS == targetWindows && windowsMode != "" {
+		args = append(args, "--windows-mode", windowsMode)
+	}
+	if openPortal {
+		args = append(args, "--open")
+	}
+	return args
+}
+
+func firstNonBlank(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func desktopLaunchRemoteCommand(target SSHTarget, workdir string, env map[string]string, command []string) string {

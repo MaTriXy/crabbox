@@ -35,7 +35,7 @@ crabbox config path
 crabbox config set-broker --url <url> --token-stdin [--provider hetzner|aws]
 crabbox warmup [--provider hetzner|aws|ssh|blacksmith-testbox] [--target linux|macos|windows] [--desktop] [--browser] [--tailscale] [--network auto|tailscale|public] [--profile <name>] [--idle-timeout <duration>] [--timing-json]
 crabbox run [--id <lease-id-or-slug>] [--provider hetzner|aws|ssh|blacksmith-testbox] [--target linux|macos|windows] [--windows-mode normal|wsl2] [--desktop] [--browser] [--tailscale] [--network auto|tailscale|public] [--shell] [--checksum] [--debug] [--force-sync-large] [--timing-json] [--blacksmith-workflow <workflow>] -- <command...>
-crabbox desktop launch --id <lease-id-or-slug> [--browser] [--url <url>] [-- <command...>]
+crabbox desktop launch --id <lease-id-or-slug> [--browser] [--url <url>] [--webvnc] [--open] [-- <command...>]
 crabbox media preview --input <video> --output <preview.gif> [--trimmed-video-output <change.mp4>]
 crabbox screenshot --id <lease-id-or-slug> [--output <path>]
 crabbox sync-plan [--limit <n>]
@@ -87,7 +87,7 @@ crabbox warmup --desktop --browser
 crabbox run --id blue-lobster -- pnpm test:changed
 crabbox vnc --id blue-lobster --open
 crabbox webvnc --id blue-lobster --open
-crabbox desktop launch --id blue-lobster --browser --url https://example.com
+crabbox desktop launch --id blue-lobster --browser --url https://example.com --webvnc --open
 crabbox screenshot --id blue-lobster --output desktop.png
 crabbox media preview --input desktop.mp4 --output desktop-preview.gif --trimmed-video-output desktop-change.mp4
 crabbox run --id blue-lobster --shell 'pnpm install --frozen-lockfile && pnpm test'

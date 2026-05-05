@@ -164,7 +164,7 @@ Common Flows:
   crabbox run --id blue-lobster --shell 'pnpm install --frozen-lockfile && pnpm test'
   crabbox ssh --id blue-lobster
   crabbox vnc --id blue-lobster --open
-  crabbox desktop launch --id blue-lobster --browser --url https://example.com
+  crabbox desktop launch --id blue-lobster --browser --url https://example.com --webvnc --open
   crabbox media preview --input desktop.mp4 --output desktop-preview.gif --trimmed-video-output desktop-change.mp4
   crabbox webvnc --id blue-lobster --open
   crabbox screenshot --id blue-lobster --output desktop.png

@@ -97,7 +97,7 @@ Use `crabbox desktop launch` to start a browser or app inside the visible
 session without keeping the SSH command attached:
 
 ```sh
-crabbox desktop launch --id blue-lobster --browser --url https://example.com
+crabbox desktop launch --id blue-lobster --browser --url https://example.com --webvnc --open
 ```
 
 ## Network Model

@@ -26,6 +26,27 @@ func TestDesktopLaunchRemoteCommandUsesDetachedPOSIXSession(t *testing.T) {
 	}
 }
 
+func TestDesktopLaunchWebVNCArgsCarriesTargetDetails(t *testing.T) {
+	got := desktopLaunchWebVNCArgs(
+		Config{Provider: "aws", TargetOS: targetWindows, WindowsMode: windowsModeWSL2},
+		SSHTarget{TargetOS: targetWindows, WindowsMode: windowsModeWSL2},
+		"cbx_1",
+		true,
+	)
+	joined := strings.Join(got, " ")
+	for _, want := range []string{
+		"--provider aws",
+		"--target windows",
+		"--windows-mode wsl2",
+		"--id cbx_1",
+		"--open",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("webvnc args missing %q: %v", want, got)
+		}
+	}
+}
+
 func TestWindowsDesktopLaunchRemoteCommandUsesInteractiveTask(t *testing.T) {
 	got := desktopLaunchRemoteCommand(
 		SSHTarget{TargetOS: targetWindows, WindowsMode: windowsModeNormal},
