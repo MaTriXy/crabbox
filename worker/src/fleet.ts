@@ -1709,12 +1709,29 @@ function codeForwardHeaders(headers: Headers): Record<string, string> {
   return out;
 }
 
-function codeResponseHeaders(values: Record<string, string>): Headers {
+const codePortalContentSecurityPolicy = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "child-src 'self' blob:",
+  "connect-src 'self' ws: wss: https:",
+  "font-src 'self' data: blob:",
+  "frame-src 'self' https://*.vscode-cdn.net data:",
+  "img-src 'self' https: data: blob:",
+  "manifest-src 'self'",
+  "media-src 'self'",
+  "object-src 'none'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://static.cloudflareinsights.com",
+  "style-src 'self' 'unsafe-inline'",
+  "worker-src 'self' data: blob:",
+].join("; ");
+
+export function codeResponseHeaders(values: Record<string, string>): Headers {
   const headers = new Headers();
   for (const [key, value] of Object.entries(values)) {
     const lower = key.toLowerCase();
     if (
       lower === "connection" ||
+      lower === "content-security-policy" ||
       lower === "content-encoding" ||
       lower === "content-length" ||
       lower === "transfer-encoding" ||
@@ -1724,6 +1741,7 @@ function codeResponseHeaders(values: Record<string, string>): Headers {
     }
     headers.set(key, value);
   }
+  headers.set("content-security-policy", codePortalContentSecurityPolicy);
   return headers;
 }
 

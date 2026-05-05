@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   FleetDurableObject,
+  codeResponseHeaders,
   flushPendingWebVNC,
   forwardOrBufferWebVNC,
   resetWebVNCBridge,
@@ -565,6 +566,21 @@ describe("fleet lease identity and idle", () => {
       }),
     );
     expect(missingTicket.status).toBe(401);
+  });
+
+  it("uses a VS Code-compatible CSP for code proxy responses", () => {
+    const headers = codeResponseHeaders({
+      "content-security-policy": "default-src 'none'; script-src 'self'",
+      "content-length": "123",
+      "content-type": "text/html",
+    });
+
+    const csp = headers.get("content-security-policy") || "";
+    expect(csp).toContain("script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:");
+    expect(csp).toContain("https://static.cloudflareinsights.com");
+    expect(csp).toContain("worker-src 'self' data: blob:");
+    expect(headers.get("content-length")).toBeNull();
+    expect(headers.get("content-type")).toBe("text/html");
   });
 
   it("serves WebVNC pages only for desktop leases and requires an agent upgrade", async () => {
