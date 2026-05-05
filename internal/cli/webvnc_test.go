@@ -3,9 +3,12 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,6 +30,21 @@ func TestWebVNCURLs(t *testing.T) {
 	}
 	if got := webVNCPortalURL("https://crabbox.openclaw.ai/#stale", "cbx_abcdef123456", "", ""); got != "https://crabbox.openclaw.ai/portal/leases/cbx_abcdef123456/vnc" {
 		t.Fatalf("portal URL=%q", got)
+	}
+	got := webVNCPortalURL("https://crabbox.openclaw.ai/", "cbx_abcdef123456", "", "JVS/yMb%2B")
+	if got != "https://crabbox.openclaw.ai/portal/leases/cbx_abcdef123456/vnc#password=JVS%2FyMb%252B" {
+		t.Fatalf("portal URL with escaped password=%q", got)
+	}
+	fragment, ok := strings.CutPrefix(got, "https://crabbox.openclaw.ai/portal/leases/cbx_abcdef123456/vnc#")
+	if !ok {
+		t.Fatalf("portal URL missing expected fragment: %q", got)
+	}
+	values, err := url.ParseQuery(fragment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values.Get("password") != "JVS/yMb%2B" {
+		t.Fatalf("decoded portal password=%q", values.Get("password"))
 	}
 }
 
@@ -92,5 +110,41 @@ func TestConnectWebVNCBridgeRegistersAgentBeforeServe(t *testing.T) {
 	case <-agentConnected:
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
+	}
+}
+
+func TestRetryableWebVNCBridgeErrors(t *testing.T) {
+	cases := []struct {
+		name      string
+		err       error
+		retryable bool
+	}{
+		{
+			name:      "viewer disconnected",
+			err:       errors.New(`failed to get reader: received close frame: status = StatusInternalError and reason = "WebVNC viewer disconnected"`),
+			retryable: true,
+		},
+		{
+			name:      "newer viewer",
+			err:       errors.New(`received close frame: status = StatusServiceRestart and reason = "replaced by a newer WebVNC viewer"`),
+			retryable: true,
+		},
+		{
+			name:      "normal close",
+			err:       errors.New(`received close frame: status = StatusNormalClosure and reason = "test done"`),
+			retryable: false,
+		},
+		{
+			name:      "nil",
+			err:       nil,
+			retryable: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := retryableWebVNCBridgeError(tc.err); got != tc.retryable {
+				t.Fatalf("retryable=%v, want %v", got, tc.retryable)
+			}
+		})
 	}
 }

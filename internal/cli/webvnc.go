@@ -87,28 +87,49 @@ func (a App) webvnc(ctx context.Context, args []string) error {
 		connPort = *localPort
 	}
 
-	bridge, err := connectWebVNCBridge(ctx, coord, leaseID, connHost, connPort)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintln(a.Stdout, "bridge: connected; keep this process running while using WebVNC")
-
 	portal := webVNCPortalURL(coord.BaseURL, leaseID, username, password)
-	fmt.Fprintf(a.Stdout, "webvnc: %s\n", portal)
-	if strings.TrimSpace(password) != "" {
-		fmt.Fprintf(a.Stdout, "password: %s\n", strings.TrimSpace(password))
-		if strings.TrimSpace(username) != "" {
-			fmt.Fprintf(a.Stdout, "username: %s\n", strings.TrimSpace(username))
-		}
-	}
-	if *openPortal {
-		if err := openLocalURL(portal); err != nil {
-			bridge.Close()
+	opened := false
+	attempt := 0
+	for {
+		bridge, err := connectWebVNCBridge(ctx, coord, leaseID, connHost, connPort)
+		if err != nil {
 			return err
 		}
-		fmt.Fprintf(a.Stdout, "opened: %s\n", portal)
+		if attempt == 0 {
+			fmt.Fprintln(a.Stdout, "bridge: connected; keep this process running while using WebVNC")
+			fmt.Fprintf(a.Stdout, "webvnc: %s\n", portal)
+			if strings.TrimSpace(password) != "" {
+				fmt.Fprintf(a.Stdout, "password: %s\n", strings.TrimSpace(password))
+				if strings.TrimSpace(username) != "" {
+					fmt.Fprintf(a.Stdout, "username: %s\n", strings.TrimSpace(username))
+				}
+			}
+		} else {
+			fmt.Fprintf(a.Stdout, "bridge: reconnected after viewer reset (attempt %d)\n", attempt+1)
+		}
+		if *openPortal && !opened {
+			if err := openLocalURL(portal); err != nil {
+				bridge.Close()
+				return err
+			}
+			opened = true
+			fmt.Fprintf(a.Stdout, "opened: %s\n", portal)
+		}
+		err = bridge.Serve(ctx)
+		if !retryableWebVNCBridgeError(err) {
+			return err
+		}
+		attempt++
+		delay := webVNCReconnectDelay(attempt)
+		fmt.Fprintf(a.Stdout, "bridge: viewer reset; reconnecting in %s\n", delay)
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return context.Cause(ctx)
+		case <-timer.C:
+		}
 	}
-	return bridge.Serve(ctx)
 }
 
 func startVNCForegroundTunnel(ctx context.Context, target SSHTarget, localPort, remoteHost, remotePort string) (*exec.Cmd, error) {
@@ -173,6 +194,27 @@ func (b *webVNCBridge) Serve(ctx context.Context) error {
 		}
 		return err
 	}
+}
+
+func retryableWebVNCBridgeError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "WebVNC viewer disconnected") ||
+		strings.Contains(message, "replaced by a newer WebVNC viewer") ||
+		strings.Contains(message, "WebVNC bridge reset")
+}
+
+func webVNCReconnectDelay(attempt int) time.Duration {
+	if attempt < 1 {
+		attempt = 1
+	}
+	delay := time.Duration(attempt) * 500 * time.Millisecond
+	if delay > 5*time.Second {
+		return 5 * time.Second
+	}
+	return delay
 }
 
 func (b *webVNCBridge) Close() {
