@@ -182,7 +182,7 @@ func baseConfig() Config {
 		SSHPort:          "2222",
 		SSHFallbackPorts: []string{"22"},
 		ProviderKey:      "crabbox-steipete",
-		WorkRoot:         "/work/crabbox",
+		WorkRoot:         defaultPOSIXWorkRoot,
 		TTL:              90 * time.Minute,
 		IdleTimeout:      30 * time.Minute,
 		Sync: SyncConfig{
