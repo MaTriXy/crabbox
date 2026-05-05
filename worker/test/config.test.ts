@@ -154,17 +154,20 @@ describe("lease config", () => {
     expect(config.capacityStrategy).toBe("most-available");
     expect(config.desktop).toBe(false);
     expect(config.browser).toBe(false);
+    expect(config.code).toBe(false);
     expect(config.ttlSeconds).toBe(86_400);
   });
 
-  it("preserves requested desktop and browser capabilities", () => {
+  it("preserves requested desktop, browser, and code capabilities", () => {
     const config = leaseConfig({
       sshPublicKey: "ssh-ed25519 test",
       desktop: true,
       browser: true,
+      code: true,
     });
     expect(config.desktop).toBe(true);
     expect(config.browser).toBe(true);
+    expect(config.code).toBe(true);
   });
 
   it("preserves Tailscale lease capability requests", () => {

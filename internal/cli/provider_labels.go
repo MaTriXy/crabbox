@@ -41,6 +41,9 @@ func directLeaseLabels(cfg Config, leaseID, slug, provider, market string, keep 
 	if cfg.Browser {
 		labels["browser"] = "true"
 	}
+	if cfg.Code {
+		labels["code"] = "true"
+	}
 	if cfg.Tailscale.Enabled {
 		labels["tailscale"] = "true"
 		labels["tailscale_state"] = "requested"

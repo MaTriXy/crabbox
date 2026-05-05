@@ -70,6 +70,38 @@ func configuredExcludes(cfg Config) []string {
 	return appendUniqueStrings(defaultExcludes(), cfg.Sync.Excludes...)
 }
 
+func syncExcludes(root string, cfg Config) ([]string, error) {
+	excludes := configuredExcludes(cfg)
+	ignore, err := readCrabboxIgnore(root)
+	if err != nil {
+		return nil, err
+	}
+	return appendUniqueStrings(excludes, ignore...), nil
+}
+
+func readCrabboxIgnore(root string) ([]string, error) {
+	if root == "" {
+		return nil, nil
+	}
+	data, err := os.ReadFile(filepath.Join(root, ".crabboxignore"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, exit(2, "read .crabboxignore: %v", err)
+	}
+	lines := strings.Split(string(data), "\n")
+	patterns := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		patterns = append(patterns, line)
+	}
+	return patterns, nil
+}
+
 func allowedEnv(allow []string) map[string]string {
 	out := map[string]string{}
 	for _, env := range os.Environ() {
@@ -113,6 +145,13 @@ func gitOutput(root string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
+func remoteGitSeedCandidate(repo Repo) bool {
+	if repo.Root == "" || repo.RemoteURL == "" || repo.Head == "" {
+		return false
+	}
+	return gitOutput(repo.Root, "for-each-ref", "--contains", repo.Head, "--format=%(refname)", "refs/remotes") != ""
+}
+
 func defaultBaseRef(root string) string {
 	originHead := gitOutput(root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
 	if originHead != "" {
@@ -126,18 +165,22 @@ func defaultBaseRef(root string) string {
 }
 
 func syncFingerprint(repo Repo, cfg Config) (string, error) {
-	manifest, err := syncManifest(repo.Root, configuredExcludes(cfg))
+	excludes, err := syncExcludes(repo.Root, cfg)
 	if err != nil {
 		return "", err
 	}
-	return syncFingerprintForManifest(repo, cfg, manifest)
+	manifest, err := syncManifest(repo.Root, excludes)
+	if err != nil {
+		return "", err
+	}
+	return syncFingerprintForManifest(repo, cfg, manifest, excludes)
 }
 
-func syncFingerprintForManifest(repo Repo, cfg Config, manifest SyncManifest) (string, error) {
+func syncFingerprintForManifest(repo Repo, cfg Config, manifest SyncManifest, excludes []string) (string, error) {
 	if repo.Head == "" {
 		return "", nil
 	}
-	paths, err := changedSyncPaths(repo.Root, configuredExcludes(cfg))
+	paths, err := changedSyncPaths(repo.Root, excludes)
 	if err != nil {
 		return "", err
 	}
@@ -146,7 +189,7 @@ func syncFingerprintForManifest(repo Repo, cfg Config, manifest SyncManifest) (s
 	fmt.Fprintf(h, "delete=%t\nchecksum=%t\n", cfg.Sync.Delete, cfg.Sync.Checksum)
 	fmt.Fprintf(h, "manifest=%x\n", sha256.Sum256(manifest.NUL()))
 	fmt.Fprintf(h, "deleted=%x\n", sha256.Sum256(manifest.DeletedNUL()))
-	for _, exclude := range configuredExcludes(cfg) {
+	for _, exclude := range excludes {
 		fmt.Fprintf(h, "exclude=%s\n", exclude)
 	}
 	for _, rel := range paths {

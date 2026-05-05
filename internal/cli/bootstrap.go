@@ -438,6 +438,10 @@ func cloudInitOptionalReadyChecks(cfg Config) string {
 		b.WriteString("      test -x \"$BROWSER\"\n")
 		b.WriteString("      \"$BROWSER\" --version >/dev/null\n")
 	}
+	if cfg.Code {
+		b.WriteString("      test -x /usr/local/bin/code-server\n")
+		b.WriteString("      /usr/local/bin/code-server --version >/dev/null\n")
+	}
 	return strings.TrimRight(b.String(), "\n")
 }
 
@@ -572,6 +576,11 @@ func cloudInitOptionalBootstrap(cfg Config) string {
       chown crabbox:crabbox /var/lib/crabbox/browser.env
       chmod 0644 /var/lib/crabbox/browser.env
     fi`)
+	}
+	if cfg.Code {
+		parts = append(parts, `    retry apt-get install -y --no-install-recommends libatomic1
+    retry env HOME=/root sh -c 'curl -fsSL https://code-server.dev/install.sh | sh -s -- --method=standalone --prefix=/usr/local'
+    /usr/local/bin/code-server --version >/dev/null`)
 	}
 	return strings.Join(parts, "\n")
 }

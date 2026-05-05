@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"time"
 )
@@ -12,7 +13,7 @@ func syncWindowsNative(ctx context.Context, target SSHTarget, repo Repo, cfg Con
 	if err := runSSHQuiet(ctx, target, windowsPrepareWorkdir(workdir, cfg.Sync.Delete)); err != nil {
 		return exit(7, "prepare remote workdir: %v", err)
 	}
-	if cfg.Sync.GitSeed {
+	if cfg.Sync.GitSeed && remoteGitSeedCandidate(repo) {
 		if err := runSSHQuiet(ctx, target, windowsGitSeed(workdir, repo.RemoteURL, repo.Head)); err != nil {
 			fmt.Fprintf(stderr, "warning: remote git seed failed: %v\n", err)
 		}
@@ -21,6 +22,7 @@ func syncWindowsNative(ctx context.Context, target SSHTarget, repo Repo, cfg Con
 	input.Write(manifest.NUL())
 	cmd := exec.CommandContext(ctx, "tar", "-czf", "-", "-C", repo.Root, "--null", "-T", "-")
 	cmd.Stdin = &input
+	cmd.Env = append(os.Environ(), "COPYFILE_DISABLE=1")
 	var archive bytes.Buffer
 	cmd.Stdout = &archive
 	cmd.Stderr = stderr

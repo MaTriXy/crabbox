@@ -4,7 +4,7 @@ import { leaseConfig, validCIDRs } from "./config";
 import { HetznerClient } from "./hetzner";
 import { errorMessage, json, pathParts, readJson, requestOwner } from "./http";
 import { githubAuthRoute, githubPortalLogin, githubPortalLogout } from "./oauth";
-import { portalError, portalHome, portalVNC, webVNCBridgeCommand } from "./portal";
+import { portalCode, portalError, portalHome, portalVNC, webVNCBridgeCommand } from "./portal";
 import { leaseSlugFromID, normalizeLeaseSlug, slugWithCollisionSuffix } from "./slug";
 import {
   createTailscaleAuthKey,
@@ -37,7 +37,10 @@ const fleetID = "default";
 const maxStoredRunLogBytes = 8 * 1024 * 1024;
 const runLogChunkBytes = 64 * 1024;
 const webVNCTicketTTLSeconds = 120;
+const codeTicketTTLSeconds = 120;
 const maxPendingWebVNCBytes = 1024 * 1024;
+const maxCodeRequestBytes = 10 * 1024 * 1024;
+const maxCodeWebSocketFrameChunkBytes = 15 * 1024;
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
@@ -50,16 +53,109 @@ interface WebVNCTicketRecord {
   expiresAt: string;
 }
 
+interface CodeTicketRecord {
+  ticket: string;
+  leaseID: string;
+  owner: string;
+  org: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+interface CodeProxyRequest {
+  type: "http";
+  id: string;
+  method: string;
+  path: string;
+  headers: Record<string, string>;
+  body?: string;
+}
+
+interface CodeProxyResponse {
+  type: "http";
+  id: string;
+  status: number;
+  headers?: Record<string, string>;
+  body?: string;
+  error?: string;
+}
+
+interface CodePendingRequest {
+  resolve: (response: CodeProxyResponse) => void;
+  timeout: ReturnType<typeof setTimeout>;
+  response?: CodeProxyResponse;
+  chunks: string[];
+}
+
+interface CodeWebSocketOpen {
+  type: "ws_open";
+  id: string;
+  path: string;
+  headers: Record<string, string>;
+}
+
+interface CodeWebSocketData {
+  type: "ws_data";
+  id: string;
+  body: string;
+  frame?: "text" | "binary";
+}
+
+interface CodeWebSocketFrameStart {
+  type: "ws_start";
+  id: string;
+  chunkID: string;
+  frame?: "text" | "binary";
+}
+
+interface CodeWebSocketFrameBody {
+  type: "ws_body";
+  id?: string;
+  chunkID: string;
+  body: string;
+}
+
+interface CodeWebSocketFrameEnd {
+  type: "ws_end";
+  id?: string;
+  chunkID: string;
+}
+
+interface CodeWebSocketClose {
+  type: "ws_close";
+  id: string;
+  code?: number;
+  reason?: string;
+}
+
+interface CodePendingWebSocketFrame {
+  id: string;
+  frame: "text" | "binary";
+  chunks: string[];
+}
+
+type BridgeAttachment =
+  | { kind: "webvnc-agent"; leaseID: string }
+  | { kind: "webvnc-viewer"; leaseID: string }
+  | { kind: "code-agent"; leaseID: string }
+  | { kind: "code-viewer"; leaseID: string; id: string };
+
 export class FleetDurableObject implements DurableObject {
   private readonly webVNCAgents = new Map<string, WebSocket>();
   private readonly webVNCViewers = new Map<string, WebSocket>();
   private readonly pendingWebVNCToViewer = new Map<string, WebVNCBuffer>();
+  private readonly codeAgents = new Map<string, WebSocket>();
+  private readonly codeViewers = new Map<string, WebSocket>();
+  private readonly pendingCodeRequests = new Map<string, CodePendingRequest>();
+  private readonly pendingCodeFrames = new Map<string, CodePendingWebSocketFrame>();
 
   constructor(
     private readonly state: DurableObjectState,
     private readonly env: Env,
     private readonly testProviders: Partial<Record<Provider, CloudProvider>> = {},
-  ) {}
+  ) {
+    this.restoreBridgeWebSockets();
+  }
 
   async fetch(request: Request): Promise<Response> {
     try {
@@ -138,12 +234,154 @@ export class FleetDurableObject implements DurableObject {
       ) {
         return await this.webVNCAgent(request, parts[2]);
       }
+      if (
+        parts[0] === "v1" &&
+        parts[1] === "leases" &&
+        parts[2] &&
+        parts[3] === "code" &&
+        parts[4] === "ticket"
+      ) {
+        return await this.createCodeTicket(request, parts[2]);
+      }
+      if (
+        parts[0] === "v1" &&
+        parts[1] === "leases" &&
+        parts[2] &&
+        parts[3] === "code" &&
+        parts[4] === "agent"
+      ) {
+        return await this.codeAgent(request, parts[2]);
+      }
       if (parts[0] === "v1" && parts[1] === "leases" && parts[2]) {
         return await this.leaseRoute(request, parts[2], parts[3]);
       }
       return json({ error: "not_found" }, { status: 404 });
     } catch (error) {
       return json({ error: errorMessage(error) }, { status: 500 });
+    }
+  }
+
+  async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    const attachment = bridgeAttachment(socket);
+    if (!attachment) {
+      return;
+    }
+    await this.handleBridgeMessage(socket, attachment, message);
+  }
+
+  webSocketClose(socket: WebSocket, code: number, reason: string, _wasClean: boolean): void {
+    this.handleBridgeClose(socket, code, reason);
+  }
+
+  webSocketError(socket: WebSocket, _error: unknown): void {
+    this.handleBridgeClose(socket, 1011, "bridge socket error");
+  }
+
+  private restoreBridgeWebSockets(): void {
+    if (typeof this.state.getWebSockets !== "function") {
+      return;
+    }
+    for (const socket of this.state.getWebSockets()) {
+      const attachment = bridgeAttachment(socket);
+      if (!attachment || socket.readyState !== WebSocket.OPEN) {
+        continue;
+      }
+      this.trackBridgeSocket(socket, attachment);
+    }
+  }
+
+  private acceptBridgeWebSocket(socket: WebSocket, attachment: BridgeAttachment): void {
+    if (typeof this.state.acceptWebSocket === "function") {
+      this.state.acceptWebSocket(socket, bridgeTags(attachment));
+      socket.serializeAttachment(attachment);
+    } else {
+      socket.accept();
+      socket.addEventListener("message", (event) => {
+        void this.handleBridgeMessage(socket, attachment, event.data);
+      });
+      socket.addEventListener("close", (event) => {
+        this.handleBridgeClose(socket, event.code, event.reason);
+      });
+      socket.addEventListener("error", () => {
+        this.handleBridgeClose(socket, 1011, "bridge socket error");
+      });
+    }
+  }
+
+  private trackBridgeSocket(socket: WebSocket, attachment: BridgeAttachment): void {
+    switch (attachment.kind) {
+      case "webvnc-agent":
+        this.webVNCAgents.set(attachment.leaseID, socket);
+        break;
+      case "webvnc-viewer":
+        this.webVNCViewers.set(attachment.leaseID, socket);
+        break;
+      case "code-agent":
+        this.codeAgents.set(attachment.leaseID, socket);
+        break;
+      case "code-viewer":
+        this.codeViewers.set(attachment.id, socket);
+        break;
+    }
+  }
+
+  private async handleBridgeMessage(
+    socket: WebSocket,
+    attachment: BridgeAttachment,
+    message: string | ArrayBuffer | Blob,
+  ): Promise<void> {
+    switch (attachment.kind) {
+      case "webvnc-agent":
+        await forwardOrBufferWebVNC(
+          message,
+          this.webVNCViewers.get(attachment.leaseID),
+          this.pendingWebVNCToViewer,
+          attachment.leaseID,
+        );
+        break;
+      case "webvnc-viewer":
+        await forwardWebVNC(message, this.webVNCAgents.get(attachment.leaseID));
+        break;
+      case "code-agent":
+        await this.handleCodeAgentMessage(attachment.leaseID, message);
+        break;
+      case "code-viewer": {
+        const agent = this.codeAgents.get(attachment.leaseID);
+        if (agent?.readyState !== WebSocket.OPEN) {
+          return;
+        }
+        const data = await normalizeWebVNCData(message);
+        const bytes = typeof data === "string" ? textEncoder.encode(data) : new Uint8Array(data);
+        this.sendCodeWebSocketData(agent, {
+          type: "ws_data",
+          id: attachment.id,
+          frame: typeof data === "string" ? "text" : "binary",
+          body: bytesToBase64(bytes),
+        });
+        break;
+      }
+    }
+    void socket;
+  }
+
+  private handleBridgeClose(socket: WebSocket, code: number, reason: string): void {
+    const attachment = bridgeAttachment(socket);
+    if (!attachment) {
+      return;
+    }
+    switch (attachment.kind) {
+      case "webvnc-agent":
+        this.clearWebVNCAgent(attachment.leaseID, socket);
+        break;
+      case "webvnc-viewer":
+        this.clearWebVNCViewer(attachment.leaseID, socket);
+        break;
+      case "code-agent":
+        this.clearCodeAgent(attachment.leaseID, socket);
+        break;
+      case "code-viewer":
+        this.clearCodeViewer(attachment.leaseID, attachment.id, socket, code, reason);
+        break;
     }
   }
 
@@ -195,6 +433,7 @@ export class FleetDurableObject implements DurableObject {
       target: config.target,
       desktop: config.desktop,
       browser: config.browser,
+      code: config.code,
       cloudID: "",
       owner,
       org,
@@ -441,6 +680,9 @@ export class FleetDurableObject implements DurableObject {
     ) {
       return await this.webVNCViewer(request, parts[2]);
     }
+    if (parts[1] === "leases" && parts[2] && parts[3] === "code") {
+      return await this.codePortalProxy(request, parts[2], parts.slice(4));
+    }
     return json({ error: "not_found" }, { status: 404 });
   }
 
@@ -469,21 +711,11 @@ export class FleetDurableObject implements DurableObject {
     const pair = new WebSocketPair();
     const client = pair[0];
     const agent = pair[1];
-    agent.accept();
 
     closeSocket(this.webVNCAgents.get(lease.id), 1012, "replaced by a newer WebVNC bridge");
     this.pendingWebVNCToViewer.delete(lease.id);
     this.webVNCAgents.set(lease.id, agent);
-    agent.addEventListener("message", (event) => {
-      forwardOrBufferWebVNC(
-        event.data,
-        this.webVNCViewers.get(lease.id),
-        this.pendingWebVNCToViewer,
-        lease.id,
-      );
-    });
-    agent.addEventListener("close", () => this.clearWebVNCAgent(lease.id, agent));
-    agent.addEventListener("error", () => this.clearWebVNCAgent(lease.id, agent));
+    this.acceptBridgeWebSocket(agent, { kind: "webvnc-agent", leaseID: lease.id });
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -543,6 +775,353 @@ export class FleetDurableObject implements DurableObject {
     });
   }
 
+  private async createCodeTicket(request: Request, identifier: string): Promise<Response> {
+    if (request.method.toUpperCase() !== "POST") {
+      return json({ error: "not_found" }, { status: 404 });
+    }
+    const lease = await this.resolveLease(identifier, request, false);
+    if (!lease) {
+      return notFound();
+    }
+    const error = codeLeaseError(lease);
+    if (error) {
+      return json({ error: "code_unavailable", message: error }, { status: 409 });
+    }
+    await this.cleanupExpiredCodeTickets();
+    const now = new Date();
+    const ticket: CodeTicketRecord = {
+      ticket: newCodeTicket(),
+      leaseID: lease.id,
+      owner: requestOwner(request),
+      org: requestOrg(request, this.env),
+      createdAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + codeTicketTTLSeconds * 1000).toISOString(),
+    };
+    await this.state.storage.put(codeTicketKey(ticket.ticket), ticket);
+    return json({
+      ticket: ticket.ticket,
+      leaseID: ticket.leaseID,
+      expiresAt: ticket.expiresAt,
+    });
+  }
+
+  private async codeAgent(request: Request, identifier: string): Promise<Response> {
+    if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
+      return json(
+        { error: "upgrade_required", message: "code bridge requires a websocket upgrade" },
+        { status: 426 },
+      );
+    }
+    const ticket = await this.consumeCodeTicket(request);
+    if (!ticket) {
+      return json(
+        { error: "code_ticket_required", message: "valid code bridge ticket required" },
+        { status: 401 },
+      );
+    }
+    const lease = await this.getLease(ticket.leaseID);
+    if (!lease || !identifierMatchesLease(identifier, lease)) {
+      return notFound();
+    }
+    const error = codeLeaseError(lease);
+    if (error) {
+      return json({ error: "code_unavailable", message: error }, { status: 409 });
+    }
+    const pair = new WebSocketPair();
+    const client = pair[0];
+    const agent = pair[1];
+
+    closeSocket(this.codeAgents.get(lease.id), 1012, "replaced by a newer code bridge");
+    this.clearCodeLease(lease.id);
+    this.codeAgents.set(lease.id, agent);
+    this.acceptBridgeWebSocket(agent, { kind: "code-agent", leaseID: lease.id });
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  private async codePortalProxy(
+    request: Request,
+    identifier: string,
+    _rest: string[],
+  ): Promise<Response> {
+    const lease = await this.resolveLease(identifier, request, false);
+    if (!lease) {
+      return portalError(
+        "Lease not found",
+        "That lease is not active or is not visible to you.",
+        404,
+      );
+    }
+    const error = codeLeaseError(lease);
+    if (error) {
+      return portalError("Code unavailable", error, 409);
+    }
+    const agent = this.codeAgents.get(lease.id);
+    if (request.method.toUpperCase() === "GET" && _rest.length === 1 && _rest[0] === "health") {
+      return this.codePortalHealth(lease, agent);
+    }
+    if (!agent || agent.readyState !== WebSocket.OPEN) {
+      return portalCode(lease);
+    }
+    if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
+      return this.codeViewerWebSocket(request, lease, agent);
+    }
+    return await this.codeProxyHTTP(request, lease, agent);
+  }
+
+  private codePortalHealth(lease: LeaseRecord, agent: WebSocket | undefined): Response {
+    return json({
+      lease: {
+        id: lease.id,
+        slug: lease.slug,
+        state: lease.state,
+        code: lease.code === true,
+      },
+      code: {
+        agentConnected: agent?.readyState === WebSocket.OPEN,
+        pendingRequests: this.pendingCodeRequests.size,
+      },
+    });
+  }
+
+  private async codeProxyHTTP(
+    request: Request,
+    lease: LeaseRecord,
+    agent: WebSocket,
+  ): Promise<Response> {
+    const bodyBytes = new Uint8Array(await request.arrayBuffer());
+    if (bodyBytes.byteLength > maxCodeRequestBytes) {
+      return json({ error: "request_too_large" }, { status: 413 });
+    }
+    const id = crypto.randomUUID();
+    const url = new URL(request.url);
+    const message: CodeProxyRequest = {
+      type: "http",
+      id,
+      method: request.method,
+      path: `${url.pathname}${url.search}`,
+      headers: codeForwardHeaders(request.headers),
+    };
+    if (bodyBytes.byteLength > 0) {
+      message.body = bytesToBase64(bodyBytes);
+    }
+    const response = await new Promise<CodeProxyResponse>((resolve) => {
+      const timeout = setTimeout(() => {
+        this.pendingCodeRequests.delete(id);
+        resolve({ type: "http", id, status: 504, error: "code bridge timed out" });
+      }, 30_000);
+      this.pendingCodeRequests.set(id, { resolve, timeout, chunks: [] });
+      agent.send(JSON.stringify(message));
+    });
+    if (response.error) {
+      return json(
+        { error: "code_proxy_error", message: response.error },
+        { status: response.status || 502 },
+      );
+    }
+    return new Response(response.body ? base64ToBytes(response.body) : null, {
+      status: response.status || 502,
+      headers: codeResponseHeaders(response.headers ?? {}),
+    });
+  }
+
+  private codeViewerWebSocket(request: Request, lease: LeaseRecord, agent: WebSocket): Response {
+    const pair = new WebSocketPair();
+    const client = pair[0];
+    const viewer = pair[1];
+    const id = crypto.randomUUID();
+    this.codeViewers.set(id, viewer);
+    this.acceptBridgeWebSocket(viewer, { kind: "code-viewer", leaseID: lease.id, id });
+    const url = new URL(request.url);
+    const open: CodeWebSocketOpen = {
+      type: "ws_open",
+      id,
+      path: `${url.pathname}${url.search}`,
+      headers: codeForwardHeaders(request.headers),
+    };
+    agent.send(JSON.stringify(open));
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  private sendCodeWebSocketData(agent: WebSocket, message: CodeWebSocketData): void {
+    const data = base64ToBytes(message.body);
+    if (data.byteLength <= maxCodeWebSocketFrameChunkBytes) {
+      agent.send(JSON.stringify(message));
+      return;
+    }
+    const chunkID = crypto.randomUUID();
+    const frame = message.frame ?? "binary";
+    const start: CodeWebSocketFrameStart = {
+      type: "ws_start",
+      id: message.id,
+      chunkID,
+      frame,
+    };
+    agent.send(JSON.stringify(start));
+    for (let offset = 0; offset < data.byteLength; offset += maxCodeWebSocketFrameChunkBytes) {
+      const body: CodeWebSocketFrameBody = {
+        type: "ws_body",
+        id: message.id,
+        chunkID,
+        body: bytesToBase64(data.slice(offset, offset + maxCodeWebSocketFrameChunkBytes)),
+      };
+      agent.send(JSON.stringify(body));
+    }
+    const end: CodeWebSocketFrameEnd = { type: "ws_end", id: message.id, chunkID };
+    agent.send(JSON.stringify(end));
+  }
+
+  private sendCodeDataToViewer(message: CodeWebSocketData): void {
+    const viewer = this.codeViewers.get(message.id);
+    if (viewer?.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    const data = base64ToBytes(message.body);
+    viewer.send(message.frame === "text" ? textDecoder.decode(data) : data);
+  }
+
+  private async handleCodeAgentMessage(leaseID: string, rawData: unknown): Promise<void> {
+    const raw = await normalizeWebVNCData(rawData);
+    const text = typeof raw === "string" ? raw : textDecoder.decode(raw);
+    let message:
+      | CodeProxyResponse
+      | CodeWebSocketData
+      | CodeWebSocketFrameStart
+      | CodeWebSocketFrameBody
+      | CodeWebSocketFrameEnd
+      | CodeWebSocketClose
+      | { type?: string; id?: string; error?: string };
+    try {
+      message = JSON.parse(text);
+    } catch {
+      return;
+    }
+    if (message.type === "http" && message.id) {
+      const pending = this.pendingCodeRequests.get(message.id);
+      if (!pending) {
+        return;
+      }
+      clearTimeout(pending.timeout);
+      this.pendingCodeRequests.delete(message.id);
+      pending.resolve(message as CodeProxyResponse);
+      return;
+    }
+    if (message.type === "http_start" && message.id) {
+      const pending = this.pendingCodeRequests.get(message.id);
+      if (!pending) {
+        return;
+      }
+      pending.response = { ...(message as CodeProxyResponse), type: "http", body: "" };
+      pending.chunks = [];
+      return;
+    }
+    if (message.type === "http_body" && message.id) {
+      const pending = this.pendingCodeRequests.get(message.id);
+      if (!pending) {
+        return;
+      }
+      pending.chunks.push((message as CodeProxyResponse).body ?? "");
+      return;
+    }
+    if (message.type === "http_end" && message.id) {
+      const pending = this.pendingCodeRequests.get(message.id);
+      if (!pending) {
+        return;
+      }
+      clearTimeout(pending.timeout);
+      this.pendingCodeRequests.delete(message.id);
+      pending.resolve({
+        ...(pending.response ?? { type: "http", id: message.id, status: 502 }),
+        body: pending.chunks.join(""),
+      });
+      return;
+    }
+    if (message.type === "ws_data" && message.id) {
+      this.sendCodeDataToViewer(message as CodeWebSocketData);
+      return;
+    }
+    if (message.type === "ws_start" && message.id) {
+      const start = message as CodeWebSocketFrameStart;
+      this.pendingCodeFrames.set(start.chunkID, {
+        id: start.id,
+        frame: start.frame ?? "binary",
+        chunks: [],
+      });
+      return;
+    }
+    if (message.type === "ws_body") {
+      const body = message as CodeWebSocketFrameBody;
+      const pending = this.pendingCodeFrames.get(body.chunkID);
+      if (pending) {
+        pending.chunks.push(body.body);
+      }
+      return;
+    }
+    if (message.type === "ws_end") {
+      const end = message as CodeWebSocketFrameEnd;
+      const pending = this.pendingCodeFrames.get(end.chunkID);
+      this.pendingCodeFrames.delete(end.chunkID);
+      if (pending) {
+        this.sendCodeDataToViewer({
+          type: "ws_data",
+          id: pending.id,
+          frame: pending.frame,
+          body: pending.chunks.join(""),
+        });
+      }
+      return;
+    }
+    if (message.type === "ws_close" && message.id) {
+      const viewer = this.codeViewers.get(message.id);
+      this.codeViewers.delete(message.id);
+      closeSocket(
+        viewer,
+        (message as CodeWebSocketClose).code ?? 1000,
+        (message as CodeWebSocketClose).reason ?? "code socket closed",
+      );
+      return;
+    }
+    void leaseID;
+  }
+
+  private clearCodeAgent(leaseID: string, socket: WebSocket): void {
+    if (this.codeAgents.get(leaseID) !== socket) {
+      return;
+    }
+    this.codeAgents.delete(leaseID);
+    this.clearCodeLease(leaseID);
+  }
+
+  private clearCodeViewer(
+    leaseID: string,
+    id: string,
+    socket: WebSocket,
+    code = 1000,
+    reason = "viewer closed",
+  ): void {
+    if (this.codeViewers.get(id) !== socket) {
+      return;
+    }
+    this.codeViewers.delete(id);
+    const agent = this.codeAgents.get(leaseID);
+    const message: CodeWebSocketClose = { type: "ws_close", id, code, reason };
+    if (agent?.readyState === WebSocket.OPEN) {
+      agent.send(JSON.stringify(message));
+    }
+  }
+
+  private clearCodeLease(_leaseID: string): void {
+    for (const [id, viewer] of this.codeViewers) {
+      this.codeViewers.delete(id);
+      closeSocket(viewer, 1011, "code bridge disconnected");
+    }
+    for (const [id, pending] of this.pendingCodeRequests) {
+      clearTimeout(pending.timeout);
+      this.pendingCodeRequests.delete(id);
+      pending.resolve({ type: "http", id, status: 502, error: "code bridge disconnected" });
+    }
+    this.pendingCodeFrames.clear();
+  }
+
   private async webVNCViewer(request: Request, identifier: string): Promise<Response> {
     if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
       return json(
@@ -588,15 +1167,10 @@ export class FleetDurableObject implements DurableObject {
     const pair = new WebSocketPair();
     const client = pair[0];
     const viewer = pair[1];
-    viewer.accept();
 
     this.webVNCViewers.set(lease.id, viewer);
+    this.acceptBridgeWebSocket(viewer, { kind: "webvnc-viewer", leaseID: lease.id });
     flushPendingWebVNC(this.pendingWebVNCToViewer, lease.id, viewer);
-    viewer.addEventListener("message", (event) => {
-      forwardWebVNC(event.data, this.webVNCAgents.get(lease.id));
-    });
-    viewer.addEventListener("close", () => this.clearWebVNCViewer(lease.id, viewer));
-    viewer.addEventListener("error", () => this.clearWebVNCViewer(lease.id, viewer));
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -644,6 +1218,35 @@ export class FleetDurableObject implements DurableObject {
   private async cleanupExpiredWebVNCTickets(): Promise<void> {
     const tickets = await this.state.storage.list<WebVNCTicketRecord>({
       prefix: webVNCTicketPrefix(),
+    });
+    const now = Date.now();
+    await Promise.all(
+      [...tickets.entries()]
+        .filter(([, ticket]) => Date.parse(ticket.expiresAt) <= now)
+        .map(([key]) => this.state.storage.delete(key)),
+    );
+  }
+
+  private async consumeCodeTicket(request: Request): Promise<CodeTicketRecord | undefined> {
+    const value = new URL(request.url).searchParams.get("ticket") ?? "";
+    if (!validCodeTicket(value)) {
+      return undefined;
+    }
+    const key = codeTicketKey(value);
+    const ticket = await this.state.storage.get<CodeTicketRecord>(key);
+    if (!ticket || ticket.ticket !== value) {
+      return undefined;
+    }
+    await this.state.storage.delete(key);
+    if (Date.parse(ticket.expiresAt) <= Date.now()) {
+      return undefined;
+    }
+    return ticket;
+  }
+
+  private async cleanupExpiredCodeTickets(): Promise<void> {
+    const tickets = await this.state.storage.list<CodeTicketRecord>({
+      prefix: codeTicketPrefix(),
     });
     const now = Date.now();
     await Promise.all(
@@ -1187,6 +1790,14 @@ function webVNCTicketKey(ticket: string): string {
   return `${webVNCTicketPrefix()}${ticket}`;
 }
 
+function codeTicketPrefix(): string {
+  return "code-ticket:";
+}
+
+function codeTicketKey(ticket: string): string {
+  return `${codeTicketPrefix()}${ticket}`;
+}
+
 function newLeaseID(): string {
   const bytes = new Uint8Array(6);
   crypto.getRandomValues(bytes);
@@ -1205,12 +1816,22 @@ function newWebVNCTicket(): string {
   return `wvnc_${[...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }
 
+function newCodeTicket(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return `code_${[...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
 function validLeaseID(value: string | undefined): value is string {
   return typeof value === "string" && /^cbx_[a-f0-9]{12}$/.test(value);
 }
 
 function validWebVNCTicket(value: string | undefined): value is string {
   return typeof value === "string" && /^wvnc_[a-f0-9]{32}$/.test(value);
+}
+
+function validCodeTicket(value: string | undefined): value is string {
+  return typeof value === "string" && /^code_[a-f0-9]{32}$/.test(value);
 }
 
 function validImageID(value: string | undefined): value is string {
@@ -1314,6 +1935,135 @@ function webVNCLeaseError(lease: LeaseRecord): string {
   return "";
 }
 
+function codeLeaseError(lease: LeaseRecord): string {
+  if (lease.state !== "active") {
+    return "lease is not active";
+  }
+  if (!lease.code) {
+    return "lease was not created with code=true";
+  }
+  if (lease.target && lease.target !== "linux") {
+    return "code is currently available for Linux leases only";
+  }
+  if (!lease.host) {
+    return "lease has no reachable host yet";
+  }
+  return "";
+}
+
+export function codeForwardHeaders(headers: Headers): Record<string, string> {
+  const out: Record<string, string> = {};
+  const allowed = new Set([
+    "accept",
+    "accept-language",
+    "cache-control",
+    "content-type",
+    "origin",
+    "pragma",
+    "sec-websocket-protocol",
+    "user-agent",
+  ]);
+  for (const [key, value] of headers) {
+    const lower = key.toLowerCase();
+    if (allowed.has(lower) || lower.startsWith("x-")) {
+      out[lower] = value;
+    } else if (lower === "cookie") {
+      const cookie = codeForwardCookie(value);
+      if (cookie) {
+        out["cookie"] = cookie;
+      }
+    }
+  }
+  return out;
+}
+
+function codeForwardCookie(value: string): string | undefined {
+  const tokens = value
+    .split(";")
+    .map((part) => part.trim())
+    .filter((part) => part.startsWith("vscode-tkn="));
+  return tokens.length > 0 ? tokens.join("; ") : undefined;
+}
+
+const codePortalContentSecurityPolicy = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "child-src 'self' blob:",
+  "connect-src 'self' ws: wss: https:",
+  "font-src 'self' data: blob:",
+  "frame-src 'self' https://*.vscode-cdn.net data:",
+  "img-src 'self' https: data: blob:",
+  "manifest-src 'self'",
+  "media-src 'self'",
+  "object-src 'none'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://static.cloudflareinsights.com",
+  "style-src 'self' 'unsafe-inline'",
+  "worker-src 'self' data: blob:",
+].join("; ");
+
+export function codeResponseHeaders(values: Record<string, string>): Headers {
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(values)) {
+    const lower = key.toLowerCase();
+    if (
+      lower === "connection" ||
+      lower === "content-security-policy" ||
+      lower === "content-encoding" ||
+      lower === "content-length" ||
+      lower === "transfer-encoding" ||
+      lower === "upgrade"
+    ) {
+      continue;
+    }
+    headers.set(key, value);
+  }
+  if ((headers.get("content-type") || "").toLowerCase().startsWith("text/html")) {
+    headers.set("cache-control", "no-store, no-transform");
+  }
+  headers.set("content-security-policy", codePortalContentSecurityPolicy);
+  return headers;
+}
+
+function bridgeAttachment(socket: WebSocket): BridgeAttachment | undefined {
+  const attachment = socket.deserializeAttachment?.() as BridgeAttachment | undefined;
+  if (!attachment || typeof attachment !== "object") {
+    return undefined;
+  }
+  switch (attachment.kind) {
+    case "webvnc-agent":
+    case "webvnc-viewer":
+    case "code-agent":
+      return typeof attachment.leaseID === "string" ? attachment : undefined;
+    case "code-viewer":
+      return typeof attachment.leaseID === "string" && typeof attachment.id === "string"
+        ? attachment
+        : undefined;
+    default:
+      return undefined;
+  }
+}
+
+function bridgeTags(attachment: BridgeAttachment): string[] {
+  return [`lease:${attachment.leaseID}`, attachment.kind];
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
+}
+
+function base64ToBytes(value: string): Uint8Array {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
 function identifierMatchesLease(identifier: string, lease: LeaseRecord): boolean {
   return (
     identifier === lease.id || normalizeLeaseSlug(identifier) === normalizeLeaseSlug(lease.slug)
@@ -1325,12 +2075,13 @@ export interface WebVNCBuffer {
   bytes: number;
 }
 
-export function forwardOrBufferWebVNC(
-  data: string | ArrayBuffer,
+export async function forwardOrBufferWebVNC(
+  rawData: unknown,
   socket: WebSocket | undefined,
   buffers: Map<string, WebVNCBuffer>,
   leaseID: string,
-): void {
+): Promise<void> {
+  const data = await normalizeWebVNCData(rawData);
   if (socket && socket.readyState === WebSocket.OPEN) {
     socket.send(data);
     return;
@@ -1373,11 +2124,22 @@ export function resetWebVNCBridge(
   buffers.delete(leaseID);
 }
 
-function forwardWebVNC(data: string | ArrayBuffer, socket: WebSocket | undefined): void {
+async function forwardWebVNC(rawData: unknown, socket: WebSocket | undefined): Promise<void> {
   if (!socket || socket.readyState !== WebSocket.OPEN) {
     return;
   }
+  const data = await normalizeWebVNCData(rawData);
   socket.send(data);
+}
+
+async function normalizeWebVNCData(data: unknown): Promise<string | ArrayBuffer> {
+  if (typeof data === "string" || data instanceof ArrayBuffer) {
+    return data;
+  }
+  if (data instanceof Blob) {
+    return await data.arrayBuffer();
+  }
+  return String(data);
 }
 
 function webVNCDataBytes(data: string | ArrayBuffer): number {

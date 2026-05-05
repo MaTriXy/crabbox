@@ -115,6 +115,26 @@ func TestCloudInitBrowserProfile(t *testing.T) {
 	}
 }
 
+func TestCloudInitCodeProfile(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Code = true
+	got := cloudInit(cfg, "ssh-ed25519 test")
+	for _, want := range []string{
+		"https://code-server.dev/install.sh",
+		"env HOME=/root",
+		"--method=standalone --prefix=/usr/local",
+		"/usr/local/bin/code-server --version >/dev/null",
+		"test -x /usr/local/bin/code-server",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("cloudInit(code) missing %q", want)
+		}
+	}
+	if strings.Contains(cloudInit(baseConfig(), "ssh-ed25519 test"), "code-server") {
+		t.Fatal("cloudInit should not install code-server by default")
+	}
+}
+
 func TestCloudInitTailscaleProfile(t *testing.T) {
 	cfg := baseConfig()
 	cfg.SSHUser = "runner"

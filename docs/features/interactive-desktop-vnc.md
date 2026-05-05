@@ -87,6 +87,12 @@ Use `crabbox webvnc` for the authenticated coordinator portal:
 crabbox webvnc --id blue-lobster --open
 ```
 
+WebVNC uses the same runner-side VNC service as `crabbox vnc`. The difference
+is the viewer path: a local `crabbox webvnc` process keeps an SSH tunnel open,
+connects to the coordinator with a one-use bridge ticket, and the browser uses
+bundled noVNC from the authenticated portal. The portal does not connect to the
+runner by itself; the local bridge must keep running.
+
 Use `crabbox screenshot` when you need a PNG without taking over the session:
 
 ```sh
@@ -116,6 +122,10 @@ Managed VNC is tunnel-first:
 - `--network tailscale` changes only the SSH endpoint used by that tunnel.
 - WebVNC keeps the same local SSH tunnel and adds an authenticated browser
   websocket through the coordinator.
+- The WebVNC browser websocket is paired with the local bridge process inside
+  the coordinator Durable Object; if the browser view disconnects, the local
+  command reconnects a fresh bridge for the portal retry. If the local process
+  exits, the browser view disconnects until you start it again.
 
 Crabbox does not bind managed VNC directly to a public IP or Tailscale 100.x
 address. Static hosts can expose direct `host:5900` only when the operator has

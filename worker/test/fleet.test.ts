@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   FleetDurableObject,
+  codeForwardHeaders,
+  codeResponseHeaders,
   flushPendingWebVNC,
   forwardOrBufferWebVNC,
   resetWebVNCBridge,
@@ -473,6 +475,7 @@ describe("fleet lease identity and idle", () => {
         owner: "peter@example.com",
         org: "openclaw",
         desktop: true,
+        code: true,
         expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       }),
     );
@@ -499,7 +502,112 @@ describe("fleet lease identity and idle", () => {
     const body = await response.text();
     expect(body).toContain("blue-lobster");
     expect(body).toContain("/portal/leases/cbx_000000000001/vnc");
+    expect(body).toContain("/portal/leases/cbx_000000000001/code/");
     expect(body).not.toContain("amber-krill");
+  });
+
+  it("serves code pages only for code leases and requires a bridge ticket", async () => {
+    const storage = new MemoryStorage();
+    const fleet = testFleet(storage);
+    const headers = {
+      "x-crabbox-owner": "peter@example.com",
+      "x-crabbox-org": "openclaw",
+    };
+    storage.seed(
+      "lease:cbx_000000000001",
+      testLease({
+        id: "cbx_000000000001",
+        slug: "blue-lobster",
+        owner: "peter@example.com",
+        org: "openclaw",
+        code: true,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      }),
+    );
+    storage.seed(
+      "lease:cbx_000000000002",
+      testLease({
+        id: "cbx_000000000002",
+        slug: "plain-lobster",
+        owner: "peter@example.com",
+        org: "openclaw",
+        code: false,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      }),
+    );
+
+    const page = await fleet.fetch(
+      request("GET", "/portal/leases/blue-lobster/code/", { headers }),
+    );
+    expect(page.status).toBe(200);
+    const pageBody = await page.text();
+    expect(pageBody).toContain("crabbox code --id blue-lobster --open");
+
+    const health = await fleet.fetch(
+      request("GET", "/portal/leases/blue-lobster/code/health", { headers }),
+    );
+    expect(health.status).toBe(200);
+    const healthBody = (await health.json()) as {
+      lease: { id: string; code: boolean };
+      code: { agentConnected: boolean };
+    };
+    expect(healthBody.lease).toMatchObject({ id: "cbx_000000000001", code: true });
+    expect(healthBody.code.agentConnected).toBe(false);
+
+    const plain = await fleet.fetch(
+      request("GET", "/portal/leases/plain-lobster/code/", { headers }),
+    );
+    expect(plain.status).toBe(409);
+
+    const ticket = await fleet.fetch(
+      request("POST", "/v1/leases/blue-lobster/code/ticket", { headers, body: {} }),
+    );
+    expect(ticket.status).toBe(200);
+    const ticketBody = (await ticket.json()) as { ticket: string; leaseID: string };
+    expect(ticketBody.ticket).toMatch(/^code_[a-f0-9]{32}$/);
+    expect(ticketBody.leaseID).toBe("cbx_000000000001");
+
+    const agent = await fleet.fetch(
+      request("GET", "/v1/leases/blue-lobster/code/agent", { headers }),
+    );
+    expect(agent.status).toBe(426);
+
+    const missingTicket = await fleet.fetch(
+      request("GET", "/v1/leases/blue-lobster/code/agent", {
+        headers: { upgrade: "websocket" },
+      }),
+    );
+    expect(missingTicket.status).toBe(401);
+  });
+
+  it("uses a VS Code-compatible CSP for code proxy responses", () => {
+    const headers = codeResponseHeaders({
+      "content-security-policy": "default-src 'none'; script-src 'self'",
+      "content-length": "123",
+      "content-type": "text/html",
+      "cache-control": "public, max-age=31536000",
+    });
+
+    const csp = headers.get("content-security-policy") || "";
+    expect(csp).toContain("script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:");
+    expect(csp).toContain("https://static.cloudflareinsights.com");
+    expect(csp).toContain("worker-src 'self' data: blob:");
+    expect(headers.get("content-length")).toBeNull();
+    expect(headers.get("content-type")).toBe("text/html");
+    expect(headers.get("cache-control")).toBe("no-store, no-transform");
+  });
+
+  it("forwards only the VS Code token cookie to code-server", () => {
+    const headers = codeForwardHeaders(
+      new Headers({
+        cookie: "crabbox_session=secret; vscode-tkn=remote-token; other=value",
+        origin: "https://crabbox.openclaw.ai",
+      }),
+    );
+
+    expect(headers["cookie"]).toBe("vscode-tkn=remote-token");
+    expect(headers["cookie"]).not.toContain("crabbox_session");
+    expect(headers.origin).toBe("https://crabbox.openclaw.ai");
   });
 
   it("serves WebVNC pages only for desktop leases and requires an agent upgrade", async () => {
@@ -542,7 +650,7 @@ describe("fleet lease identity and idle", () => {
     expect(pageBody).toContain("/portal/assets/novnc/rfb.js");
     expect(pageBody).toContain("function scheduleRetry");
     expect(pageBody).toContain("/portal/leases/cbx_000000000001/vnc/status");
-    expect(pageBody).toContain("copyBridge");
+    expect(pageBody).toContain("vnc-copy");
     expect(pageBody).toContain("no bridge connected; run the bridge command below");
     expect(pageBody).toContain('fragment.get("username")');
     expect(pageBody).toContain('types.includes("username")');
@@ -586,7 +694,7 @@ describe("fleet lease identity and idle", () => {
     expect(missingTicket.status).toBe(401);
   });
 
-  it("buffers initial WebVNC bridge bytes until the viewer attaches", () => {
+  it("buffers initial WebVNC bridge bytes until the viewer attaches", async () => {
     const buffers = new Map<string, WebVNCBuffer>();
     const sent: Array<string | ArrayBuffer> = [];
     const viewer = {
@@ -596,7 +704,7 @@ describe("fleet lease identity and idle", () => {
       },
     } as WebSocket;
 
-    forwardOrBufferWebVNC("RFB 003.008\n", undefined, buffers, "cbx_000000000001");
+    await forwardOrBufferWebVNC("RFB 003.008\n", undefined, buffers, "cbx_000000000001");
     expect(sent).toEqual([]);
     expect(buffers.get("cbx_000000000001")).toMatchObject({
       chunks: ["RFB 003.008\n"],
@@ -605,6 +713,23 @@ describe("fleet lease identity and idle", () => {
 
     flushPendingWebVNC(buffers, "cbx_000000000001", viewer);
     expect(sent).toEqual(["RFB 003.008\n"]);
+    expect(buffers.has("cbx_000000000001")).toBe(false);
+  });
+
+  it("converts WebVNC Blob frames before forwarding", async () => {
+    const buffers = new Map<string, WebVNCBuffer>();
+    const sent: Array<string | ArrayBuffer> = [];
+    const viewer = {
+      readyState: WebSocket.OPEN,
+      send(data: string | ArrayBuffer) {
+        sent.push(data);
+      },
+    } as WebSocket;
+
+    await forwardOrBufferWebVNC(new Blob(["RFB 003.008\n"]), viewer, buffers, "cbx_000000000001");
+
+    expect(sent).toHaveLength(1);
+    expect(new TextDecoder().decode(sent[0] as ArrayBuffer)).toBe("RFB 003.008\n");
     expect(buffers.has("cbx_000000000001")).toBe(false);
   });
 

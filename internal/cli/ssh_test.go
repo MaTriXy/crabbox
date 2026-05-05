@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -395,6 +396,72 @@ func TestRemoteApplySyncManifestOnlyCommitsManifest(t *testing.T) {
 	}
 }
 
+func TestRemoteFinalizeSyncCommitsMetadataInOneCommand(t *testing.T) {
+	workdir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(workdir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	metaDir := filepath.Join(workdir, ".git", "crabbox")
+	if err := os.MkdirAll(metaDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(metaDir, "sync-manifest.new"), []byte("tracked.txt\x00"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(metaDir, "sync-deleted.new"), []byte("deleted.txt\x00"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command("bash", "-lc", remoteFinalizeSync(workdir, remoteSyncFinalizeOptions{
+		BaseRef:     "main",
+		BaseSHA:     "abc123",
+		Fingerprint: "fp123",
+	}))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("remote finalize failed: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(metaDir, "sync-deleted.new")); !os.IsNotExist(err) {
+		t.Fatalf("deleted manifest should be removed, stat err=%v", err)
+	}
+	manifest, err := os.ReadFile(filepath.Join(metaDir, "sync-manifest"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(manifest) != "tracked.txt\x00" {
+		t.Fatalf("unexpected manifest: %q", manifest)
+	}
+	marker, err := os.ReadFile(filepath.Join(metaDir, "git-hydrate-base"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(marker) != "main abc123\n" {
+		t.Fatalf("unexpected hydrate marker: %q", marker)
+	}
+	fingerprint, err := os.ReadFile(filepath.Join(metaDir, "sync-fingerprint"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(fingerprint) != "fp123" {
+		t.Fatalf("unexpected fingerprint: %q", fingerprint)
+	}
+}
+
+func TestRemoteGitSeedRemovesFailedCheckout(t *testing.T) {
+	got := remoteGitSeed("/work/repo", "https://github.com/openclaw/crabbox.git", "missing-sha")
+	for _, want := range []string{
+		"if (cd \"$tmp\"",
+		"git checkout --quiet 'missing-sha' || git checkout --quiet FETCH_HEAD",
+		"else rm -rf \"$tmp\"; fi",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("remoteGitSeed missing %q in %q", want, got)
+		}
+	}
+	if strings.Contains(got, "git checkout --quiet FETCH_HEAD || true") {
+		t.Fatalf("remoteGitSeed should not keep failed checkouts: %q", got)
+	}
+}
+
 func TestRemoteGitHydrateStatusUsesMarkerAndRemoteBase(t *testing.T) {
 	got := remoteGitHydrateStatus("/work/repo", "main", "abc123")
 	for _, want := range []string{
@@ -423,6 +490,33 @@ func TestRemoteWriteSyncDeletedNew(t *testing.T) {
 	got := remoteWriteSyncDeletedNew("/work/repo")
 	if !strings.Contains(got, "cat > \"$meta_dir/sync-deleted.new\"") {
 		t.Fatalf("unexpected deleted manifest write command: %q", got)
+	}
+}
+
+func TestRemoteWriteSyncManifestsNew(t *testing.T) {
+	workdir := t.TempDir()
+	manifest := "keep.txt\x00"
+	deleted := "old.txt\x00"
+	input := fmt.Sprintf("%d\n", len(manifest)) + manifest + deleted
+	cmd := exec.Command("bash", "-lc", remoteWriteSyncManifestsNew(workdir))
+	cmd.Stdin = strings.NewReader(input)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("write manifests failed: %v\n%s", err, out)
+	}
+	metaDir := filepath.Join(workdir, ".crabbox")
+	gotManifest, err := os.ReadFile(filepath.Join(metaDir, "sync-manifest.new"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotManifest) != manifest {
+		t.Fatalf("unexpected manifest: %q", gotManifest)
+	}
+	gotDeleted, err := os.ReadFile(filepath.Join(metaDir, "sync-deleted.new"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotDeleted) != deleted {
+		t.Fatalf("unexpected deleted manifest: %q", gotDeleted)
 	}
 }
 

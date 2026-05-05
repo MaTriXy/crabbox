@@ -6,6 +6,7 @@ export interface LeaseConfig {
   windowsMode: WindowsMode;
   desktop: boolean;
   browser: boolean;
+  code: boolean;
   tailscale: boolean;
   tailscaleTags: string[];
   tailscaleHostname: string;
@@ -84,6 +85,7 @@ export function leaseConfig(input: LeaseRequest): LeaseConfig {
     windowsMode,
     desktop: input.desktop ?? false,
     browser: input.browser ?? false,
+    code: input.code ?? false,
     tailscale: input.tailscale ?? false,
     tailscaleTags: normalizeTailscaleTags(input.tailscaleTags ?? ["tag:crabbox"]),
     tailscaleHostname: input.tailscaleHostname ?? "",

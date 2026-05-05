@@ -73,6 +73,7 @@ Flags:
 --idle-timeout <duration>
 --desktop
 --browser
+--code
 --tailscale
 --tailscale-tags <comma-separated tags>
 --tailscale-hostname-template <template>
@@ -99,6 +100,10 @@ Chromium package fallback.
 `--desktop` provisions Xvfb, Openbox, and loopback-bound x11vnc for visible UI
 automation and operator takeover. It does not imply a browser. Use
 `--desktop --browser` when a headed browser should run in the visible display.
+
+`--code` provisions `code-server` for Linux leases and enables
+`crabbox code --id <lease>` to bridge the workspace through the authenticated
+portal at `/portal/leases/<lease>/code/`.
 
 `--tailscale` joins newly created managed Linux leases to the configured
 tailnet. `--network` controls the SSH endpoint printed after readiness:

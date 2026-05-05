@@ -44,17 +44,19 @@ This page maps user-facing behavior back to implementation files. Keep docs desc
 - CLI cloud-init bootstrap: `internal/cli/bootstrap.go`
 - Worker cloud-init bootstrap: `worker/src/bootstrap.ts`
 - Tailscale feature contract: `docs/features/tailscale.md`
-- Desktop/browser capability flags, env injection, and VNC checks: `internal/cli/capabilities.go`, `internal/cli/run.go`
+- Desktop/browser/code capability flags, env injection, and VNC checks: `internal/cli/capabilities.go`, `internal/cli/run.go`
 - Desktop app launch into visible sessions: `internal/cli/desktop.go`
 - VNC tunnel command: `internal/cli/vnc.go`
 - WebVNC portal bridge: `internal/cli/webvnc.go`, `worker/src/portal.ts`, `worker/src/fleet.ts`
+- Web code portal bridge: `internal/cli/code.go`, `worker/src/portal.ts`, `worker/src/fleet.ts`
 - Desktop screenshot command: `internal/cli/screenshot.go`
 - Interactive desktop/VNC contract: `docs/features/interactive-desktop-vnc.md`, `docs/features/vnc-linux.md`, `docs/features/vnc-windows.md`, `docs/features/vnc-macos.md`
 
 Bootstrap is intentionally tiny unless optional lease capabilities are requested:
 OpenSSH, CA certificates, curl, Git, rsync, jq, `/work/crabbox`, cache
 directories, and `crabbox-ready`. `--desktop` adds Xvfb/Openbox/x11vnc and
-loopback VNC. `--browser` adds Chrome stable or a Chromium fallback. Project
+loopback VNC. `--browser` adds Chrome stable or a Chromium fallback. `--code`
+adds code-server for authenticated portal editor access. Project
 runtimes such as Go, Node, pnpm, Docker, databases, and services are
 repository-owned setup, usually through Actions hydration or repo scripts.
 

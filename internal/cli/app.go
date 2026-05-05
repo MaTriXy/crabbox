@@ -87,6 +87,8 @@ func (a App) directCommandHelp(ctx context.Context, args []string) (error, bool)
 		return a.vnc(ctx, helpArgs), true
 	case "webvnc":
 		return a.webvnc(ctx, helpArgs), true
+	case "code":
+		return a.webCode(ctx, helpArgs), true
 	case "screenshot":
 		return a.screenshot(ctx, helpArgs), true
 	case "inspect":
@@ -122,8 +124,8 @@ Start Here:
       Lease a reusable box and print a cbx_... id plus friendly slug.
   crabbox run --id blue-lobster -- pnpm test:changed
       Sync this checkout to the box and run a command.
-  crabbox warmup --desktop --browser
-      Lease a UI-capable box with a browser.
+  crabbox warmup --desktop --browser --code
+      Lease a UI-capable box with a browser and web code editor.
 
 Commands:
   init        Onboard the current repo for Crabbox
@@ -151,6 +153,7 @@ Commands:
   ssh         Print the SSH command for a lease
   vnc         Print or open VNC connection details for a desktop lease
   webvnc      Bridge a desktop lease into the authenticated web portal
+  code        Bridge a code lease into the authenticated web portal
   screenshot  Capture a PNG from a desktop lease
   inspect     Print lease/provider details; add --json for scripts
   stop        Release a lease or delete a direct-provider machine
@@ -167,6 +170,7 @@ Common Flows:
   crabbox desktop launch --id blue-lobster --browser --url https://example.com --webvnc --open
   crabbox media preview --input desktop.mp4 --output desktop-preview.gif --trimmed-video-output desktop-change.mp4
   crabbox webvnc --id blue-lobster --open
+  crabbox code --id blue-lobster --open
   crabbox screenshot --id blue-lobster --output desktop.png
   crabbox inspect --id blue-lobster --json
   crabbox history --lease cbx_abcdef123456
@@ -208,6 +212,7 @@ Environment:
   CRABBOX_WINDOWS_MODE         normal or wsl2
   CRABBOX_DESKTOP              Provision or require desktop/VNC capability
   CRABBOX_BROWSER              Provision or require browser capability
+  CRABBOX_CODE                 Provision or require web code capability
   CRABBOX_STATIC_HOST          Static SSH host for provider=ssh
   CRABBOX_OWNER                Usage owner override
   CRABBOX_ORG                  Usage org override

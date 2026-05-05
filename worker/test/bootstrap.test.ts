@@ -9,6 +9,7 @@ const config: LeaseConfig = {
   windowsMode: "normal",
   desktop: false,
   browser: false,
+  code: false,
   tailscale: false,
   tailscaleTags: ["tag:crabbox"],
   tailscaleHostname: "",
@@ -127,6 +128,17 @@ describe("cloud-init bootstrap", () => {
     expect(got).not.toContain("<<'EOF'");
     expect(got).not.toContain("<<EOF");
     expect(got).not.toContain("\nEOF");
+  });
+
+  it("adds code-server setup only when requested", () => {
+    const plain = cloudInit(config);
+    expect(plain).not.toContain("code-server");
+    const got = cloudInit({ ...config, code: true });
+    expect(got).toContain("https://code-server.dev/install.sh");
+    expect(got).toContain("env HOME=/root");
+    expect(got).toContain("--method=standalone --prefix=/usr/local");
+    expect(got).toContain("/usr/local/bin/code-server --version >/dev/null");
+    expect(got).toContain("test -x /usr/local/bin/code-server");
   });
 
   it("adds Tailscale setup only when requested", () => {

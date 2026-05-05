@@ -19,6 +19,7 @@ type Config struct {
 	WindowsMode        string
 	Desktop            bool
 	Browser            bool
+	Code               bool
 	Network            NetworkMode
 	Class              string
 	ServerType         string
@@ -182,7 +183,7 @@ func baseConfig() Config {
 		SSHPort:          "2222",
 		SSHFallbackPorts: []string{"22"},
 		ProviderKey:      "crabbox-steipete",
-		WorkRoot:         "/work/crabbox",
+		WorkRoot:         defaultPOSIXWorkRoot,
 		TTL:              90 * time.Minute,
 		IdleTimeout:      30 * time.Minute,
 		Sync: SyncConfig{
@@ -229,6 +230,7 @@ type fileConfig struct {
 	Windows          *fileWindowsConfig    `yaml:"windows,omitempty"`
 	Desktop          *bool                 `yaml:"desktop,omitempty"`
 	Browser          *bool                 `yaml:"browser,omitempty"`
+	Code             *bool                 `yaml:"code,omitempty"`
 	Network          string                `yaml:"network,omitempty"`
 	Class            string                `yaml:"class,omitempty"`
 	ServerType       string                `yaml:"serverType,omitempty"`
@@ -495,6 +497,9 @@ func applyFileConfig(cfg *Config, file fileConfig) {
 	}
 	if file.Browser != nil {
 		cfg.Browser = *file.Browser
+	}
+	if file.Code != nil {
+		cfg.Code = *file.Code
 	}
 	if file.Network != "" {
 		cfg.Network = NetworkMode(strings.ToLower(strings.TrimSpace(file.Network)))
@@ -780,6 +785,9 @@ func applyEnv(cfg *Config) {
 	}
 	if value, ok := getenvBool("CRABBOX_BROWSER"); ok {
 		cfg.Browser = value
+	}
+	if value, ok := getenvBool("CRABBOX_CODE"); ok {
+		cfg.Code = value
 	}
 	if network := os.Getenv("CRABBOX_NETWORK"); network != "" {
 		cfg.Network = NetworkMode(strings.ToLower(strings.TrimSpace(network)))
