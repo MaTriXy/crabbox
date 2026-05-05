@@ -24,7 +24,7 @@ func (a App) recordDesktop(ctx context.Context, args []string) error {
 	output := fs.String("output", "", "local MP4 output path")
 	duration := fs.Duration("duration", 10*time.Second, "recording duration")
 	fps := fs.Int("fps", 15, "recording frame rate")
-	size := fs.String("size", "auto", "recording size, or widthxheight crop")
+	size := fs.String("size", "1024x768", "recording size, or auto")
 	while := fs.Bool("while", false, "record while a local command runs after --")
 	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
 	targetFlags := registerTargetFlags(fs, defaults)
@@ -304,7 +304,7 @@ func recordRemoteUntilStopCommand(target SSHTarget, opts recordDesktopOptions, r
 	}
 	size := strings.TrimSpace(opts.Size)
 	if size == "" {
-		size = "auto"
+		size = "1024x768"
 	}
 	return posixRecordUntilStopRemoteCommand(remoteMaxSeconds, opts.FPS, size, remoteOutputPath, remoteStopPath, remoteReadyPath)
 }
@@ -316,7 +316,7 @@ func recordRemoteCommand(target SSHTarget, opts recordDesktopOptions) string {
 	}
 	size := strings.TrimSpace(opts.Size)
 	if size == "" {
-		size = "auto"
+		size = "1024x768"
 	}
 	if target.TargetOS == targetWindows {
 		return windowsRecordRemoteCommand(durationSeconds, opts.FPS, size)
