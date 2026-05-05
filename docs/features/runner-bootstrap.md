@@ -32,7 +32,10 @@ screenshots, and video capture tools. The browser profile installs
 Chrome/Chromium plus native addon build helpers that browser-channel QA often
 needs during dependency fallback installs. Crabbox owns these machine
 capabilities; scenario systems still own browser automation and proof artifacts.
-See [Interactive desktop and VNC](interactive-desktop-vnc.md).
+For slow QA lanes, bake these machine capabilities into provider images while
+keeping secrets, browser profiles, repository checkouts, and built artifacts out
+of the image. See [Interactive desktop and VNC](interactive-desktop-vnc.md) and
+[Prebaked runner images](prebaked-images.md).
 
 Tailscale is optional too. `--tailscale` on a managed Linux lease installs the
 Tailscale package, joins the configured tailnet, writes non-secret metadata
@@ -57,6 +60,7 @@ The CLI prefers the configured SSH port and can fall back through `ssh.fallbackP
 Related docs:
 
 - [Providers](providers.md)
+- [Prebaked runner images](prebaked-images.md)
 - [Tailscale](tailscale.md)
 - [SSH keys](ssh-keys.md)
 - [run command](../commands/run.md)

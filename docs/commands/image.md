@@ -13,6 +13,13 @@ Image commands require a configured coordinator and admin-token auth. Set
 checks `CRABBOX_ADMIN_TOKEN`.
 They are intentionally not available to normal GitHub browser-login users.
 
+Image bytes live in the provider account, not in git or coordinator durable
+state. AWS images are AMIs backed by EBS snapshots. Crabbox stores only the
+promoted AMI id and related metadata so future AWS leases can resolve the
+default image. Hetzner snapshots/images should live in the Hetzner project and
+be selected through `image`/`CRABBOX_HETZNER_IMAGE` until Crabbox grows
+Hetzner create/promote lifecycle commands.
+
 ## create
 
 Create an AWS AMI from an active AWS lease.
@@ -87,5 +94,6 @@ on the new image.
 
 Related docs:
 
+- [Prebaked runner images](../features/prebaked-images.md)
 - [Infrastructure](../infrastructure.md)
 - [Runner bootstrap](../features/runner-bootstrap.md)

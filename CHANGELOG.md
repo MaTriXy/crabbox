@@ -9,6 +9,7 @@
 - Added `crabbox media preview` for creating motion-trimmed GIF previews and optional trimmed MP4 clips from desktop recordings.
 - Added `crabbox code` and per-lease `/code/` portal URLs for authenticated code-server access on `--code` Linux leases.
 - Added `.crabboxignore` for repo-local sync-only exclude patterns shared by `run` and `sync-plan`.
+- Documented the prebaked runner image boundary: provider-owned AMIs/snapshots hold machine capabilities while repo/runtime caches stay in QA workflows or warm leases.
 
 ### Fixed
 
