@@ -50,6 +50,7 @@ export interface LeaseRequest {
   windowsMode?: WindowsMode;
   desktop?: boolean;
   browser?: boolean;
+  code?: boolean;
   tailscale?: boolean;
   tailscaleTags?: string[];
   tailscaleHostname?: string;
@@ -97,6 +98,7 @@ export interface LeaseRecord {
   windowsMode?: WindowsMode;
   desktop?: boolean;
   browser?: boolean;
+  code?: boolean;
   tailscale?: TailscaleMetadata;
   cloudID: string;
   region?: string;

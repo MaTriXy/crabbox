@@ -29,7 +29,7 @@ export function portalHome(leases: LeaseRecord[], request: Request): Response {
               <th>provider</th>
               <th>target</th>
               <th>class</th>
-              <th>desktop</th>
+              <th>access</th>
               <th>expires</th>
               <th></th>
             </tr>
@@ -226,6 +226,31 @@ export function portalError(title: string, message: string, status = 400): Respo
   );
 }
 
+export function portalCode(lease: LeaseRecord): Response {
+  const slug = lease.slug || lease.id;
+  const bridgeCmd = `crabbox code --id ${slug} --open`;
+  return html(
+    `Code ${slug}`,
+    `<main>
+      <header class="top">
+        <div>
+          <h1>${escapeHTML(slug)}</h1>
+          <p>${escapeHTML(lease.provider)} code workspace</p>
+        </div>
+        <div class="vnc-actions">
+          <a class="button secondary" href="/portal">leases</a>
+          <a class="button secondary" href="/portal/logout">log out</a>
+        </div>
+      </header>
+      <section class="panel error">
+        <h2>code bridge</h2>
+        <p class="muted">start the local bridge, then reload this page.</p>
+        <code>${escapeHTML(bridgeCmd)}</code>
+      </section>
+    </main>`,
+  );
+}
+
 export function webVNCBridgeCommand(lease: LeaseRecord): string {
   const target = lease.target || "linux";
   const args = [
@@ -257,14 +282,17 @@ function leaseRow(lease: LeaseRecord): string {
   const vnc = lease.desktop
     ? `<a class="button" href="/portal/leases/${encodeURIComponent(lease.id)}/vnc">open</a>`
     : `<span class="muted">no desktop</span>`;
+  const code = lease.code
+    ? `<a class="button secondary" href="/portal/leases/${encodeURIComponent(lease.id)}/code/">code</a>`
+    : `<span class="muted">no code</span>`;
   return `<tr>
     <td><strong>${escapeHTML(label)}</strong><small>${escapeHTML(lease.id)}</small></td>
     <td>${escapeHTML(lease.provider)}</td>
     <td>${escapeHTML(lease.target)}</td>
     <td>${escapeHTML(lease.class)}</td>
-    <td>${lease.desktop ? "yes" : "no"}</td>
+    <td><div class="actions-cell">${vnc}${code}</div></td>
     <td>${escapeHTML(shortTime(lease.expiresAt))}</td>
-    <td>${vnc}</td>
+    <td></td>
   </tr>`;
 }
 
@@ -301,6 +329,7 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .button { display:inline-flex; align-items:center; justify-content:center; min-height:32px; padding:0 12px; border-radius:8px; background:var(--accent); color:#001018; text-decoration:none; font-weight:700; }
     .button.secondary { background:transparent; color:var(--fg); border:1px solid var(--line); font-weight:500; }
     .button.secondary:hover { background:#1b1f24; border-color:#3a4046; }
+    .actions-cell { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
     .vnc-page { width:100vw; height:100vh; padding:10px 12px 10px; display:grid; grid-template-rows:auto 1fr auto; gap:10px; }
     .vnc-bar { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:44px; padding:0 4px; }
     .vnc-meta { display:flex; align-items:baseline; gap:12px; min-width:0; }

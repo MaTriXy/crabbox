@@ -9,6 +9,7 @@ const config: LeaseConfig = {
   windowsMode: "normal",
   desktop: false,
   browser: false,
+  code: false,
   tailscale: false,
   tailscaleTags: ["tag:crabbox"],
   tailscaleHostname: "",

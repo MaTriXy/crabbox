@@ -318,6 +318,12 @@ function optionalReadyChecks(config: LeaseConfig): string {
       '      "$BROWSER" --version >/dev/null',
     );
   }
+  if (config.code) {
+    lines.push(
+      "      test -x /usr/local/bin/code-server",
+      "      /usr/local/bin/code-server --version >/dev/null",
+    );
+  }
   return lines.join("\n");
 }
 
@@ -457,6 +463,11 @@ EOF
       chown crabbox:crabbox /var/lib/crabbox/browser.env
       chmod 0644 /var/lib/crabbox/browser.env
     fi`);
+  }
+  if (config.code) {
+    parts.push(`    retry apt-get install -y --no-install-recommends libatomic1
+    retry sh -c 'curl -fsSL https://code-server.dev/install.sh | sh -s -- --method=standalone --prefix=/usr/local'
+    /usr/local/bin/code-server --version >/dev/null`);
   }
   return parts.join("\n");
 }
