@@ -1888,6 +1888,9 @@ export function codeResponseHeaders(values: Record<string, string>): Headers {
     }
     headers.set(key, value);
   }
+  if ((headers.get("content-type") || "").toLowerCase().startsWith("text/html")) {
+    headers.set("cache-control", "no-store, no-transform");
+  }
   headers.set("content-security-policy", codePortalContentSecurityPolicy);
   return headers;
 }

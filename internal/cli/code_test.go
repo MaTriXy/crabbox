@@ -48,3 +48,14 @@ func TestStartCodeServerCommand(t *testing.T) {
 		t.Fatalf("startCodeServerCommand should not use pkill -f:\n%s", got)
 	}
 }
+
+func TestRewriteCodeHTMLRemovesEmptyLocaleScript(t *testing.T) {
+	input := []byte(`<script type="module" src=""></script><script type="module" src="workbench.js"></script>`)
+	got := string(rewriteCodeHTML(input))
+	if strings.Contains(got, `src=""`) {
+		t.Fatalf("rewriteCodeHTML left empty script:\n%s", got)
+	}
+	if !strings.Contains(got, `src="workbench.js"`) {
+		t.Fatalf("rewriteCodeHTML removed non-empty script:\n%s", got)
+	}
+}

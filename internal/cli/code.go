@@ -272,6 +272,9 @@ func (b *codeBridge) handleHTTP(ctx context.Context, msg codeProxyMessage) {
 		_ = b.writeJSON(ctx, codeProxyMessage{Type: "http", ID: msg.ID, Status: 502, Error: err.Error()})
 		return
 	}
+	if isCodeHTML(resp.Header.Get("content-type")) {
+		respBody = rewriteCodeHTML(respBody)
+	}
 	headers := map[string]string{}
 	for key, values := range resp.Header {
 		if len(values) > 0 {
@@ -406,6 +409,14 @@ func codeUpstreamPath(path string) string {
 		return u.RequestURI()
 	}
 	return u.RequestURI()
+}
+
+func isCodeHTML(contentType string) bool {
+	return strings.HasPrefix(strings.ToLower(contentType), "text/html")
+}
+
+func rewriteCodeHTML(body []byte) []byte {
+	return bytes.ReplaceAll(body, []byte(`<script type="module" src=""></script>`), nil)
 }
 
 func availableLocalCodePort() string {

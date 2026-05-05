@@ -573,6 +573,7 @@ describe("fleet lease identity and idle", () => {
       "content-security-policy": "default-src 'none'; script-src 'self'",
       "content-length": "123",
       "content-type": "text/html",
+      "cache-control": "public, max-age=31536000",
     });
 
     const csp = headers.get("content-security-policy") || "";
@@ -581,6 +582,7 @@ describe("fleet lease identity and idle", () => {
     expect(csp).toContain("worker-src 'self' data: blob:");
     expect(headers.get("content-length")).toBeNull();
     expect(headers.get("content-type")).toBe("text/html");
+    expect(headers.get("cache-control")).toBe("no-store, no-transform");
   });
 
   it("serves WebVNC pages only for desktop leases and requires an agent upgrade", async () => {
