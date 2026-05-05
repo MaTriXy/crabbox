@@ -24,8 +24,10 @@ Managed Linux desktop leases include:
 - Xvfb on `:99`;
 - a lightweight desktop/window-manager session;
 - x11vnc bound to `127.0.0.1:5900`;
+- screenshot and video capture tools (`scrot` and `ffmpeg`);
 - a generated per-lease VNC password at `/var/lib/crabbox/vnc.password`;
-- optional Chrome stable or Chromium fallback when `--browser` is requested;
+- optional Chrome stable or Chromium fallback, first-run suppression, and native
+  addon build helpers when `--browser` is requested;
 - readiness checks that verify desktop services when `desktop=true`.
 
 `crabbox run --desktop` injects `CRABBOX_DESKTOP=1` and `DISPLAY=:99`.

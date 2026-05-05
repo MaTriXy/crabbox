@@ -79,7 +79,7 @@ describe("cloud-init bootstrap", () => {
     expect(got).toContain("ExecStart=/usr/bin/openbox");
     expect(got).toContain("systemctl is-active --quiet crabbox-desktop.service");
     expect(got).toContain("systemctl is-active --quiet crabbox-desktop-session.service");
-    expect(got).toContain("x11-xserver-utils xterm scrot xdotool wmctrl");
+    expect(got).toContain("x11-xserver-utils xterm scrot ffmpeg xdotool wmctrl");
     expect(got).toContain("xsetroot -solid '#20242b'");
     expect(got).toContain("xterm -title 'Crabbox Desktop'");
     expect(got).toContain("(umask 077 && openssl rand -base64 18 > /var/lib/crabbox/vnc.password)");
@@ -105,6 +105,7 @@ describe("cloud-init bootstrap", () => {
 
   it("adds browser setup only when requested", () => {
     const got = cloudInit({ ...config, browser: true });
+    expect(got).toContain("gnupg build-essential python3");
     expect(got).toContain("https://dl.google.com/linux/linux_signing_key.pub");
     expect(got).toContain("chmod 0644 /etc/apt/trusted.gpg.d/google.asc");
     expect(got).toContain("https://dl.google.com/linux/chrome/deb/");

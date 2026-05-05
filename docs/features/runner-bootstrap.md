@@ -26,10 +26,13 @@ Bootstrap installs:
 
 Bootstrap intentionally does not install project language runtimes such as Go, Node, pnpm, Docker, databases, or service dependencies. Those belong in GitHub Actions hydration, devcontainers, Nix, mise/asdf, or repository setup scripts. A brokered machine should not pass readiness until `crabbox-ready` succeeds over SSH.
 
-Interactive desktop tooling is an optional lease profile, not part of the
-minimal bootstrap. See [Interactive desktop and VNC](interactive-desktop-vnc.md)
-for the planned boundary: Crabbox owns the desktop/VNC machine capability, while
-scenario systems own browser automation and proof artifacts.
+Interactive desktop and browser tooling are optional lease profiles, not part
+of the minimal bootstrap. The desktop profile installs Xvfb/Openbox, x11vnc,
+screenshots, and video capture tools. The browser profile installs
+Chrome/Chromium plus native addon build helpers that browser-channel QA often
+needs during dependency fallback installs. Crabbox owns these machine
+capabilities; scenario systems still own browser automation and proof artifacts.
+See [Interactive desktop and VNC](interactive-desktop-vnc.md).
 
 Tailscale is optional too. `--tailscale` on a managed Linux lease installs the
 Tailscale package, joins the configured tailnet, writes non-secret metadata

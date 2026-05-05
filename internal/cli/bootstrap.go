@@ -528,7 +528,7 @@ func cloudInitOptionalBootstrap(cfg Config) string {
 		parts = append(parts, cloudInitTailscaleBootstrap(cfg))
 	}
 	if cfg.Desktop {
-		parts = append(parts, `    retry apt-get install -y --no-install-recommends xvfb openbox x11vnc xauth dbus-x11 x11-xserver-utils xterm scrot xdotool wmctrl fonts-dejavu-core fonts-liberation iproute2 openssl
+		parts = append(parts, `    retry apt-get install -y --no-install-recommends xvfb openbox x11vnc xauth dbus-x11 x11-xserver-utils xterm scrot ffmpeg xdotool wmctrl fonts-dejavu-core fonts-liberation iproute2 openssl
     install -d -m 0750 -o crabbox -g crabbox /var/lib/crabbox
     if [ ! -s /var/lib/crabbox/vnc.password ]; then
       (umask 077 && openssl rand -base64 18 > /var/lib/crabbox/vnc.password)
@@ -540,7 +540,7 @@ func cloudInitOptionalBootstrap(cfg Config) string {
     systemctl enable --now crabbox-xvfb.service crabbox-desktop.service crabbox-desktop-session.service crabbox-x11vnc.service`)
 	}
 	if cfg.Browser {
-		parts = append(parts, `    retry apt-get install -y --no-install-recommends gnupg
+		parts = append(parts, `    retry apt-get install -y --no-install-recommends gnupg build-essential python3
     browser_path=""
     if [ "$(dpkg --print-architecture)" = "amd64" ]; then
       install -d -m 0755 /etc/apt/trusted.gpg.d

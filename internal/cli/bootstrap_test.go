@@ -57,7 +57,7 @@ func TestCloudInitDesktopProfile(t *testing.T) {
 	got := cloudInit(cfg, "ssh-ed25519 test")
 	for _, want := range []string{
 		"xvfb openbox x11vnc xauth dbus-x11",
-		"x11-xserver-utils xterm scrot xdotool wmctrl",
+		"x11-xserver-utils xterm scrot ffmpeg xdotool wmctrl",
 		"/etc/systemd/system/crabbox-xvfb.service",
 		"/etc/systemd/system/crabbox-desktop.service",
 		"/usr/local/bin/crabbox-desktop-session",
@@ -84,6 +84,7 @@ func TestCloudInitBrowserProfile(t *testing.T) {
 	cfg.Browser = true
 	got := cloudInit(cfg, "ssh-ed25519 test")
 	for _, want := range []string{
+		"gnupg build-essential python3",
 		"https://dl.google.com/linux/linux_signing_key.pub",
 		"chmod 0644 /etc/apt/trusted.gpg.d/google.asc",
 		"https://dl.google.com/linux/chrome/deb/",

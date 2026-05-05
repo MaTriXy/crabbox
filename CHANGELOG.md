@@ -10,6 +10,7 @@
 
 ### Fixed
 
+- Fixed managed Linux desktop/browser leases to preinstall video capture and native addon build helpers, avoiding per-scenario apt installs in browser QA runs.
 - Fixed managed Linux desktop bootstrap performance by using a lean Openbox/Xvfb desktop stack instead of the heavier XFCE meta package.
 - Fixed SSH readiness progress logs to distinguish open TCP ports, failed SSH authentication, and failed Crabbox ready checks.
 - Fixed auto-shell command reconstruction so arguments with spaces stay quoted when shell operators such as `&&` are present.
