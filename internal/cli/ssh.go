@@ -568,9 +568,8 @@ func remoteGitSeed(workdir, remoteURL, head string) string {
 		"mkdir -p " + shellQuote(parent) + "; " +
 		"tmp=$(mktemp -d " + shellQuote(parent+"/.seed.XXXXXX") + "); " +
 		"if git clone --quiet --filter=blob:none --no-checkout " + shellQuote(remoteURL) + " \"$tmp\" >/dev/null 2>&1; then " +
-		"if (cd \"$tmp\" && (git fetch --quiet --depth=1 origin " + shellQuote(head) + " || true) && (git checkout --quiet " + shellQuote(head) + " || git checkout --quiet FETCH_HEAD)); then " +
+		"(cd \"$tmp\" && (git fetch --quiet --depth=1 origin " + shellQuote(head) + " || true) && (git checkout --quiet " + shellQuote(head) + " || git checkout --quiet FETCH_HEAD || true)); " +
 		"rm -rf " + shellQuote(workdir) + " && mv \"$tmp\" " + shellQuote(workdir) + "; " +
-		"else rm -rf \"$tmp\"; fi; " +
 		"else rm -rf \"$tmp\"; fi; " +
 		"fi"
 }
