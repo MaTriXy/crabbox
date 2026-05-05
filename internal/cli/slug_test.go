@@ -35,7 +35,7 @@ func TestLeaseSlugFormat(t *testing.T) {
 	if !regexp.MustCompile(`^[a-z0-9]+-[a-z0-9]+$`).MatchString(slug) {
 		t.Fatalf("slug %q is not DNS-ish two-word form", slug)
 	}
-	if len("crabbox-"+slug) > 63 {
+	if len(leaseProviderName("cbx_abcdef123456", slug)) > 63 {
 		t.Fatalf("provider name too long for slug %q", slug)
 	}
 }
@@ -62,7 +62,7 @@ func TestAllocateDirectLeaseSlugAddsSuffixOnCollision(t *testing.T) {
 }
 
 func TestLeaseProviderNameUsesSlug(t *testing.T) {
-	if got := leaseProviderName("cbx_abcdef123456", "blue-lobster"); got != "crabbox-blue-lobster" {
+	if got := leaseProviderName("cbx_abcdef123456", "blue-lobster"); got != "crabbox-blue-lobster-c80c2195" {
 		t.Fatalf("provider name=%q", got)
 	}
 	if got := leaseProviderName("cbx_abcdef123456", ""); got != "crabbox-cbx-abcdef123456" {

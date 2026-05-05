@@ -73,7 +73,7 @@ func normalizeLeaseSlug(value string) string {
 
 func leaseProviderName(leaseID, slug string) string {
 	if slug = normalizeLeaseSlug(slug); slug != "" {
-		return "crabbox-" + slug
+		return fmt.Sprintf("crabbox-%s-%08x", slug, leaseSlugHash(leaseID))
 	}
 	return strings.ReplaceAll("crabbox-"+leaseID, "_", "-")
 }

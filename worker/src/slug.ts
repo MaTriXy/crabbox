@@ -50,7 +50,9 @@ export function slugWithCollisionSuffix(base: string, seed: string): string {
 
 export function leaseProviderName(leaseID: string, slug: string | undefined): string {
   const normalized = normalizeLeaseSlug(slug);
-  return normalized ? `crabbox-${normalized}` : `crabbox-${leaseID}`.replaceAll("_", "-");
+  return normalized
+    ? `crabbox-${normalized}-${slugHash(leaseID).toString(16).padStart(8, "0")}`
+    : `crabbox-${leaseID}`.replaceAll("_", "-");
 }
 
 function slugHash(value: string): number {

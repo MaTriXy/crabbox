@@ -12,7 +12,7 @@ describe("lease slugs", () => {
     const slug = leaseSlugFromID("cbx_abcdef123456");
     expect(leaseSlugFromID("cbx_abcdef123456")).toBe(slug);
     expect(slug).toMatch(/^[a-z0-9]+-[a-z0-9]+$/);
-    expect(`crabbox-${slug}`.length).toBeLessThanOrEqual(63);
+    expect(leaseProviderName("cbx_abcdef123456", slug).length).toBeLessThanOrEqual(63);
   });
 
   it("matches Go golden fixtures", () => {
@@ -29,7 +29,9 @@ describe("lease slugs", () => {
   });
 
   it("uses slug for provider names while preserving ID fallback", () => {
-    expect(leaseProviderName("cbx_abcdef123456", "blue-lobster")).toBe("crabbox-blue-lobster");
+    expect(leaseProviderName("cbx_abcdef123456", "blue-lobster")).toBe(
+      "crabbox-blue-lobster-c80c2195",
+    );
     expect(leaseProviderName("cbx_abcdef123456", "")).toBe("crabbox-cbx-abcdef123456");
   });
 });

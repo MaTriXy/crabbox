@@ -11,6 +11,7 @@
 ### Fixed
 
 - Fixed auto-shell command reconstruction so arguments with spaces stay quoted when shell operators such as `&&` are present.
+- Fixed brokered cloud server names so friendly-slug collisions with stale provider VMs do not block new leases.
 - Fixed human WebVNC desktop launches to keep browser windows windowed by default and reserve fullscreen for explicit capture/video workflows.
 - Fixed WebVNC portal status text and bridge commands so waiting/reset states explain the exact local bridge command to run.
 - Fixed Windows WebVNC credential handling so generated portal links preserve special characters and managed TightVNC sessions copy service passwords into the logged-in user's registry profile.
