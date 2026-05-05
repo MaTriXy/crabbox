@@ -91,6 +91,7 @@ func TestCloudInitCodeProfile(t *testing.T) {
 	got := cloudInit(cfg, "ssh-ed25519 test")
 	for _, want := range []string{
 		"https://code-server.dev/install.sh",
+		"env HOME=/root",
 		"--method=standalone --prefix=/usr/local",
 		"/usr/local/bin/code-server --version >/dev/null",
 		"test -x /usr/local/bin/code-server",

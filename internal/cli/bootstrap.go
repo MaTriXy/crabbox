@@ -584,7 +584,7 @@ EOF
 	}
 	if cfg.Code {
 		parts = append(parts, `    retry apt-get install -y --no-install-recommends libatomic1
-    retry sh -c 'curl -fsSL https://code-server.dev/install.sh | sh -s -- --method=standalone --prefix=/usr/local'
+    retry env HOME=/root sh -c 'curl -fsSL https://code-server.dev/install.sh | sh -s -- --method=standalone --prefix=/usr/local'
     /usr/local/bin/code-server --version >/dev/null`)
 	}
 	return strings.Join(parts, "\n")
