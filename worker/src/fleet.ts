@@ -79,6 +79,13 @@ interface CodeProxyResponse {
   error?: string;
 }
 
+interface CodePendingRequest {
+  resolve: (response: CodeProxyResponse) => void;
+  timeout: ReturnType<typeof setTimeout>;
+  response?: CodeProxyResponse;
+  chunks: string[];
+}
+
 interface CodeWebSocketOpen {
   type: "ws_open";
   id: string;
@@ -111,10 +118,7 @@ export class FleetDurableObject implements DurableObject {
   private readonly pendingWebVNCToViewer = new Map<string, WebVNCBuffer>();
   private readonly codeAgents = new Map<string, WebSocket>();
   private readonly codeViewers = new Map<string, WebSocket>();
-  private readonly pendingCodeRequests = new Map<
-    string,
-    { resolve: (response: CodeProxyResponse) => void; timeout: ReturnType<typeof setTimeout> }
-  >();
+  private readonly pendingCodeRequests = new Map<string, CodePendingRequest>();
 
   constructor(
     private readonly state: DurableObjectState,
@@ -858,7 +862,7 @@ export class FleetDurableObject implements DurableObject {
         this.pendingCodeRequests.delete(id);
         resolve({ type: "http", id, status: 504, error: "code bridge timed out" });
       }, 30_000);
-      this.pendingCodeRequests.set(id, { resolve, timeout });
+      this.pendingCodeRequests.set(id, { resolve, timeout, chunks: [] });
       agent.send(JSON.stringify(message));
     });
     if (response.error) {
@@ -912,6 +916,36 @@ export class FleetDurableObject implements DurableObject {
       clearTimeout(pending.timeout);
       this.pendingCodeRequests.delete(message.id);
       pending.resolve(message as CodeProxyResponse);
+      return;
+    }
+    if (message.type === "http_start" && message.id) {
+      const pending = this.pendingCodeRequests.get(message.id);
+      if (!pending) {
+        return;
+      }
+      pending.response = { ...(message as CodeProxyResponse), type: "http", body: "" };
+      pending.chunks = [];
+      return;
+    }
+    if (message.type === "http_body" && message.id) {
+      const pending = this.pendingCodeRequests.get(message.id);
+      if (!pending) {
+        return;
+      }
+      pending.chunks.push((message as CodeProxyResponse).body ?? "");
+      return;
+    }
+    if (message.type === "http_end" && message.id) {
+      const pending = this.pendingCodeRequests.get(message.id);
+      if (!pending) {
+        return;
+      }
+      clearTimeout(pending.timeout);
+      this.pendingCodeRequests.delete(message.id);
+      pending.resolve({
+        ...(pending.response ?? { type: "http", id: message.id, status: 502 }),
+        body: pending.chunks.join(""),
+      });
       return;
     }
     if (message.type === "ws_data" && message.id) {

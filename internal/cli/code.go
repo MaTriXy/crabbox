@@ -37,6 +37,8 @@ type codeProxyMessage struct {
 	Reason  string            `json:"reason,omitempty"`
 }
 
+const maxCodeBridgeBodyChunkBytes = 512 * 1024
+
 func (a App) webCode(ctx context.Context, args []string) error {
 	defaults := defaultConfig()
 	fs := newFlagSet("code", a.Stderr)
@@ -275,13 +277,33 @@ func (b *codeBridge) handleHTTP(ctx context.Context, msg codeProxyMessage) {
 			headers[key] = values[0]
 		}
 	}
-	_ = b.writeJSON(ctx, codeProxyMessage{
+	message := codeProxyMessage{
 		Type:    "http",
 		ID:      msg.ID,
 		Status:  resp.StatusCode,
 		Headers: headers,
-		Body:    base64.StdEncoding.EncodeToString(respBody),
-	})
+	}
+	if len(respBody) <= maxCodeBridgeBodyChunkBytes {
+		message.Body = base64.StdEncoding.EncodeToString(respBody)
+		_ = b.writeJSON(ctx, message)
+		return
+	}
+	message.Type = "http_start"
+	if err := b.writeJSON(ctx, message); err != nil {
+		return
+	}
+	for len(respBody) > 0 {
+		n := min(len(respBody), maxCodeBridgeBodyChunkBytes)
+		if err := b.writeJSON(ctx, codeProxyMessage{
+			Type: "http_body",
+			ID:   msg.ID,
+			Body: base64.StdEncoding.EncodeToString(respBody[:n]),
+		}); err != nil {
+			return
+		}
+		respBody = respBody[n:]
+	}
+	_ = b.writeJSON(ctx, codeProxyMessage{Type: "http_end", ID: msg.ID})
 }
 
 func (b *codeBridge) openUpstreamWebSocket(ctx context.Context, msg codeProxyMessage) {
