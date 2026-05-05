@@ -7,9 +7,7 @@
 - Added `crabbox desktop launch --webvnc --open` to launch a desktop browser/app and immediately bridge the same lease into the WebVNC portal.
 - Added `crabbox webvnc --daemon`/`--background` plus `--status`/`--stop` for background WebVNC bridges without tmux.
 - Added `crabbox media preview` for creating motion-trimmed GIF previews and optional trimmed MP4 clips from desktop recordings.
-
-### Added
-
+- Added `crabbox code` and per-lease `/code/` portal URLs for authenticated code-server access on `--code` Linux leases.
 - Added `.crabboxignore` for repo-local sync-only exclude patterns shared by `run` and `sync-plan`.
 
 ### Fixed

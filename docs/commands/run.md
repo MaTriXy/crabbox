@@ -92,6 +92,7 @@ Flags:
 --idle-timeout <duration>
 --desktop
 --browser
+--code
 --tailscale
 --tailscale-tags <comma-separated tags>
 --tailscale-hostname-template <template>
@@ -115,6 +116,10 @@ Flags:
 
 `--idle-timeout` controls inactivity expiry, default `30m`. `--ttl` remains the maximum wall-clock lifetime, default `90m`.
 Crabbox records a local repo claim for each reused lease. If a lease is already claimed by another repo, use `--reclaim` to move the claim intentionally.
+
+`--code` provisions or requires a Linux lease with code-server installed. Use
+`crabbox code --id <lease>` to expose the editor through the authenticated
+portal.
 
 For AWS one-shot leases, `--market` overrides `capacity.market` for this run.
 Explicit `--type` keeps exact-type semantics; Crabbox reports why that type
