@@ -11,8 +11,7 @@ It syncs the Git-managed working set, not the whole directory tree:
 
 - tracked files from `git ls-files --cached`;
 - nonignored untracked files from `git ls-files --others --exclude-standard`;
-- root `.crabboxignore` patterns, repo-local `sync.exclude` patterns, and
-  Crabbox's default cache/build excludes.
+- repo-local `sync.exclude` patterns and Crabbox's default cache/build excludes.
 
 Ignored build output, dependency folders, `.git`, and common local caches stay out of the transfer. This keeps first syncs close to the code that CI would see while still letting agents test uncommitted edits.
 
@@ -67,12 +66,6 @@ sync:
 Use `crabbox sync-plan` to inspect the local manifest before leasing a box. It prints the candidate file count, total bytes, and the largest files/directories using the same excludes as `run`.
 
 Repo-local config should hold project-specific excludes and env allowlists. Secrets must not be passed as command-line arguments or broad env globs.
-
-Use `.crabboxignore` when you only need repo-local sync exclusions. The file is
-read from the repository root. Blank lines and lines starting with `#` are
-ignored; remaining lines are appended to `sync.exclude` and use the same matcher
-as config excludes. Crabbox intentionally supports only `.crabboxignore`; there
-is no short alias.
 
 Related docs:
 
