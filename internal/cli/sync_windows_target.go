@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"time"
 )
@@ -21,6 +22,7 @@ func syncWindowsNative(ctx context.Context, target SSHTarget, repo Repo, cfg Con
 	input.Write(manifest.NUL())
 	cmd := exec.CommandContext(ctx, "tar", "-czf", "-", "-C", repo.Root, "--null", "-T", "-")
 	cmd.Stdin = &input
+	cmd.Env = append(os.Environ(), "COPYFILE_DISABLE=1")
 	var archive bytes.Buffer
 	cmd.Stdout = &archive
 	cmd.Stderr = stderr
@@ -71,6 +73,7 @@ func syncArchive(ctx context.Context, target SSHTarget, repo Repo, workdir strin
 	input.Write(manifest.NUL())
 	cmd := exec.CommandContext(ctx, "tar", "-czf", "-", "-C", repo.Root, "--null", "-T", "-")
 	cmd.Stdin = &input
+	cmd.Env = append(os.Environ(), "COPYFILE_DISABLE=1")
 	var archive bytes.Buffer
 	cmd.Stdout = &archive
 	cmd.Stderr = stderr
