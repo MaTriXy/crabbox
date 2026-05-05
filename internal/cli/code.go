@@ -40,8 +40,9 @@ type codeProxyMessage struct {
 }
 
 const (
-	maxCodeBridgeBodyChunkBytes           = 63 * 1024
+	maxCodeBridgeBodyChunkBytes           = 15 * 1024
 	maxPendingCodeBridgeWebSocketMessages = 32
+	codeBridgeBodyChunkDelay              = 5 * time.Millisecond
 )
 
 func (a App) webCode(ctx context.Context, args []string) error {
@@ -225,6 +226,7 @@ func (b *codeBridge) Serve(ctx context.Context) error {
 	for {
 		_, data, err := b.ws.Read(ctx)
 		if err != nil {
+			b.trace("agent_read_error error=%v", err)
 			return err
 		}
 		var msg codeProxyMessage
@@ -324,6 +326,13 @@ func (b *codeBridge) handleHTTP(ctx context.Context, msg codeProxyMessage) {
 			return
 		}
 		respBody = respBody[n:]
+		if len(respBody) > 0 {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(codeBridgeBodyChunkDelay):
+			}
+		}
 	}
 	_ = b.writeJSON(ctx, codeProxyMessage{Type: "http_end", ID: msg.ID})
 }

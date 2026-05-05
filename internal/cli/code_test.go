@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/base64"
 	"net/http"
 	"strings"
 	"testing"
@@ -30,6 +31,19 @@ func TestCodeUpstreamPathStripsPortalLeasePrefix(t *testing.T) {
 		if got := codeUpstreamPath(input); got != want {
 			t.Fatalf("codeUpstreamPath(%q)=%q want %q", input, got, want)
 		}
+	}
+}
+
+func TestCodeBridgeBodyChunkStaysBelowWebSocketFrameLimit(t *testing.T) {
+	if maxCodeBridgeBodyChunkBytes%3 != 0 {
+		t.Fatalf("chunk length=%d must be divisible by 3 to avoid mid-stream base64 padding", maxCodeBridgeBodyChunkBytes)
+	}
+	encoded := base64.StdEncoding.EncodeToString(make([]byte, maxCodeBridgeBodyChunkBytes))
+	if len(encoded) >= 64*1024 {
+		t.Fatalf("encoded chunk length=%d should stay below 64KiB websocket frame budget", len(encoded))
+	}
+	if codeBridgeBodyChunkDelay <= 0 {
+		t.Fatal("large bridge responses should be paced")
 	}
 }
 
