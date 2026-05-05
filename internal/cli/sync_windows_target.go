@@ -13,7 +13,7 @@ func syncWindowsNative(ctx context.Context, target SSHTarget, repo Repo, cfg Con
 	if err := runSSHQuiet(ctx, target, windowsPrepareWorkdir(workdir, cfg.Sync.Delete)); err != nil {
 		return exit(7, "prepare remote workdir: %v", err)
 	}
-	if cfg.Sync.GitSeed {
+	if cfg.Sync.GitSeed && remoteGitSeedCandidate(repo) {
 		if err := runSSHQuiet(ctx, target, windowsGitSeed(workdir, repo.RemoteURL, repo.Head)); err != nil {
 			fmt.Fprintf(stderr, "warning: remote git seed failed: %v\n", err)
 		}
@@ -47,77 +47,8 @@ func syncWindowsNative(ctx context.Context, target SSHTarget, repo Repo, cfg Con
 	return nil
 }
 
-func syncWindowsWSL2(ctx context.Context, target SSHTarget, repo Repo, cfg Config, workdir string, manifest SyncManifest, stdout, stderr anyWriter, opts rsyncOptions) error {
-	if err := runSSHQuiet(ctx, target, posixPrepareWorkdir(workdir, cfg.Sync.Delete)); err != nil {
-		return exit(7, "prepare remote workdir: %v", err)
-	}
-	if cfg.Sync.GitSeed {
-		if err := runSSHQuiet(ctx, target, remoteGitSeed(workdir, repo.RemoteURL, repo.Head)); err != nil {
-			fmt.Fprintf(stderr, "warning: remote git seed failed: %v\n", err)
-		}
-	}
-	if err := syncArchive(ctx, target, repo, workdir, manifest, stdout, stderr, opts); err != nil {
-		return err
-	}
-	if out, err := runSSHCombinedOutput(ctx, target, remoteSyncSanity(workdir, false)); err != nil {
-		if out != "" {
-			return exit(6, "remote sync sanity failed: %s: %v", out, err)
-		}
-		return exit(6, "remote sync sanity failed: %v", err)
-	}
-	return nil
-}
-
-func syncArchive(ctx context.Context, target SSHTarget, repo Repo, workdir string, manifest SyncManifest, stdout, stderr anyWriter, opts rsyncOptions) error {
-	var input bytes.Buffer
-	input.Write(manifest.NUL())
-	cmd := exec.CommandContext(ctx, "tar", "-czf", "-", "-C", repo.Root, "--null", "-T", "-")
-	cmd.Stdin = &input
-	cmd.Env = append(os.Environ(), "COPYFILE_DISABLE=1")
-	var archive bytes.Buffer
-	cmd.Stdout = &archive
-	cmd.Stderr = stderr
-	start := time.Now()
-	if err := cmd.Run(); err != nil {
-		return exit(6, "create sync archive: %v", err)
-	}
-	if opts.Timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
-		defer cancel()
-	}
-	stopHeartbeat := startSyncHeartbeat(stderr, start, opts.HeartbeatInterval)
-	err := runSSHInput(ctx, target, posixExtractArchive(workdir), &archive, stdout, stderr)
-	stopHeartbeat()
-	if ctx.Err() == context.DeadlineExceeded {
-		return exit(6, "archive sync timed out after %s", opts.Timeout)
-	}
-	if err != nil {
-		return exit(6, "archive sync failed: %v", err)
-	}
-	return nil
-}
-
 type anyWriter interface {
 	Write([]byte) (int, error)
-}
-
-func posixPrepareWorkdir(workdir string, delete bool) string {
-	deleteScript := ""
-	if delete {
-		deleteScript = `
-find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf -- {} +
-`
-	}
-	return "bash -lc " + shellQuote(`set -e
-mkdir -p `+shellQuote(workdir)+`
-cd `+shellQuote(workdir)+deleteScript)
-}
-
-func posixExtractArchive(workdir string) string {
-	return "bash -lc " + shellQuote(`set -e
-mkdir -p `+shellQuote(workdir)+`
-tar -xzf - -C `+shellQuote(workdir))
 }
 
 func windowsPrepareWorkdir(workdir string, delete bool) string {
