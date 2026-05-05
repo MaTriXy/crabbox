@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -151,5 +153,51 @@ func TestRetryableWebVNCBridgeErrors(t *testing.T) {
 				t.Fatalf("retryable=%v, want %v", got, tc.retryable)
 			}
 		})
+	}
+}
+
+func TestWebVNCDaemonArgsStripBackgroundFlags(t *testing.T) {
+	got := strings.Join(stripWebVNCDaemonFlags([]string{
+		"--provider",
+		"aws",
+		"--daemon",
+		"--target",
+		"linux",
+		"--background=true",
+		"--id",
+		"pearl-krill",
+		"--open",
+	}), " ")
+	if got != "--provider aws --target linux --id pearl-krill --open" {
+		t.Fatalf("stripped args=%q", got)
+	}
+}
+
+func TestSafeWebVNCDaemonName(t *testing.T) {
+	if got := safeWebVNCDaemonName("pearl/krill :99"); got != "pearl_krill__99" {
+		t.Fatalf("safe daemon name=%q", got)
+	}
+}
+
+func TestReadWebVNCDaemonPID(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bridge.pid")
+	if err := os.WriteFile(path, []byte("12345\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readWebVNCDaemonPID(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 12345 {
+		t.Fatalf("pid=%d", got)
+	}
+}
+
+func TestIsWebVNCDaemonCommand(t *testing.T) {
+	if !isWebVNCDaemonCommand("/usr/local/bin/crabbox webvnc --id pearl-krill") {
+		t.Fatal("expected crabbox webvnc command")
+	}
+	if isWebVNCDaemonCommand("/bin/sleep 999") {
+		t.Fatal("sleep must not be treated as WebVNC daemon")
 	}
 }

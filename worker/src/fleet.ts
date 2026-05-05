@@ -4,7 +4,7 @@ import { leaseConfig, validCIDRs } from "./config";
 import { HetznerClient } from "./hetzner";
 import { errorMessage, json, pathParts, readJson, requestOwner } from "./http";
 import { githubAuthRoute, githubPortalLogin, githubPortalLogout } from "./oauth";
-import { portalError, portalHome, portalVNC } from "./portal";
+import { portalError, portalHome, portalVNC, webVNCBridgeCommand } from "./portal";
 import { leaseSlugFromID, normalizeLeaseSlug, slugWithCollisionSuffix } from "./slug";
 import {
   createTailscaleAuthKey,
@@ -428,6 +428,15 @@ export class FleetDurableObject implements DurableObject {
       parts[1] === "leases" &&
       parts[2] &&
       parts[3] === "vnc" &&
+      parts[4] === "status"
+    ) {
+      return await this.webVNCStatus(request, parts[2]);
+    }
+    if (
+      method === "GET" &&
+      parts[1] === "leases" &&
+      parts[2] &&
+      parts[3] === "vnc" &&
       parts[4] === "viewer"
     ) {
       return await this.webVNCViewer(request, parts[2]);
@@ -508,6 +517,32 @@ export class FleetDurableObject implements DurableObject {
     });
   }
 
+  private async webVNCStatus(request: Request, identifier: string): Promise<Response> {
+    const lease = await this.resolveLease(identifier, request, false);
+    if (!lease) {
+      return notFound();
+    }
+    const error = webVNCLeaseError(lease);
+    if (error) {
+      return json({ error: "webvnc_unavailable", message: error }, { status: 409 });
+    }
+    const agent = this.webVNCAgents.get(lease.id);
+    const viewer = this.webVNCViewers.get(lease.id);
+    const bridgeConnected = agent?.readyState === WebSocket.OPEN;
+    const viewerConnected = viewer?.readyState === WebSocket.OPEN;
+    const command = webVNCBridgeCommand(lease);
+    return json({
+      bridgeConnected,
+      viewerConnected,
+      command,
+      message: bridgeConnected
+        ? viewerConnected
+          ? "bridge connected; another viewer is active"
+          : "bridge connected"
+        : `no bridge connected; run: ${command}`,
+    });
+  }
+
   private async webVNCViewer(request: Request, identifier: string): Promise<Response> {
     if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
       return json(
@@ -525,10 +560,12 @@ export class FleetDurableObject implements DurableObject {
     }
     const agent = this.webVNCAgents.get(lease.id);
     if (!agent || agent.readyState !== WebSocket.OPEN) {
+      const command = webVNCBridgeCommand(lease);
       return json(
         {
           error: "webvnc_bridge_missing",
-          message: `start the bridge with: crabbox webvnc --id ${lease.slug || lease.id}`,
+          message: `start the bridge with: ${command}`,
+          command,
         },
         { status: 409 },
       );
@@ -537,10 +574,12 @@ export class FleetDurableObject implements DurableObject {
     if (existingViewer) {
       closeSocket(existingViewer, 1012, "replaced by a newer WebVNC viewer");
       this.clearWebVNCViewer(lease.id, existingViewer);
+      const command = webVNCBridgeCommand(lease);
       return json(
         {
           error: "webvnc_bridge_reset",
-          message: `restart the bridge with: crabbox webvnc --id ${lease.slug || lease.id}`,
+          message: `another viewer was active; restart or wait for the bridge to reconnect with: ${command}`,
+          command,
         },
         { status: 409 },
       );

@@ -16,6 +16,8 @@ With `--browser`, Crabbox probes the target browser the same way `run --browser`
 does and launches `BROWSER` when no explicit command is provided.
 With `--webvnc`, the command keeps running after launch and bridges the desktop
 into the authenticated WebVNC portal. Add `--open` to open that portal locally.
+Browser launches default to a windowed human desktop with the remote panel and
+title bar visible; use `--fullscreen` only for capture/video workflows.
 
 On Windows, SSH sessions cannot directly own the visible console desktop, so
 Crabbox writes a one-shot PowerShell launcher under `C:\ProgramData\crabbox` and
@@ -39,5 +41,6 @@ Flags:
 --url <url>
 --webvnc
 --open
+--fullscreen
 --reclaim
 ```

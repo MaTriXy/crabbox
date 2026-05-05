@@ -7,7 +7,10 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,6 +25,10 @@ func (a App) webvnc(ctx context.Context, args []string) error {
 	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
 	localPort := fs.String("local-port", "", "local VNC tunnel port")
 	openPortal := fs.Bool("open", false, "open the web portal VNC page")
+	daemon := fs.Bool("daemon", false, "start the WebVNC bridge in the background")
+	background := fs.Bool("background", false, "alias for --daemon")
+	daemonStatus := fs.Bool("status", false, "show WebVNC background bridge pid/log paths")
+	stopDaemon := fs.Bool("stop", false, "stop the WebVNC background bridge for this lease")
 	networkFlags := registerNetworkModeFlag(fs, defaults)
 	targetFlags := registerTargetFlags(fs, defaults)
 	if err := parseFlags(fs, args); err != nil {
@@ -30,6 +37,15 @@ func (a App) webvnc(ctx context.Context, args []string) error {
 	setIDFromFirstArg(fs, id)
 	if *id == "" {
 		return exit(2, "usage: crabbox webvnc --id <lease-id-or-slug>")
+	}
+	if *daemonStatus {
+		return a.webVNCDaemonStatus(*id)
+	}
+	if *stopDaemon {
+		return a.stopWebVNCDaemon(*id)
+	}
+	if *daemon || *background {
+		return a.startWebVNCDaemon(args, *id)
 	}
 	cfg, err := loadLeaseTargetConfig(fs, *provider, targetFlags, networkFlags, leaseTargetConfigOptions{Desktop: true})
 	if err != nil {
@@ -130,6 +146,168 @@ func (a App) webvnc(ctx context.Context, args []string) error {
 		case <-timer.C:
 		}
 	}
+}
+
+func (a App) startWebVNCDaemon(args []string, leaseID string) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return exit(2, "resolve crabbox executable: %v", err)
+	}
+	logPath, pidPath, err := webVNCDaemonPaths(leaseID)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
+		return exit(2, "create WebVNC daemon directory: %v", err)
+	}
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return exit(2, "open WebVNC daemon log: %v", err)
+	}
+	defer logFile.Close()
+	childArgs := append([]string{"webvnc"}, stripWebVNCDaemonFlags(args)...)
+	cmd := exec.Command(exe, childArgs...)
+	cmd.Stdin = nil
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	if err := cmd.Start(); err != nil {
+		return exit(5, "start WebVNC daemon: %v", err)
+	}
+	pid := cmd.Process.Pid
+	if err := os.WriteFile(pidPath, []byte(fmt.Sprintf("%d\n", pid)), 0o600); err != nil {
+		_ = cmd.Process.Kill()
+		return exit(2, "write WebVNC daemon pid: %v", err)
+	}
+	if err := cmd.Process.Release(); err != nil {
+		return exit(5, "release WebVNC daemon process: %v", err)
+	}
+	fmt.Fprintf(a.Stdout, "webvnc daemon: pid=%d log=%s\n", pid, logPath)
+	fmt.Fprintf(a.Stdout, "webvnc daemon: stop with kill $(cat %s)\n", pidPath)
+	return nil
+}
+
+func (a App) webVNCDaemonStatus(leaseID string) error {
+	logPath, pidPath, err := webVNCDaemonPaths(leaseID)
+	if err != nil {
+		return err
+	}
+	pid, err := readWebVNCDaemonPID(pidPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Fprintf(a.Stdout, "webvnc daemon: no pid file for %s\n", leaseID)
+			fmt.Fprintf(a.Stdout, "webvnc daemon: expected log=%s\n", logPath)
+			return nil
+		}
+		return err
+	}
+	command, alive := webVNCDaemonProcessCommand(pid)
+	if !alive {
+		fmt.Fprintf(a.Stdout, "webvnc daemon: stale pid=%d log=%s\n", pid, logPath)
+		return nil
+	}
+	fmt.Fprintf(a.Stdout, "webvnc daemon: pid=%d log=%s\n", pid, logPath)
+	if strings.TrimSpace(command) != "" {
+		fmt.Fprintf(a.Stdout, "webvnc daemon: command=%s\n", strings.TrimSpace(command))
+	}
+	return nil
+}
+
+func (a App) stopWebVNCDaemon(leaseID string) error {
+	_, pidPath, err := webVNCDaemonPaths(leaseID)
+	if err != nil {
+		return err
+	}
+	pid, err := readWebVNCDaemonPID(pidPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Fprintf(a.Stdout, "webvnc daemon: no pid file for %s\n", leaseID)
+			return nil
+		}
+		return err
+	}
+	command, alive := webVNCDaemonProcessCommand(pid)
+	if !alive {
+		_ = os.Remove(pidPath)
+		fmt.Fprintf(a.Stdout, "webvnc daemon: removed stale pid=%d\n", pid)
+		return nil
+	}
+	if !isWebVNCDaemonCommand(command) {
+		return exit(5, "refusing to stop pid %d; command does not look like crabbox webvnc: %s", pid, strings.TrimSpace(command))
+	}
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return exit(5, "find WebVNC daemon pid %d: %v", pid, err)
+	}
+	if err := process.Kill(); err != nil {
+		return exit(5, "stop WebVNC daemon pid %d: %v", pid, err)
+	}
+	_ = os.Remove(pidPath)
+	fmt.Fprintf(a.Stdout, "webvnc daemon: stopped pid=%d\n", pid)
+	return nil
+}
+
+func webVNCDaemonProcessCommand(pid int) (string, bool) {
+	out, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "command=").Output()
+	if err != nil {
+		return "", false
+	}
+	command := strings.TrimSpace(string(out))
+	return command, command != ""
+}
+
+func isWebVNCDaemonCommand(command string) bool {
+	command = strings.ToLower(command)
+	return strings.Contains(command, "crabbox") && strings.Contains(command, "webvnc")
+}
+
+func readWebVNCDaemonPID(pidPath string) (int, error) {
+	data, err := os.ReadFile(pidPath)
+	if err != nil {
+		return 0, err
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil || pid <= 0 {
+		return 0, exit(2, "invalid WebVNC daemon pid file %s", pidPath)
+	}
+	return pid, nil
+}
+
+func stripWebVNCDaemonFlags(args []string) []string {
+	out := make([]string, 0, len(args))
+	for _, arg := range args {
+		if arg == "--daemon" || arg == "--background" ||
+			strings.HasPrefix(arg, "--daemon=") || strings.HasPrefix(arg, "--background=") {
+			continue
+		}
+		out = append(out, arg)
+	}
+	return out
+}
+
+func webVNCDaemonPaths(leaseID string) (string, string, error) {
+	dir, err := crabboxStateDir()
+	if err != nil {
+		return "", "", err
+	}
+	name := safeWebVNCDaemonName(leaseID)
+	bridgeDir := filepath.Join(dir, "webvnc")
+	return filepath.Join(bridgeDir, name+".log"), filepath.Join(bridgeDir, name+".pid"), nil
+}
+
+func safeWebVNCDaemonName(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "bridge"
+	}
+	var b strings.Builder
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	return b.String()
 }
 
 func startVNCForegroundTunnel(ctx context.Context, target SSHTarget, localPort, remoteHost, remotePort string) (*exec.Cmd, error) {

@@ -45,6 +45,7 @@ export function portalVNC(lease: LeaseRecord): Response {
   const nonce = scriptNonce();
   const title = `WebVNC ${lease.slug || lease.id}`;
   const wsPath = `/portal/leases/${encodeURIComponent(lease.id)}/vnc/viewer`;
+  const statusPath = `/portal/leases/${encodeURIComponent(lease.id)}/vnc/status`;
   const bridgeCmd = webVNCBridgeCommand(lease);
   return html(
     title,
@@ -59,12 +60,15 @@ export function portalVNC(lease: LeaseRecord): Response {
           <a class="button secondary" href="/portal/logout">log out</a>
         </nav>
       </header>
-      <section id="status" class="status">waiting for bridge</section>
+      <section id="status" class="status">checking bridge</section>
       <section id="screen" class="screen" aria-label="WebVNC display"></section>
       <section class="panel commands">
         <h2>bridge</h2>
         <p>run this locally while the browser tab is open:</p>
-        <code>${escapeHTML(bridgeCmd)}</code>
+        <div class="command-row">
+          <code id="bridgeCommand">${escapeHTML(bridgeCmd)}</code>
+          <button id="copyBridge" class="button secondary" type="button">copy</button>
+        </div>
       </section>
     </main>
     <script type="module" nonce="${nonce}">
@@ -72,8 +76,11 @@ export function portalVNC(lease: LeaseRecord): Response {
       const RFB = RFBModule.default || RFBModule;
       const status = document.getElementById("status");
       const screen = document.getElementById("screen");
+      const copyBridge = document.getElementById("copyBridge");
+      const bridgeCommand = document.getElementById("bridgeCommand")?.textContent || "";
       const wsURL = new URL(${JSON.stringify(wsPath)}, window.location.href);
       wsURL.protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const statusURL = new URL(${JSON.stringify(statusPath)}, window.location.href);
       const fragment = new URLSearchParams(window.location.hash.slice(1));
       const username = fragment.get("username") || "";
       const password = fragment.get("password") || "";
@@ -93,6 +100,14 @@ export function portalVNC(lease: LeaseRecord): Response {
       function retryDelay() {
         return Math.min(5000, 500 * 2 ** retryAttempt);
       }
+      async function bridgeState() {
+        try {
+          const response = await fetch(statusURL, { cache: "no-store" });
+          return response.ok ? await response.json() : undefined;
+        } catch {
+          return undefined;
+        }
+      }
       function scheduleRetry(label) {
         if (stopped) return;
         const delay = retryDelay();
@@ -101,12 +116,21 @@ export function portalVNC(lease: LeaseRecord): Response {
         window.clearTimeout(retryTimer);
         retryTimer = window.setTimeout(connect, delay);
       }
-      function connect() {
+      async function connect() {
         if (stopped) return;
         connected = false;
         screen.replaceChildren();
         try {
-          setStatus(retryAttempt ? "waiting for bridge" : "connecting");
+          const state = await bridgeState();
+          if (state && !state.bridgeConnected) {
+            scheduleRetry(state.message || "no bridge connected; run the bridge command below");
+            return;
+          }
+          if (state?.viewerConnected) {
+            setStatus("another viewer is connected; close stale tabs if this resets", "warn");
+          } else {
+            setStatus(retryAttempt ? "bridge connected; opening viewer" : "connecting");
+          }
           rfb = new RFB(screen, wsURL.toString(), options);
           rfb.scaleViewport = true;
           rfb.resizeSession = false;
@@ -139,6 +163,16 @@ export function portalVNC(lease: LeaseRecord): Response {
           scheduleRetry(error instanceof Error ? error.message : String(error));
         }
       }
+      copyBridge?.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(bridgeCommand);
+          copyBridge.textContent = "copied";
+          window.setTimeout(() => { copyBridge.textContent = "copy"; }, 1400);
+        } catch {
+          copyBridge.textContent = "failed";
+          window.setTimeout(() => { copyBridge.textContent = "copy"; }, 1400);
+        }
+      });
       window.addEventListener("beforeunload", () => {
         stopped = true;
         window.clearTimeout(retryTimer);
@@ -165,7 +199,7 @@ export function portalError(title: string, message: string, status = 400): Respo
   );
 }
 
-function webVNCBridgeCommand(lease: LeaseRecord): string {
+export function webVNCBridgeCommand(lease: LeaseRecord): string {
   const target = lease.target || "linux";
   const args = [
     "crabbox",
@@ -244,6 +278,8 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .status[data-tone="warn"] { color:var(--warn); }
     .status[data-tone="bad"] { color:var(--bad); }
     .commands { padding:12px; display:grid; gap:8px; }
+    .command-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:stretch; }
+    .command-row code { min-width:0; }
     .error { margin-top:20vh; padding:24px; display:grid; gap:12px; }
     @media (max-width: 760px) { main { width:min(100vw - 20px, 1180px); padding:10px 0; } th:nth-child(4),td:nth-child(4),th:nth-child(6),td:nth-child(6){ display:none; } .top{align-items:flex-start;} }
   </style>

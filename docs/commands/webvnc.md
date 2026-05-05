@@ -8,6 +8,7 @@ crabbox warmup --desktop
 crabbox webvnc --id blue-lobster
 crabbox webvnc --id blue-lobster --network tailscale
 crabbox webvnc --id blue-lobster --open
+crabbox webvnc --id blue-lobster --daemon --open
 ```
 
 The command resolves the lease like `crabbox vnc`, verifies that the lease has
@@ -26,6 +27,11 @@ This keeps the security boundary the same as `crabbox vnc`:
 - The noVNC client is served from the coordinator origin, not a third-party CDN.
 - The local `crabbox webvnc` process must keep running while the browser uses
   the desktop.
+
+Use `--daemon` (or `--background`) to keep the bridge running without a tmux or
+foreground shell. Crabbox writes the bridge log and pid file under its local
+state directory and prints both paths. Use `--status` to print those paths
+again, and `--stop` to kill the background bridge for that lease.
 
 `--network tailscale` changes only the SSH endpoint used for the local tunnel.
 The runner VNC service stays bound to loopback.
@@ -52,6 +58,10 @@ Flags:
 --network auto|tailscale|public
 --local-port <port>
 --open
+--daemon
+--background
+--status
+--stop
 --reclaim
 ```
 

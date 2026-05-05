@@ -100,6 +100,11 @@ session without keeping the SSH command attached:
 crabbox desktop launch --id blue-lobster --browser --url https://example.com --webvnc --open
 ```
 
+For human demos, Crabbox keeps launched browsers windowed so the remote desktop
+panel, title bar, and surrounding session remain visible. Use
+`desktop launch --fullscreen` only when you intentionally want browser-only
+video or capture output.
+
 ## Network Model
 
 Managed VNC is tunnel-first:

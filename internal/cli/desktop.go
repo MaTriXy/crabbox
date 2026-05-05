@@ -16,6 +16,7 @@ func (a App) desktopLaunch(ctx context.Context, args []string) error {
 	url := fs.String("url", "", "URL to pass to the launched browser")
 	webvnc := fs.Bool("webvnc", false, "bridge the launched desktop into the authenticated WebVNC portal")
 	openPortal := fs.Bool("open", false, "open the WebVNC portal when --webvnc is set")
+	fullscreen := fs.Bool("fullscreen", false, "leave launched browser fullscreen for capture/video workflows")
 	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
 	targetFlags := registerTargetFlags(fs, defaults)
 	if err := parseFlags(fs, args); err != nil {
@@ -91,7 +92,7 @@ func (a App) desktopLaunch(ctx context.Context, args []string) error {
 		return exit(2, "usage: crabbox desktop launch --id <lease-id-or-slug> -- <command...>")
 	}
 	workdir := remoteJoin(cfg, leaseID, repo.Name)
-	if err := runSSHQuiet(ctx, target, desktopLaunchRemoteCommand(target, workdir, env, command)); err != nil {
+	if err := runSSHQuiet(ctx, target, desktopLaunchRemoteCommand(target, workdir, env, command, *browser && !*fullscreen)); err != nil {
 		return exit(5, "launch desktop command: %v", err)
 	}
 	fmt.Fprintf(a.Stdout, "launched: %s\n", strings.Join(command, " "))
@@ -123,17 +124,17 @@ func firstNonBlank(values ...string) string {
 	return ""
 }
 
-func desktopLaunchRemoteCommand(target SSHTarget, workdir string, env map[string]string, command []string) string {
+func desktopLaunchRemoteCommand(target SSHTarget, workdir string, env map[string]string, command []string, windowedBrowser bool) string {
 	if isWindowsNativeTarget(target) {
 		return windowsDesktopLaunchRemoteCommand(workdir, env, command)
 	}
 	if target.TargetOS == targetMacOS {
-		return posixDesktopLaunchRemoteCommand(workdir, env, command)
+		return posixDesktopLaunchRemoteCommand(workdir, env, command, windowedBrowser)
 	}
-	return posixDesktopLaunchRemoteCommand(workdir, env, command)
+	return posixDesktopLaunchRemoteCommand(workdir, env, command, windowedBrowser)
 }
 
-func posixDesktopLaunchRemoteCommand(workdir string, env map[string]string, command []string) string {
+func posixDesktopLaunchRemoteCommand(workdir string, env map[string]string, command []string, windowedBrowser bool) string {
 	var b bytes.Buffer
 	b.WriteString("set -eu\n")
 	if workdir != "" {
@@ -154,7 +155,30 @@ func posixDesktopLaunchRemoteCommand(workdir string, env map[string]string, comm
 	writeShellArgv(&b, command)
 	b.WriteString(" >\"$log\" 2>&1 < /dev/null &\n")
 	b.WriteString("fi\n")
+	if windowedBrowser {
+		b.WriteString(posixWindowBrowserCommand())
+	}
 	return b.String()
+}
+
+func posixWindowBrowserCommand() string {
+	return `(
+  sleep 2
+  export DISPLAY="${DISPLAY:-:99}"
+  if command -v wmctrl >/dev/null 2>&1; then
+    wmctrl -r :ACTIVE: -b remove,fullscreen,maximized_vert,maximized_horz >/dev/null 2>&1 || true
+  fi
+  if command -v xdotool >/dev/null 2>&1; then
+    window="$(xdotool search --onlyvisible --class google-chrome 2>/dev/null | tail -1 || true)"
+    if [ -z "$window" ]; then
+      window="$(xdotool search --onlyvisible --class chromium 2>/dev/null | tail -1 || true)"
+    fi
+    if [ -n "$window" ]; then
+      xdotool windowactivate "$window" windowmove "$window" 80 80 windowsize "$window" 1500 900 >/dev/null 2>&1 || true
+    fi
+  fi
+) >/dev/null 2>&1 &
+`
 }
 
 func writeShellArgv(b *bytes.Buffer, command []string) {

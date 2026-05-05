@@ -541,9 +541,24 @@ describe("fleet lease identity and idle", () => {
     );
     expect(pageBody).toContain("/portal/assets/novnc/rfb.js");
     expect(pageBody).toContain("function scheduleRetry");
+    expect(pageBody).toContain("/portal/leases/cbx_000000000001/vnc/status");
+    expect(pageBody).toContain("copyBridge");
+    expect(pageBody).toContain("no bridge connected; run the bridge command below");
     expect(pageBody).toContain('fragment.get("username")');
     expect(pageBody).toContain('types.includes("username")');
     expect(pageBody).not.toContain("cdn.jsdelivr.net");
+
+    const status = await fleet.fetch(
+      request("GET", "/portal/leases/blue-lobster/vnc/status", { headers }),
+    );
+    expect(status.status).toBe(200);
+    await expect(status.json()).resolves.toMatchObject({
+      bridgeConnected: false,
+      viewerConnected: false,
+      command: "crabbox webvnc --provider hetzner --target linux --id blue-lobster --open",
+      message:
+        "no bridge connected; run: crabbox webvnc --provider hetzner --target linux --id blue-lobster --open",
+    });
 
     const plain = await fleet.fetch(
       request("GET", "/portal/leases/plain-lobster/vnc", { headers }),
