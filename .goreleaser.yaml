@@ -55,4 +55,4 @@ brews:
     install: |
       bin.install "crabbox"
     test: |
-      system bin/"crabbox", "--version"
+      system "#{bin}/crabbox", "--version"
