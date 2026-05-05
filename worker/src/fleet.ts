@@ -97,6 +97,7 @@ interface CodeWebSocketData {
   type: "ws_data";
   id: string;
   body: string;
+  frame?: "text" | "binary";
 }
 
 interface CodeWebSocketClose {
@@ -326,6 +327,7 @@ export class FleetDurableObject implements DurableObject {
         const outbound: CodeWebSocketData = {
           type: "ws_data",
           id: attachment.id,
+          frame: typeof data === "string" ? "text" : "binary",
           body: bytesToBase64(bytes),
         };
         agent.send(JSON.stringify(outbound));
@@ -951,7 +953,10 @@ export class FleetDurableObject implements DurableObject {
     if (message.type === "ws_data" && message.id) {
       const viewer = this.codeViewers.get(message.id);
       if (viewer?.readyState === WebSocket.OPEN) {
-        viewer.send(base64ToBytes((message as CodeWebSocketData).body));
+        const data = base64ToBytes((message as CodeWebSocketData).body);
+        viewer.send(
+          (message as CodeWebSocketData).frame === "text" ? textDecoder.decode(data) : data,
+        );
       }
       return;
     }

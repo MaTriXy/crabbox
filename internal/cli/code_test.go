@@ -3,6 +3,8 @@ package cli
 import (
 	"strings"
 	"testing"
+
+	"nhooyr.io/websocket"
 )
 
 func TestWebCodeURLs(t *testing.T) {
@@ -68,8 +70,9 @@ func TestCodeServerStaticFallbackServesVSDAStub(t *testing.T) {
 	if headers.Get("content-type") != "text/javascript" {
 		t.Fatalf("content-type=%q", headers.Get("content-type"))
 	}
-	if !strings.Contains(string(body), "globalThis.vsda_web") {
-		t.Fatalf("fallback body missing vsda_web:\n%s", body)
+	text := string(body)
+	if !strings.Contains(text, "define(") || !strings.Contains(text, "globalThis.vsda_web") {
+		t.Fatalf("fallback body missing AMD vsda_web stub:\n%s", body)
 	}
 
 	wasm, headers, ok := codeServerStaticFallback("/stable/static/node_modules/vsda/rust/web/vsda_bg.wasm", 404)
@@ -88,5 +91,23 @@ func TestCodeServerStaticFallbackServesVSDAStub(t *testing.T) {
 	}
 	if _, _, ok := codeServerStaticFallback("/stable/static/node_modules/vsda/rust/web/vsda.js", 500); ok {
 		t.Fatal("unexpected fallback for non-404")
+	}
+}
+
+func TestCodeFrameType(t *testing.T) {
+	if got := codeFrameType(websocket.MessageText); got != "text" {
+		t.Fatalf("text frame=%q", got)
+	}
+	if got := codeFrameType(websocket.MessageBinary); got != "binary" {
+		t.Fatalf("binary frame=%q", got)
+	}
+	if got := websocketMessageType("text"); got != websocket.MessageText {
+		t.Fatalf("websocketMessageType text=%v", got)
+	}
+	if got := websocketMessageType("binary"); got != websocket.MessageBinary {
+		t.Fatalf("websocketMessageType binary=%v", got)
+	}
+	if got := websocketMessageType(""); got != websocket.MessageBinary {
+		t.Fatalf("websocketMessageType default=%v", got)
 	}
 }

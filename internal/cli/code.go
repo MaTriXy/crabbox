@@ -35,6 +35,7 @@ type codeProxyMessage struct {
 	Error   string            `json:"error,omitempty"`
 	Code    int               `json:"code,omitempty"`
 	Reason  string            `json:"reason,omitempty"`
+	Frame   string            `json:"frame,omitempty"`
 }
 
 const maxCodeBridgeBodyChunkBytes = 63 * 1024
@@ -335,7 +336,7 @@ func (b *codeBridge) openUpstreamWebSocket(ctx context.Context, msg codeProxyMes
 
 func (b *codeBridge) readUpstreamWebSocket(ctx context.Context, id string, conn *websocket.Conn) {
 	for {
-		_, data, err := conn.Read(ctx)
+		typ, data, err := conn.Read(ctx)
 		if err != nil {
 			reason := err.Error()
 			var closeErr websocket.CloseError
@@ -348,7 +349,7 @@ func (b *codeBridge) readUpstreamWebSocket(ctx context.Context, id string, conn 
 			b.closeUpstreamWebSocket(id, websocket.StatusNormalClosure, "closed")
 			return
 		}
-		_ = b.writeJSON(ctx, codeProxyMessage{Type: "ws_data", ID: id, Body: base64.StdEncoding.EncodeToString(data)})
+		_ = b.writeJSON(ctx, codeProxyMessage{Type: "ws_data", ID: id, Frame: codeFrameType(typ), Body: base64.StdEncoding.EncodeToString(data)})
 	}
 }
 
@@ -360,7 +361,7 @@ func (b *codeBridge) writeUpstreamWebSocket(ctx context.Context, msg codeProxyMe
 	if conn == nil {
 		return
 	}
-	_ = conn.Write(ctx, websocket.MessageBinary, data)
+	_ = conn.Write(ctx, websocketMessageType(msg.Frame), data)
 }
 
 func (b *codeBridge) closeUpstreamWebSocket(id string, code websocket.StatusCode, reason string) {
@@ -434,7 +435,7 @@ func codeServerStaticFallback(path string, status int) ([]byte, http.Header, boo
 	case strings.HasSuffix(path, "/node_modules/vsda/rust/web/vsda.js"):
 		headers.Set("content-type", "text/javascript")
 		headers.Set("cache-control", "public, max-age=31536000")
-		return []byte(`globalThis.vsda_web={default:async()=>{},sign:v=>v,validator:class{createNewMessage(v){return v}validate(){return "ok"}free(){}}};`), headers, true
+		return []byte(`define([],()=>globalThis.vsda_web={default:async()=>{},sign:v=>v,validator:class{createNewMessage(v){return v}validate(){return "ok"}free(){}}});`), headers, true
 	case strings.HasSuffix(path, "/node_modules/vsda/rust/web/vsda_bg.wasm"):
 		headers.Set("content-type", "application/wasm")
 		headers.Set("cache-control", "public, max-age=31536000")
@@ -442,6 +443,20 @@ func codeServerStaticFallback(path string, status int) ([]byte, http.Header, boo
 	default:
 		return nil, nil, false
 	}
+}
+
+func codeFrameType(typ websocket.MessageType) string {
+	if typ == websocket.MessageText {
+		return "text"
+	}
+	return "binary"
+}
+
+func websocketMessageType(frame string) websocket.MessageType {
+	if frame == "text" {
+		return websocket.MessageText
+	}
+	return websocket.MessageBinary
 }
 
 func availableLocalCodePort() string {
