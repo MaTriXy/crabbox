@@ -81,6 +81,8 @@ func TestStartCodeServerCommand(t *testing.T) {
 		"--auth none",
 		"--bind-addr 127.0.0.1:8080",
 		"VSCODE_PROXY_URI='./proxy/{{port}}'",
+		"workbench.colorTheme",
+		"Default Dark Modern",
 		"/tmp/crabbox-code-server.log",
 		"/tmp/crabbox-code-server.pid",
 	} {

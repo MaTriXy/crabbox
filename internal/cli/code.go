@@ -214,11 +214,16 @@ func startCodeServerCommand(workdir string) string {
 	return strings.Join([]string{
 		"mkdir -p " + shellQuote(workdir),
 		"pidfile=" + shellQuote(pidfile) + "; if [ -s \"$pidfile\" ]; then oldpid=$(cat \"$pidfile\" 2>/dev/null || true); if [ -n \"$oldpid\" ] && kill -0 \"$oldpid\" 2>/dev/null; then kill \"$oldpid\" 2>/dev/null || true; for i in 1 2 3 4 5 6 7 8 9 10; do kill -0 \"$oldpid\" 2>/dev/null || break; sleep 0.2; done; if kill -0 \"$oldpid\" 2>/dev/null; then kill -9 \"$oldpid\" 2>/dev/null || true; fi; fi; fi",
+		codeServerSettingsCommand(),
 		"(nohup env VSCODE_PROXY_URI='./proxy/{{port}}' " + codeServerBinary +
 			" --auth none --bind-addr 127.0.0.1:" + managedCodePort +
 			" --disable-telemetry --disable-update-check " + shellQuote(workdir) +
 			" >/tmp/crabbox-code-server.log 2>&1 & echo $! >" + shellQuote(pidfile) + ")",
 	}, " && ")
+}
+
+func codeServerSettingsCommand() string {
+	return `settings="$HOME/.local/share/code-server/User/settings.json"; mkdir -p "$(dirname "$settings")"; tmp=$(mktemp); if [ -s "$settings" ] && command -v jq >/dev/null 2>&1 && jq '. + {"workbench.colorTheme":"Default Dark Modern"}' "$settings" > "$tmp"; then mv "$tmp" "$settings"; else printf '%s\n' '{"workbench.colorTheme":"Default Dark Modern"}' > "$settings"; rm -f "$tmp"; fi`
 }
 
 type codeBridge struct {
