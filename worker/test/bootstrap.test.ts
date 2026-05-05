@@ -104,6 +104,16 @@ describe("cloud-init bootstrap", () => {
     expect(got).toContain('"$BROWSER" --version >/dev/null');
   });
 
+  it("adds code-server setup only when requested", () => {
+    const plain = cloudInit(config);
+    expect(plain).not.toContain("code-server");
+    const got = cloudInit({ ...config, code: true });
+    expect(got).toContain("https://code-server.dev/install.sh");
+    expect(got).toContain("--method=standalone --prefix=/usr/local");
+    expect(got).toContain("/usr/local/bin/code-server --version >/dev/null");
+    expect(got).toContain("test -x /usr/local/bin/code-server");
+  });
+
   it("adds Tailscale setup only when requested", () => {
     const plain = cloudInit(config);
     expect(plain).not.toContain("tailscale up");

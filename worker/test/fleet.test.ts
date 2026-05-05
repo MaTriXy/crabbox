@@ -473,6 +473,7 @@ describe("fleet lease identity and idle", () => {
         owner: "peter@example.com",
         org: "openclaw",
         desktop: true,
+        code: true,
         expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       }),
     );
@@ -499,7 +500,69 @@ describe("fleet lease identity and idle", () => {
     const body = await response.text();
     expect(body).toContain("blue-lobster");
     expect(body).toContain("/portal/leases/cbx_000000000001/vnc");
+    expect(body).toContain("/portal/leases/cbx_000000000001/code/");
     expect(body).not.toContain("amber-krill");
+  });
+
+  it("serves code pages only for code leases and requires a bridge ticket", async () => {
+    const storage = new MemoryStorage();
+    const fleet = testFleet(storage);
+    const headers = {
+      "x-crabbox-owner": "peter@example.com",
+      "x-crabbox-org": "openclaw",
+    };
+    storage.seed(
+      "lease:cbx_000000000001",
+      testLease({
+        id: "cbx_000000000001",
+        slug: "blue-lobster",
+        owner: "peter@example.com",
+        org: "openclaw",
+        code: true,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      }),
+    );
+    storage.seed(
+      "lease:cbx_000000000002",
+      testLease({
+        id: "cbx_000000000002",
+        slug: "plain-lobster",
+        owner: "peter@example.com",
+        org: "openclaw",
+        code: false,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      }),
+    );
+
+    const page = await fleet.fetch(request("GET", "/portal/leases/blue-lobster/code/", { headers }));
+    expect(page.status).toBe(200);
+    const pageBody = await page.text();
+    expect(pageBody).toContain("crabbox code --id blue-lobster --open");
+
+    const plain = await fleet.fetch(
+      request("GET", "/portal/leases/plain-lobster/code/", { headers }),
+    );
+    expect(plain.status).toBe(409);
+
+    const ticket = await fleet.fetch(
+      request("POST", "/v1/leases/blue-lobster/code/ticket", { headers, body: {} }),
+    );
+    expect(ticket.status).toBe(200);
+    const ticketBody = (await ticket.json()) as { ticket: string; leaseID: string };
+    expect(ticketBody.ticket).toMatch(/^code_[a-f0-9]{32}$/);
+    expect(ticketBody.leaseID).toBe("cbx_000000000001");
+
+    const agent = await fleet.fetch(
+      request("GET", "/v1/leases/blue-lobster/code/agent", { headers }),
+    );
+    expect(agent.status).toBe(426);
+
+    const missingTicket = await fleet.fetch(
+      request("GET", "/v1/leases/blue-lobster/code/agent", {
+        headers: { upgrade: "websocket" },
+      }),
+    );
+    expect(missingTicket.status).toBe(401);
   });
 
   it("serves WebVNC pages only for desktop leases and requires an agent upgrade", async () => {

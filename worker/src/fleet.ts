@@ -1668,7 +1668,7 @@ function codeLeaseError(lease: LeaseRecord): string {
   if (!lease.code) {
     return "lease was not created with code=true";
   }
-  if (lease.target !== "linux") {
+  if (lease.target && lease.target !== "linux") {
     return "code is currently available for Linux leases only";
   }
   if (!lease.host) {
