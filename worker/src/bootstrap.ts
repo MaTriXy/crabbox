@@ -74,13 +74,13 @@ runcmd:
     }
     retry apt-get update
     retry apt-get install -y --no-install-recommends openssh-server ca-certificates curl git rsync jq
-${bootstrap}
     mkdir -p ${config.workRoot} /var/cache/crabbox/pnpm /var/cache/crabbox/npm
     chown -R ${config.sshUser}:${config.sshUser} ${config.workRoot} /var/cache/crabbox
     install -d /var/lib/crabbox
-    touch /var/lib/crabbox/bootstrapped
     systemctl enable --now ssh
     systemctl restart ssh
+${bootstrap}
+    touch /var/lib/crabbox/bootstrapped
     crabbox-ready
     BOOT
 `;
@@ -343,14 +343,14 @@ function optionalWriteFiles(config: LeaseConfig): string {
     permissions: '0644'
     content: |
       [Unit]
-      Description=Crabbox XFCE desktop session
+      Description=Crabbox lightweight desktop session
       After=crabbox-xvfb.service
       Requires=crabbox-xvfb.service
 
       [Service]
       User=crabbox
       Environment=DISPLAY=:99
-      ExecStart=/usr/bin/startxfce4
+      ExecStart=/usr/bin/openbox
       Restart=always
 
       [Install]
@@ -408,7 +408,7 @@ function optionalBootstrap(config: LeaseConfig): string {
     parts.push(tailscaleBootstrap(config));
   }
   if (config.desktop) {
-    parts.push(`    retry apt-get install -y --no-install-recommends xvfb xfce4 xfce4-terminal x11vnc xauth dbus-x11 x11-xserver-utils xterm scrot xdotool wmctrl fonts-dejavu-core fonts-liberation iproute2 openssl
+    parts.push(`    retry apt-get install -y --no-install-recommends xvfb openbox x11vnc xauth dbus-x11 x11-xserver-utils xterm scrot xdotool wmctrl fonts-dejavu-core fonts-liberation iproute2 openssl
     install -d -m 0750 -o crabbox -g crabbox /var/lib/crabbox
     if [ ! -s /var/lib/crabbox/vnc.password ]; then
       (umask 077 && openssl rand -base64 18 > /var/lib/crabbox/vnc.password)

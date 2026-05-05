@@ -70,13 +70,13 @@ describe("cloud-init bootstrap", () => {
 
   it("adds desktop services only when requested", () => {
     const got = cloudInit({ ...config, desktop: true });
-    expect(got).toContain("xvfb xfce4 xfce4-terminal x11vnc xauth dbus-x11");
+    expect(got).toContain("xvfb openbox x11vnc xauth dbus-x11");
     expect(got).toContain("/etc/systemd/system/crabbox-xvfb.service");
     expect(got).toContain("/etc/systemd/system/crabbox-desktop.service");
     expect(got).toContain("/usr/local/bin/crabbox-desktop-session");
     expect(got).toContain("/etc/systemd/system/crabbox-desktop-session.service");
     expect(got).toContain("/etc/systemd/system/crabbox-x11vnc.service");
-    expect(got).toContain("ExecStart=/usr/bin/startxfce4");
+    expect(got).toContain("ExecStart=/usr/bin/openbox");
     expect(got).toContain("systemctl is-active --quiet crabbox-desktop.service");
     expect(got).toContain("systemctl is-active --quiet crabbox-desktop-session.service");
     expect(got).toContain("x11-xserver-utils xterm scrot xdotool wmctrl");
@@ -85,6 +85,22 @@ describe("cloud-init bootstrap", () => {
     expect(got).toContain("(umask 077 && openssl rand -base64 18 > /var/lib/crabbox/vnc.password)");
     expect(got).toContain("-rfbauth /var/lib/crabbox/vnc.pass");
     expect(got).toContain("ss -ltn | grep -q '127.0.0.1:5900'");
+  });
+
+  it("starts ssh before optional desktop and browser bootstrap", () => {
+    const got = cloudInit({ ...config, desktop: true, browser: true });
+    const sshIndex = got.indexOf("systemctl restart ssh");
+    const desktopIndex = got.indexOf("retry apt-get install -y --no-install-recommends xvfb");
+    const browserIndex = got.indexOf("retry apt-get install -y --no-install-recommends gnupg");
+    const bootstrappedIndex = got.indexOf("touch /var/lib/crabbox/bootstrapped");
+    expect(sshIndex).toBeGreaterThanOrEqual(0);
+    expect(desktopIndex).toBeGreaterThanOrEqual(0);
+    expect(browserIndex).toBeGreaterThanOrEqual(0);
+    expect(bootstrappedIndex).toBeGreaterThanOrEqual(0);
+    expect(sshIndex).toBeLessThan(desktopIndex);
+    expect(sshIndex).toBeLessThan(browserIndex);
+    expect(bootstrappedIndex).toBeGreaterThan(desktopIndex);
+    expect(bootstrappedIndex).toBeGreaterThan(browserIndex);
   });
 
   it("adds browser setup only when requested", () => {
