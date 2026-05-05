@@ -203,7 +203,8 @@ func retryableWebVNCBridgeError(err error) bool {
 	message := err.Error()
 	return strings.Contains(message, "WebVNC viewer disconnected") ||
 		strings.Contains(message, "replaced by a newer WebVNC viewer") ||
-		strings.Contains(message, "WebVNC bridge reset")
+		strings.Contains(message, "WebVNC bridge reset") ||
+		strings.Contains(message, "failed to read frame header: EOF")
 }
 
 func webVNCReconnectDelay(attempt int) time.Duration {

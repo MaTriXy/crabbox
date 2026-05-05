@@ -130,6 +130,11 @@ func TestRetryableWebVNCBridgeErrors(t *testing.T) {
 			retryable: true,
 		},
 		{
+			name:      "websocket eof",
+			err:       errors.New(`failed to get reader: failed to read frame header: EOF`),
+			retryable: true,
+		},
+		{
 			name:      "normal close",
 			err:       errors.New(`received close frame: status = StatusNormalClosure and reason = "test done"`),
 			retryable: false,
