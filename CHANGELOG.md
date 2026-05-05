@@ -2,6 +2,10 @@
 
 ## 0.6.0 - Unreleased
 
+### Added
+
+- Added `crabbox media preview` for creating motion-trimmed GIF previews and optional trimmed MP4 clips from desktop recordings.
+
 ### Fixed
 
 - Fixed auto-shell command reconstruction so arguments with spaces stay quoted when shell operators such as `&&` are present.

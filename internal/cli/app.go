@@ -134,6 +134,7 @@ Commands:
   warmup      Lease a box and wait until it is ready
   run         Sync the repo, run a remote command, stream output
   desktop     Launch apps into a visible desktop session
+  media       Create preview artifacts from recorded desktop videos
   sync-plan   Show local sync manifest size hotspots
   history     List recorded remote runs
   logs        Print recorded run logs
@@ -164,6 +165,7 @@ Common Flows:
   crabbox ssh --id blue-lobster
   crabbox vnc --id blue-lobster --open
   crabbox desktop launch --id blue-lobster --browser --url https://example.com
+  crabbox media preview --input desktop.mp4 --output desktop-preview.gif --trimmed-video-output desktop-change.mp4
   crabbox webvnc --id blue-lobster --open
   crabbox screenshot --id blue-lobster --output desktop.png
   crabbox inspect --id blue-lobster --json

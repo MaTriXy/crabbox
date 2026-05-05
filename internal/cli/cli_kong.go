@@ -20,6 +20,7 @@ type crabboxKongCLI struct {
 	Warmup     warmupKongCmd     `cmd:"" passthrough:"" help:"Lease a box and wait until it is ready."`
 	Run        runKongCmd        `cmd:"" passthrough:"" help:"Sync the repo, run a remote command, stream output."`
 	Desktop    desktopKongCmd    `cmd:"" help:"Launch apps into a visible desktop session."`
+	Media      mediaKongCmd      `cmd:"" help:"Create preview artifacts from recorded desktop videos."`
 	SyncPlan   syncPlanKongCmd   `cmd:"" name:"sync-plan" passthrough:"" help:"Show local sync manifest size hotspots."`
 	History    historyKongCmd    `cmd:"" passthrough:"" help:"List recorded remote runs."`
 	Logs       logsKongCmd       `cmd:"" passthrough:"" help:"Print recorded run logs."`
@@ -106,7 +107,7 @@ func normalizeKongHelpArgs(args []string) []string {
 
 func isKongCommandGroup(command string) bool {
 	switch command {
-	case "actions", "admin", "cache", "config", "desktop", "image", "machine", "pool":
+	case "actions", "admin", "cache", "config", "desktop", "image", "machine", "media", "pool":
 		return true
 	default:
 		return false
@@ -190,6 +191,13 @@ type desktopKongCmd struct {
 	Launch desktopLaunchKongCmd `cmd:"" passthrough:"" help:"Start an app inside a desktop lease."`
 }
 type desktopLaunchKongCmd struct {
+	Args []string `arg:"" optional:""`
+}
+
+type mediaKongCmd struct {
+	Preview mediaPreviewKongCmd `cmd:"" passthrough:"" help:"Create a trimmed animated GIF preview from a video."`
+}
+type mediaPreviewKongCmd struct {
 	Args []string `arg:"" optional:""`
 }
 
@@ -311,6 +319,10 @@ func (c *cleanupKongCmd) Run(ctx context.Context, app App) error { return app.cl
 
 func (c *desktopLaunchKongCmd) Run(ctx context.Context, app App) error {
 	return app.desktopLaunch(ctx, c.Args)
+}
+
+func (c *mediaPreviewKongCmd) Run(ctx context.Context, app App) error {
+	return app.mediaPreview(ctx, c.Args)
 }
 
 func (c *cacheListKongCmd) Run(ctx context.Context, app App) error {
