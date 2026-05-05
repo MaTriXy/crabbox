@@ -51,6 +51,14 @@ func TestRemoteShellCommandRunsScript(t *testing.T) {
 	}
 }
 
+func TestShellScriptFromArgvPreservesArgumentsAroundOperators(t *testing.T) {
+	got := shellScriptFromArgv([]string{"NODE_OPTIONS=--max old", "printf", "%s\n", "a b", "&&", "echo", "done"})
+	want := "NODE_OPTIONS='--max old' 'printf' '%s\n' 'a b' && 'echo' 'done'"
+	if got != want {
+		t.Fatalf("shellScriptFromArgv()=%q want %q", got, want)
+	}
+}
+
 func TestRemoteCommandSourcesActionsEnvFile(t *testing.T) {
 	got := remoteCommandWithEnvFile("/home/runner/work/repo/repo", map[string]string{"CI": "1"}, "/home/runner/.crabbox/actions/cbx-123.env.sh", []string{"pnpm", "test"})
 	for _, want := range []string{
@@ -174,6 +182,9 @@ func TestShouldUseShellForControlOperators(t *testing.T) {
 	}
 	if !shouldUseShell([]string{"pnpm install && pnpm test"}) {
 		t.Fatal("expected shell mode for single shell string")
+	}
+	if !shouldUseShell([]string{"pnpm test"}) {
+		t.Fatal("expected shell mode for single command string with spaces")
 	}
 	if shouldUseShell([]string{"pnpm", "test"}) {
 		t.Fatal("plain argv command should not use shell")

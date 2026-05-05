@@ -604,8 +604,10 @@ afterSync:
 	}
 	runEnv := mergeEnv(allowedEnv(cfg.EnvAllow), capabilityEnv)
 	remote := remoteCommandWithEnvFile(workdir, runEnv, actionsEnvFile, command)
-	if *shellMode || shouldUseShell(command) {
+	if *shellMode {
 		remote = remoteShellCommandWithEnvFile(workdir, runEnv, actionsEnvFile, strings.Join(command, " "))
+	} else if shouldUseShell(command) {
+		remote = remoteShellCommandWithEnvFile(workdir, runEnv, actionsEnvFile, shellScriptFromArgv(command))
 	}
 	if isWindowsNativeTarget(target) {
 		remote = windowsRemoteCommandWithEnvFile(workdir, runEnv, actionsEnvFile, command)
@@ -758,11 +760,10 @@ func gitHydrateBaseSHA(repo Repo, baseRef string) string {
 
 func shouldUseShell(command []string) bool {
 	if len(command) == 1 {
-		return strings.ContainsAny(command[0], "&|;<>*$`")
+		return strings.ContainsAny(command[0], " \t\r\n&|;<>*$`()")
 	}
 	for _, word := range command {
-		switch word {
-		case "&&", "||", ";", "|", ">", ">>", "<", "2>", "2>>":
+		if isShellControlOperator(word) {
 			return true
 		}
 	}

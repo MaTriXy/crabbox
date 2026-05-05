@@ -361,7 +361,12 @@ func TestBlacksmithCommandString(t *testing.T) {
 		{
 			name:    "operator uses shell",
 			command: []string{"pnpm", "install", "&&", "pnpm", "test"},
-			want:    "pnpm install && pnpm test",
+			want:    "'pnpm' 'install' && 'pnpm' 'test'",
+		},
+		{
+			name:    "operator preserves spaced arg",
+			command: []string{"printf", "%s\n", "a b", "&&", "echo", "ok"},
+			want:    "'printf' '%s\n' 'a b' && 'echo' 'ok'",
 		},
 		{
 			name:      "explicit shell",

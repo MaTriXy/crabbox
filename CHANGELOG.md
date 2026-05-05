@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0 - Unreleased
+
+### Fixed
+
+- Fixed auto-shell command reconstruction so arguments with spaces stay quoted when shell operators such as `&&` are present.
+
 ## 0.5.0 - 2026-05-04
 
 ### Added

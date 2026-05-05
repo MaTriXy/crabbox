@@ -519,8 +519,11 @@ func blacksmithCommandString(command []string, shellMode bool) string {
 	if len(command) == 0 {
 		return ""
 	}
-	if shellMode || shouldUseShell(command) || len(command) == 1 {
+	if shellMode || len(command) == 1 {
 		return strings.Join(command, " ")
+	}
+	if shouldUseShell(command) {
+		return shellScriptFromArgv(command)
 	}
 	parts := make([]string, 0, len(command))
 	seenCommand := false

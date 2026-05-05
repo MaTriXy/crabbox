@@ -484,6 +484,46 @@ func remoteShellCommandWithEnvFile(workdir string, env map[string]string, envFil
 	return b.String()
 }
 
+func shellScriptFromArgv(command []string) string {
+	parts := make([]string, 0, len(command))
+	seenCommand := false
+	for _, word := range command {
+		if isShellControlOperator(word) {
+			parts = append(parts, word)
+			if resetsShellCommandPosition(word) {
+				seenCommand = false
+			}
+			continue
+		}
+		if !seenCommand && isShellEnvAssignment(word) {
+			key, value, _ := strings.Cut(word, "=")
+			parts = append(parts, key+"="+shellQuote(value))
+			continue
+		}
+		seenCommand = true
+		parts = append(parts, shellQuote(word))
+	}
+	return strings.Join(parts, " ")
+}
+
+func isShellControlOperator(word string) bool {
+	switch word {
+	case "&&", "||", ";", "|", ">", ">>", "<", "2>", "2>>":
+		return true
+	default:
+		return false
+	}
+}
+
+func resetsShellCommandPosition(word string) bool {
+	switch word {
+	case "&&", "||", ";", "|":
+		return true
+	default:
+		return false
+	}
+}
+
 func writeRemoteCommandPrefix(b *strings.Builder, workdir string, env map[string]string, envFile string) {
 	b.WriteString("cd ")
 	b.WriteString(shellQuote(workdir))
