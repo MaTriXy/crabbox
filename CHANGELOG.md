@@ -19,6 +19,7 @@
 - Fixed managed AWS Windows WSL2 bootstrap by using the current Ubuntu WSL rootfs URL, downloading large rootfs files through `curl.exe`, and retrying empty or partial rootfs downloads instead of reusing a poisoned tarball. Thanks @vincentkoc.
 - Fixed AWS Windows WSL2 mode overrides so they refresh the default instance type to a nested-virtualization-capable family. Thanks @steipete.
 - Fixed AWS Windows WSL2 runs so mode overrides also refresh the default work root to `/work/crabbox` and sync via a WSL archive stream instead of rsync's remote protocol through Windows OpenSSH.
+- Fixed remote git seeding so an unfetchable local commit cannot leave an empty `.git` worktree that makes sync sanity report every tracked file as deleted.
 
 ## 0.5.0 - 2026-05-04
 
