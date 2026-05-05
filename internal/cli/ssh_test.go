@@ -262,17 +262,30 @@ func TestSSHWaitProgressIncludesElapsedAndRemaining(t *testing.T) {
 		&SSHTarget{Host: "203.0.113.10", Port: "2222"},
 		"bootstrap",
 		"2222",
+		"2222",
 		95*time.Second,
 		10*time.Minute,
 	)
 	for _, want := range []string{
-		"waiting for 203.0.113.10:2222 bootstrap toolchain...",
+		"waiting for 203.0.113.10:2222 bootstrap ready-check...",
 		"elapsed=1m35s",
 		"remaining=10m0s",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("progress message missing %q in %q", want, got)
 		}
+	}
+}
+
+func TestSSHWaitProgressDistinguishesAuthFromReadiness(t *testing.T) {
+	target := &SSHTarget{Host: "203.0.113.10", Port: "2222"}
+	got := sshWaitProgressMessage(target, "bootstrap", "2222", "", 5*time.Second, time.Minute)
+	if !strings.Contains(got, "bootstrap ssh-auth") {
+		t.Fatalf("TCP-only progress should report ssh-auth stage: %q", got)
+	}
+	got = sshWaitProgressMessage(target, "bootstrap", "2222", "2222", 5*time.Second, time.Minute)
+	if !strings.Contains(got, "bootstrap ready-check") {
+		t.Fatalf("SSH transport progress should report ready-check stage: %q", got)
 	}
 }
 

@@ -74,6 +74,7 @@ func waitForSSHReady(ctx context.Context, target *SSHTarget, stderr io.Writer, p
 			return exit(5, "timed out waiting for SSH on %s during %s", target.Host, phase)
 		}
 		reachablePort := ""
+		transportPort := ""
 		for _, port := range sshPortCandidates(target.Port, target.FallbackPorts) {
 			probe := *target
 			probe.Port = port
@@ -85,7 +86,13 @@ func waitForSSHReady(ctx context.Context, target *SSHTarget, stderr io.Writer, p
 			if reachablePort == "" {
 				reachablePort = probe.Port
 			}
-			if runSSHQuiet(ctx, probe, sshReadyCommand(probe)) == nil {
+			if runSSHQuietWithOptions(ctx, probe, sshTransportProbeCommand(probe), "5", "1") != nil {
+				continue
+			}
+			if transportPort == "" {
+				transportPort = probe.Port
+			}
+			if runSSHQuietWithOptions(ctx, probe, sshReadyCommand(probe), "5", "1") == nil {
 				if target.Port != probe.Port {
 					fmt.Fprintf(stderr, "using ssh port %s for %s (configured %s not ready)\n", probe.Port, target.Host, target.Port)
 					target.Port = probe.Port
@@ -93,19 +100,22 @@ func waitForSSHReady(ctx context.Context, target *SSHTarget, stderr io.Writer, p
 				return nil
 			}
 		}
-		fmt.Fprintln(stderr, sshWaitProgressMessage(target, phase, reachablePort, time.Since(start), time.Until(deadline)))
+		fmt.Fprintln(stderr, sshWaitProgressMessage(target, phase, reachablePort, transportPort, time.Since(start), time.Until(deadline)))
 		time.Sleep(10 * time.Second)
 	}
 }
 
-func sshWaitProgressMessage(target *SSHTarget, phase, reachablePort string, elapsed, remaining time.Duration) string {
+func sshWaitProgressMessage(target *SSHTarget, phase, reachablePort, transportPort string, elapsed, remaining time.Duration) string {
 	if remaining < 0 {
 		remaining = 0
 	}
 	elapsed = elapsed.Round(time.Second)
 	remaining = remaining.Round(time.Second)
+	if transportPort != "" {
+		return fmt.Sprintf("waiting for %s:%s %s ready-check... elapsed=%s remaining=%s", target.Host, transportPort, phase, elapsed, remaining)
+	}
 	if reachablePort != "" {
-		return fmt.Sprintf("waiting for %s:%s %s toolchain... elapsed=%s remaining=%s", target.Host, reachablePort, phase, elapsed, remaining)
+		return fmt.Sprintf("waiting for %s:%s %s ssh-auth... elapsed=%s remaining=%s", target.Host, reachablePort, phase, elapsed, remaining)
 	}
 	return fmt.Sprintf("waiting for %s:%s %s... elapsed=%s remaining=%s", target.Host, target.Port, phase, elapsed, remaining)
 }
