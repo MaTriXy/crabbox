@@ -37,7 +37,6 @@ type crabboxKongCLI struct {
 	Vnc        vncKongCmd        `cmd:"" name:"vnc" passthrough:"" help:"Print or open VNC connection details for a desktop lease."`
 	Webvnc     webvncKongCmd     `cmd:"" name:"webvnc" passthrough:"" help:"Bridge a desktop lease into the authenticated web portal."`
 	Screenshot screenshotKongCmd `cmd:"" passthrough:"" help:"Capture a PNG from a desktop lease."`
-	Record     recordKongCmd     `cmd:"" passthrough:"" help:"Capture an MP4 from a desktop lease."`
 	Inspect    inspectKongCmd    `cmd:"" passthrough:"" help:"Print lease/provider details; add --json for scripts."`
 	Stop       stopKongCmd       `cmd:"" passthrough:"" help:"Release a lease or delete a direct-provider machine."`
 	Release    releaseKongCmd    `cmd:"" passthrough:"" help:"Alias for stop."`
@@ -174,9 +173,6 @@ type webvncKongCmd struct {
 type screenshotKongCmd struct {
 	Args []string `arg:"" optional:""`
 }
-type recordKongCmd struct {
-	Args []string `arg:"" optional:""`
-}
 type inspectKongCmd struct {
 	Args []string `arg:"" optional:""`
 }
@@ -307,9 +303,6 @@ func (c *vncKongCmd) Run(ctx context.Context, app App) error      { return app.v
 func (c *webvncKongCmd) Run(ctx context.Context, app App) error   { return app.webvnc(ctx, c.Args) }
 func (c *screenshotKongCmd) Run(ctx context.Context, app App) error {
 	return app.screenshot(ctx, c.Args)
-}
-func (c *recordKongCmd) Run(ctx context.Context, app App) error {
-	return app.recordDesktop(ctx, c.Args)
 }
 func (c *inspectKongCmd) Run(ctx context.Context, app App) error { return app.inspect(ctx, c.Args) }
 func (c *stopKongCmd) Run(ctx context.Context, app App) error    { return app.stop(ctx, c.Args) }

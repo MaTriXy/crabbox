@@ -1,11 +1,5 @@
 # Changelog
 
-## 0.6.0 - Unreleased
-
-### Added
-
-- Added `crabbox record` to capture MP4 desktop recordings from UI-capable leases.
-
 ## 0.5.1 - 2026-05-05
 
 ### Added
