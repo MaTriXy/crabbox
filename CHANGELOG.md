@@ -1,11 +1,10 @@
 # Changelog
 
-## 0.5.1 - 2026-05-05
+## 0.5.1 - Unreleased
 
 ### Added
 
 - Added `.crabboxignore` for repo-local sync-only exclude patterns shared by `run` and `sync-plan`.
-- Added WebVNC portal controls for reconnect, fullscreen, and clipboard-ready bridge commands.
 
 ### Fixed
 
@@ -14,9 +13,7 @@
 - Fixed AWS Windows WSL2 runs so mode overrides also refresh the default work root to `/work/crabbox` while keeping WSL2 sync on the fast rsync path.
 - Fixed remote git seeding so an unfetchable local commit cannot leave an empty `.git` worktree that makes sync sanity report every tracked file as deleted.
 - Skipped remote git seeding for local commits that are not present in any remote-tracking ref, avoiding slow doomed clone/fetch attempts before rsync.
-- Fixed WebVNC bridge reconnects so reloading or reconnecting the browser no longer requires restarting the local bridge.
 - Fixed Windows archive sync from macOS so Apple extended attributes do not spam remote tar warnings.
-- Fixed the Homebrew formula test command so GoReleaser emits the expected formula syntax.
 
 ## 0.5.0 - 2026-05-04
 

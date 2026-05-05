@@ -27,7 +27,7 @@ No Homebrew? Grab a [GoReleaser archive](https://github.com/openclaw/crabbox/rel
 
 Prerequisites on the laptop: `git`, `ssh`, `ssh-keygen`, `rsync`, `curl`.
 
-Current source version: v0.5.1.
+Current source version: v0.5.0.
 
 ## Quick start
 
