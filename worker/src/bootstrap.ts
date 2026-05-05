@@ -442,7 +442,18 @@ function optionalBootstrap(config: LeaseConfig): string {
       fi
     fi
     if [ -n "$browser_path" ]; then
-      printf 'CHROME_BIN=%s\\nBROWSER=%s\\n' "$browser_path" "$browser_path" > /var/lib/crabbox/browser.env
+      browser_wrapper=/usr/local/bin/crabbox-browser
+      install -d -m 0755 /etc/opt/chrome/policies/managed /etc/chromium/policies/managed
+      cat > /etc/opt/chrome/policies/managed/crabbox.json <<'EOF'
+{"DefaultBrowserSettingEnabled":false,"MetricsReportingEnabled":false,"PromotionalTabsEnabled":false}
+EOF
+      cp /etc/opt/chrome/policies/managed/crabbox.json /etc/chromium/policies/managed/crabbox.json
+      cat > "$browser_wrapper" <<EOF
+#!/bin/sh
+exec "$browser_path" --no-first-run --no-default-browser-check --disable-default-apps "\\$@"
+EOF
+      chmod 0755 "$browser_wrapper"
+      printf 'CHROME_BIN=%s\\nBROWSER=%s\\n' "$browser_wrapper" "$browser_wrapper" > /var/lib/crabbox/browser.env
       chown crabbox:crabbox /var/lib/crabbox/browser.env
       chmod 0644 /var/lib/crabbox/browser.env
     fi`);

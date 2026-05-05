@@ -120,6 +120,8 @@ already made that endpoint reachable on a trusted network.
 
 `--browser` guarantees a browser binary and env such as `BROWSER` and
 `CHROME_BIN`; it does not create, unlock, sync, or migrate a logged-in profile.
+On managed Linux leases, these env vars point to a Crabbox wrapper that disables
+Chrome/Chromium first-run and default-browser prompts for repeatable VNC use.
 On managed targets, manual browser login through VNC lasts only for that lease
 unless the caller intentionally exports an artifact. On static hosts, any
 existing browser profile belongs to that host.
