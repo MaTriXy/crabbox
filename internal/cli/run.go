@@ -425,6 +425,10 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 		}
 		recorder.Event("sync.started", "sync", "")
 		timings.syncSteps.sshReady = time.Since(stepStart)
+		excludes, err := syncExcludes(repo.Root, cfg)
+		if err != nil {
+			return recordFailure(err)
+		}
 		if isWindowsNativeTarget(target) {
 			stepStart = time.Now()
 			if err := runSSHQuiet(ctx, target, windowsRemoteMkdir(workdir)); err != nil {
@@ -433,7 +437,7 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 			timings.syncSteps.mkdir = time.Since(stepStart)
 		}
 		stepStart = time.Now()
-		manifest, err := syncManifest(repo.Root, configuredExcludes(cfg))
+		manifest, err := syncManifest(repo.Root, excludes)
 		if err != nil {
 			return recordFailure(exit(6, "build sync file list: %v", err))
 		}
@@ -457,7 +461,7 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 		fingerprint := ""
 		if cfg.Sync.Fingerprint {
 			stepStart = time.Now()
-			fingerprint, err = syncFingerprintForManifest(repo, cfg, manifest)
+			fingerprint, err = syncFingerprintForManifest(repo, cfg, manifest, excludes)
 			timings.syncSteps.fingerprintLocal = time.Since(stepStart)
 			if err != nil {
 				fmt.Fprintf(a.Stderr, "warning: sync fingerprint failed: %v\n", err)
@@ -496,7 +500,7 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 			timings.syncSteps.prune = time.Since(stepStart)
 		}
 		stepStart = time.Now()
-		if err := rsync(ctx, target, repo.Root, workdir, configuredExcludes(cfg), a.Stdout, a.Stderr, rsyncOptions{Debug: *debugSync, Delete: cfg.Sync.Delete, Checksum: cfg.Sync.Checksum, UseFilesFrom: true, FilesFrom: manifestData, Timeout: cfg.Sync.Timeout, HeartbeatInterval: 15 * time.Second}); err != nil {
+		if err := rsync(ctx, target, repo.Root, workdir, excludes, a.Stdout, a.Stderr, rsyncOptions{Debug: *debugSync, Delete: cfg.Sync.Delete, Checksum: cfg.Sync.Checksum, UseFilesFrom: true, FilesFrom: manifestData, Timeout: cfg.Sync.Timeout, HeartbeatInterval: 15 * time.Second}); err != nil {
 			return recordFailure(exit(6, "rsync failed: %v", err))
 		}
 		timings.syncSteps.rsync = time.Since(stepStart)

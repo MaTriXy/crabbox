@@ -2,6 +2,10 @@
 
 ## 0.5.1 - Unreleased
 
+### Added
+
+- Added `.crabboxignore` for repo-local sync-only exclude patterns shared by `run` and `sync-plan`.
+
 ### Fixed
 
 - Fixed managed AWS Windows WSL2 bootstrap by using the current Ubuntu WSL rootfs URL, downloading large rootfs files through `curl.exe`, and retrying empty or partial rootfs downloads instead of reusing a poisoned tarball. Thanks @vincentkoc.

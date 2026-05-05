@@ -32,7 +32,11 @@ func (a App) syncPlan(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	manifest, err := syncManifest(repo.Root, configuredExcludes(cfg))
+	excludes, err := syncExcludes(repo.Root, cfg)
+	if err != nil {
+		return err
+	}
+	manifest, err := syncManifest(repo.Root, excludes)
 	if err != nil {
 		return exit(6, "build sync file list: %v", err)
 	}
