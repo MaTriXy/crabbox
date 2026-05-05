@@ -632,6 +632,14 @@ func remoteWriteSyncFingerprint(workdir, fingerprint string) string {
 	return "bash -lc " + shellQuote(script)
 }
 
+type remoteSyncFinalizeOptions struct {
+	AllowMassDeletions bool
+	HydrateGit         bool
+	BaseRef            string
+	BaseSHA            string
+	Fingerprint        string
+}
+
 func remoteWriteSyncManifestNew(workdir string) string {
 	script := "cd " + shellQuote(workdir) + " && " + remoteSyncMetaDirScript() + "mkdir -p \"$meta_dir\" && cat > \"$meta_dir/sync-manifest.new\""
 	return "bash -lc " + shellQuote(script)
@@ -639,6 +647,20 @@ func remoteWriteSyncManifestNew(workdir string) string {
 
 func remoteWriteSyncDeletedNew(workdir string) string {
 	script := "cd " + shellQuote(workdir) + " && " + remoteSyncMetaDirScript() + "mkdir -p \"$meta_dir\" && cat > \"$meta_dir/sync-deleted.new\""
+	return "bash -lc " + shellQuote(script)
+}
+
+func remoteWriteSyncManifestsNew(workdir string) string {
+	python := `import pathlib
+import sys
+
+manifest_len = int(sys.stdin.buffer.readline())
+manifest = sys.stdin.buffer.read(manifest_len)
+deleted = sys.stdin.buffer.read()
+pathlib.Path(sys.argv[1]).write_bytes(manifest)
+pathlib.Path(sys.argv[2]).write_bytes(deleted)
+`
+	script := "mkdir -p " + shellQuote(workdir) + " && cd " + shellQuote(workdir) + " && " + remoteSyncMetaDirScript() + "mkdir -p \"$meta_dir\" && python3 -c " + shellQuote(python) + " \"$meta_dir/sync-manifest.new\" \"$meta_dir/sync-deleted.new\""
 	return "bash -lc " + shellQuote(script)
 }
 
@@ -684,6 +706,46 @@ if [ -f "$old" ] && [ -f "$new" ]; then manifest_removed_paths | delete_paths; f
 
 func remoteApplySyncManifest(workdir string) string {
 	script := "set -e; cd " + shellQuote(workdir) + "; " + remoteSyncMetaDirScript() + "mkdir -p \"$meta_dir\"; new=\"$meta_dir/sync-manifest.new\"; deleted=\"$meta_dir/sync-deleted.new\"; rm -f \"$deleted\"; mv \"$new\" \"$meta_dir/sync-manifest\""
+	return "bash -lc " + shellQuote(script)
+}
+
+func remoteFinalizeSync(workdir string, opts remoteSyncFinalizeOptions) string {
+	allowValue := ""
+	if opts.AllowMassDeletions {
+		allowValue = "1"
+	}
+	script := `set -e
+cd ` + shellQuote(workdir) + `
+` + remoteSyncMetaDirScript() + `
+mkdir -p "$meta_dir"
+new="$meta_dir/sync-manifest.new"
+deleted="$meta_dir/sync-deleted.new"
+rm -f "$deleted"
+mv "$new" "$meta_dir/sync-manifest"
+if test -d .git && git status --short >/tmp/crabbox-git-status 2>/dev/null; then
+  deletions=$(awk '/^ D|^D / { n++ } END { print n+0 }' /tmp/crabbox-git-status)
+  if [ ` + shellQuote(allowValue) + ` != '1' ] && [ "$deletions" -ge 200 ]; then
+    echo "remote sync sanity failed: $deletions tracked deletions" >&2
+    awk '/^ D|^D / { print "  " substr($0,4) }' /tmp/crabbox-git-status | head -20 >&2
+    exit 66
+  fi
+fi
+`
+	if opts.HydrateGit && opts.BaseRef != "" {
+		refspec := "+refs/heads/" + opts.BaseRef + ":refs/remotes/origin/" + opts.BaseRef
+		script += `if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git remote get-url origin >/dev/null 2>&1; then
+  git fetch --quiet --unshallow origin ` + shellQuote(refspec) + ` || git fetch --quiet --depth=1000 origin ` + shellQuote(refspec) + ` || git fetch --quiet origin ` + shellQuote(refspec) + ` || git fetch --quiet origin ` + shellQuote(opts.BaseRef) + ` || true
+fi
+`
+	}
+	if opts.BaseRef != "" && opts.BaseSHA != "" {
+		script += `printf %s ` + shellQuote(opts.BaseRef+" "+opts.BaseSHA+"\n") + ` > "$meta_dir/git-hydrate-base" || true
+`
+	}
+	if opts.Fingerprint != "" {
+		script += `printf %s ` + shellQuote(opts.Fingerprint) + ` > "$meta_dir/sync-fingerprint" || true
+`
+	}
 	return "bash -lc " + shellQuote(script)
 }
 

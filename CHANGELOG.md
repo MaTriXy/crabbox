@@ -18,8 +18,9 @@
 - Fixed WebVNC portal passwords with escaped special characters and kept the bridge alive across viewer resets and transient coordinator EOFs.
 - Fixed managed AWS Windows WSL2 bootstrap by using the current Ubuntu WSL rootfs URL, downloading large rootfs files through `curl.exe`, and retrying empty or partial rootfs downloads instead of reusing a poisoned tarball. Thanks @vincentkoc.
 - Fixed AWS Windows WSL2 mode overrides so they refresh the default instance type to a nested-virtualization-capable family. Thanks @steipete.
-- Fixed AWS Windows WSL2 runs so mode overrides also refresh the default work root to `/work/crabbox` and sync via a WSL archive stream instead of rsync's remote protocol through Windows OpenSSH.
+- Fixed AWS Windows WSL2 runs so mode overrides also refresh the default work root to `/work/crabbox` while keeping WSL2 sync on the fast rsync path.
 - Fixed remote git seeding so an unfetchable local commit cannot leave an empty `.git` worktree that makes sync sanity report every tracked file as deleted.
+- Skipped remote git seeding for local commits that are not present in any remote-tracking ref, avoiding slow doomed clone/fetch attempts before rsync.
 - Fixed Windows archive sync from macOS so Apple extended attributes do not spam remote tar warnings.
 
 ## 0.5.0 - 2026-05-04

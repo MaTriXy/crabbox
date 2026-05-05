@@ -113,6 +113,13 @@ func gitOutput(root string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
+func remoteGitSeedCandidate(repo Repo) bool {
+	if repo.Root == "" || repo.RemoteURL == "" || repo.Head == "" {
+		return false
+	}
+	return gitOutput(repo.Root, "for-each-ref", "--contains", repo.Head, "--format=%(refname)", "refs/remotes") != ""
+}
+
 func defaultBaseRef(root string) string {
 	originHead := gitOutput(root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
 	if originHead != "" {

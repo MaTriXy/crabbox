@@ -140,6 +140,26 @@ func TestSyncManifestDoesNotDeleteRecreatedStagedDelete(t *testing.T) {
 	}
 }
 
+func TestRemoteGitSeedCandidateRequiresRemoteTrackingRef(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@example.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	writeFile(t, filepath.Join(dir, "foo.txt"), "old")
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "init")
+	head := gitOutput(dir, "rev-parse", "HEAD")
+
+	repo := Repo{Root: dir, RemoteURL: "https://github.com/openclaw/crabbox.git", Head: head}
+	if remoteGitSeedCandidate(repo) {
+		t.Fatal("unpublished head should not be a seed candidate")
+	}
+	runGit(t, dir, "update-ref", "refs/remotes/origin/main", head)
+	if !remoteGitSeedCandidate(repo) {
+		t.Fatal("head in a remote-tracking ref should be a seed candidate")
+	}
+}
+
 func TestCheckSyncPreflightFailsLargeCandidate(t *testing.T) {
 	cfg := baseConfig()
 	cfg.Sync.FailFiles = 2

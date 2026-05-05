@@ -343,15 +343,13 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 		}
 		recorder.Event("sync.started", "sync", "")
 		timings.syncSteps.sshReady = time.Since(stepStart)
-		stepStart = time.Now()
-		mkdirCommand := remoteMkdir(workdir)
 		if isWindowsNativeTarget(target) {
-			mkdirCommand = windowsRemoteMkdir(workdir)
+			stepStart = time.Now()
+			if err := runSSHQuiet(ctx, target, windowsRemoteMkdir(workdir)); err != nil {
+				return recordFailure(exit(7, "create remote workdir: %v", err))
+			}
+			timings.syncSteps.mkdir = time.Since(stepStart)
 		}
-		if err := runSSHQuiet(ctx, target, mkdirCommand); err != nil {
-			return recordFailure(exit(7, "create remote workdir: %v", err))
-		}
-		timings.syncSteps.mkdir = time.Since(stepStart)
 		stepStart = time.Now()
 		manifest, err := syncManifest(repo.Root, configuredExcludes(cfg))
 		if err != nil {
@@ -374,17 +372,6 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 			recorder.Event("sync.finished", "synced", fmt.Sprintf("duration=%s mode=archive", timings.sync.Round(time.Millisecond)))
 			goto afterSync
 		}
-		if isWindowsWSL2Target(target) {
-			stepStart = time.Now()
-			if err := syncWindowsWSL2(ctx, target, repo, cfg, workdir, manifest, a.Stdout, a.Stderr, rsyncOptions{Debug: *debugSync, Delete: cfg.Sync.Delete, Checksum: cfg.Sync.Checksum, Timeout: cfg.Sync.Timeout, HeartbeatInterval: 15 * time.Second}); err != nil {
-				return recordFailure(err)
-			}
-			timings.syncSteps.rsync = time.Since(stepStart)
-			timings.sync = time.Since(syncStart)
-			fmt.Fprintf(a.Stderr, "sync complete in %s\n", timings.sync.Round(time.Millisecond))
-			recorder.Event("sync.finished", "synced", fmt.Sprintf("duration=%s mode=archive-wsl2", timings.sync.Round(time.Millisecond)))
-			goto afterSync
-		}
 		fingerprint := ""
 		if cfg.Sync.Fingerprint {
 			stepStart = time.Now()
@@ -405,7 +392,7 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 				}
 			}
 		}
-		if cfg.Sync.GitSeed {
+		if cfg.Sync.GitSeed && remoteGitSeedCandidate(repo) {
 			stepStart = time.Now()
 			if err := runSSHQuiet(ctx, target, remoteGitSeed(workdir, repo.RemoteURL, repo.Head)); err != nil {
 				fmt.Fprintf(a.Stderr, "warning: remote git seed failed: %v\n", err)
@@ -414,11 +401,9 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 		}
 		manifestData := manifest.NUL()
 		stepStart = time.Now()
-		if err := runSSHInputQuiet(ctx, target, remoteWriteSyncManifestNew(workdir), string(manifestData)); err != nil {
-			return recordFailure(exit(7, "write sync manifest: %v", err))
-		}
-		if err := runSSHInputQuiet(ctx, target, remoteWriteSyncDeletedNew(workdir), string(manifest.DeletedNUL())); err != nil {
-			return recordFailure(exit(7, "write sync delete manifest: %v", err))
+		manifestInput := fmt.Sprintf("%d\n", len(manifestData)) + string(manifestData) + string(manifest.DeletedNUL())
+		if err := runSSHInputQuiet(ctx, target, remoteWriteSyncManifestsNew(workdir), manifestInput); err != nil {
+			return recordFailure(exit(7, "write sync manifests: %v", err))
 		}
 		timings.syncSteps.manifestWrite = time.Since(stepStart)
 		if cfg.Sync.Delete {
@@ -433,49 +418,33 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 			return recordFailure(exit(6, "rsync failed: %v", err))
 		}
 		timings.syncSteps.rsync = time.Since(stepStart)
-		stepStart = time.Now()
-		if err := runSSHQuiet(ctx, target, remoteApplySyncManifest(workdir)); err != nil {
-			return recordFailure(exit(6, "remote sync manifest apply failed: %v", err))
-		}
-		timings.syncSteps.manifestApply = time.Since(stepStart)
-		stepStart = time.Now()
-		if out, err := runSSHCombinedOutput(ctx, target, remoteSyncSanity(workdir, os.Getenv("CRABBOX_ALLOW_MASS_DELETIONS") == "1")); err != nil {
-			if out != "" {
-				return recordFailure(exit(6, "remote sync sanity failed: %s: %v", out, err))
-			}
-			return recordFailure(exit(6, "remote sync sanity failed: %v", err))
-		}
-		timings.syncSteps.sanity = time.Since(stepStart)
 		baseSHA := gitHydrateBaseSHA(repo, cfg.Sync.BaseRef)
+		hydrateGit := true
 		if hydratedByActions {
 			stepStart = time.Now()
 			reason, err := runSSHOutput(ctx, target, remoteGitHydrateStatus(workdir, cfg.Sync.BaseRef, baseSHA))
 			if err == nil && reason != "" {
 				timings.syncSteps.gitHydrateSkipped = true
 				timings.syncSteps.gitHydrateSkipReason = reason
+				hydrateGit = false
 				fmt.Fprintf(a.Stderr, "skipping git hydrate: %s\n", reason)
 			}
 		}
-		if !timings.syncSteps.gitHydrateSkipped {
-			stepStart = time.Now()
-			if err := runSSHQuiet(ctx, target, remoteGitHydrate(workdir, cfg.Sync.BaseRef)); err != nil {
-				fmt.Fprintf(a.Stderr, "warning: remote git hydrate failed: %v\n", err)
+		stepStart = time.Now()
+		finalizeCommand := remoteFinalizeSync(workdir, remoteSyncFinalizeOptions{
+			AllowMassDeletions: os.Getenv("CRABBOX_ALLOW_MASS_DELETIONS") == "1",
+			HydrateGit:         hydrateGit,
+			BaseRef:            cfg.Sync.BaseRef,
+			BaseSHA:            baseSHA,
+			Fingerprint:        fingerprint,
+		})
+		if out, err := runSSHCombinedOutput(ctx, target, finalizeCommand); err != nil {
+			if out != "" {
+				return recordFailure(exit(6, "remote sync finalize failed: %s: %v", out, err))
 			}
-			timings.syncSteps.gitHydrate = time.Since(stepStart)
+			return recordFailure(exit(6, "remote sync finalize failed: %v", err))
 		}
-		if cfg.Sync.BaseRef != "" && baseSHA != "" {
-			stepStart = time.Now()
-			if err := runSSHQuiet(ctx, target, remoteWriteGitHydrateMarker(workdir, cfg.Sync.BaseRef, baseSHA)); err != nil {
-				fmt.Fprintf(a.Stderr, "warning: write git hydrate marker failed: %v\n", err)
-			}
-		}
-		if fingerprint != "" {
-			stepStart = time.Now()
-			if err := runSSHQuiet(ctx, target, remoteWriteSyncFingerprint(workdir, fingerprint)); err != nil {
-				fmt.Fprintf(a.Stderr, "warning: write sync fingerprint failed: %v\n", err)
-			}
-			timings.syncSteps.fingerprintWrite = time.Since(stepStart)
-		}
+		timings.syncSteps.finalize = time.Since(stepStart)
 		timings.sync = time.Since(syncStart)
 		fmt.Fprintf(a.Stderr, "sync complete in %s\n", timings.sync.Round(time.Millisecond))
 		recorder.Event("sync.finished", "synced", fmt.Sprintf("duration=%s skipped=false", timings.sync.Round(time.Millisecond)))
@@ -606,6 +575,7 @@ type syncStepTimings struct {
 	manifestApply        time.Duration
 	sanity               time.Duration
 	gitHydrate           time.Duration
+	finalize             time.Duration
 	gitHydrateSkipped    bool
 	gitHydrateSkipReason string
 	fingerprintWrite     time.Duration
@@ -649,6 +619,7 @@ func formatSyncStepTimings(steps syncStepTimings) string {
 	} else {
 		appendStep("git_hydrate", steps.gitHydrate)
 	}
+	appendStep("finalize", steps.finalize)
 	appendStep("fingerprint_write", steps.fingerprintWrite)
 	return strings.Join(parts, ",")
 }
