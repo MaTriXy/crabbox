@@ -1840,7 +1840,7 @@ function codeLeaseError(lease: LeaseRecord): string {
   return "";
 }
 
-function codeForwardHeaders(headers: Headers): Record<string, string> {
+export function codeForwardHeaders(headers: Headers): Record<string, string> {
   const out: Record<string, string> = {};
   const allowed = new Set([
     "accept",
@@ -1856,9 +1856,22 @@ function codeForwardHeaders(headers: Headers): Record<string, string> {
     const lower = key.toLowerCase();
     if (allowed.has(lower) || lower.startsWith("x-")) {
       out[lower] = value;
+    } else if (lower === "cookie") {
+      const cookie = codeForwardCookie(value);
+      if (cookie) {
+        out["cookie"] = cookie;
+      }
     }
   }
   return out;
+}
+
+function codeForwardCookie(value: string): string | undefined {
+  const tokens = value
+    .split(";")
+    .map((part) => part.trim())
+    .filter((part) => part.startsWith("vscode-tkn="));
+  return tokens.length > 0 ? tokens.join("; ") : undefined;
 }
 
 const codePortalContentSecurityPolicy = [

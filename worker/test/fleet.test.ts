@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   FleetDurableObject,
+  codeForwardHeaders,
   codeResponseHeaders,
   flushPendingWebVNC,
   forwardOrBufferWebVNC,
@@ -583,6 +584,19 @@ describe("fleet lease identity and idle", () => {
     expect(headers.get("content-length")).toBeNull();
     expect(headers.get("content-type")).toBe("text/html");
     expect(headers.get("cache-control")).toBe("no-store, no-transform");
+  });
+
+  it("forwards only the VS Code token cookie to code-server", () => {
+    const headers = codeForwardHeaders(
+      new Headers({
+        cookie: "crabbox_session=secret; vscode-tkn=remote-token; other=value",
+        origin: "https://crabbox.openclaw.ai",
+      }),
+    );
+
+    expect(headers["cookie"]).toBe("vscode-tkn=remote-token");
+    expect(headers["cookie"]).not.toContain("crabbox_session");
+    expect(headers.origin).toBe("https://crabbox.openclaw.ai");
   });
 
   it("serves WebVNC pages only for desktop leases and requires an agent upgrade", async () => {

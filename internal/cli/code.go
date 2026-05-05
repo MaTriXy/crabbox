@@ -39,7 +39,10 @@ type codeProxyMessage struct {
 	Frame   string            `json:"frame,omitempty"`
 }
 
-const maxCodeBridgeBodyChunkBytes = 63 * 1024
+const (
+	maxCodeBridgeBodyChunkBytes           = 63 * 1024
+	maxPendingCodeBridgeWebSocketMessages = 32
+)
 
 func (a App) webCode(ctx context.Context, args []string) error {
 	defaults := defaultConfig()
@@ -191,6 +194,7 @@ type codeBridge struct {
 	mu       sync.Mutex
 	writeMu  sync.Mutex
 	upstream map[string]*websocket.Conn
+	pending  map[string][]codeProxyMessage
 }
 
 func connectCodeBridge(ctx context.Context, coord *CoordinatorClient, leaseID, host, port string) (*codeBridge, error) {
@@ -212,6 +216,7 @@ func connectCodeBridge(ctx context.Context, coord *CoordinatorClient, leaseID, h
 		},
 		debug:    os.Getenv("CRABBOX_CODE_DEBUG") == "1",
 		upstream: map[string]*websocket.Conn{},
+		pending:  map[string][]codeProxyMessage{},
 	}, nil
 }
 
@@ -251,6 +256,9 @@ func (b *codeBridge) Close(code websocket.StatusCode, reason string) {
 	for id, conn := range b.upstream {
 		_ = conn.Close(websocket.StatusNormalClosure, "bridge stopped")
 		delete(b.upstream, id)
+	}
+	for id := range b.pending {
+		delete(b.pending, id)
 	}
 }
 
@@ -323,11 +331,12 @@ func (b *codeBridge) handleHTTP(ctx context.Context, msg codeProxyMessage) {
 func (b *codeBridge) openUpstreamWebSocket(ctx context.Context, msg codeProxyMessage) {
 	upstream := "ws" + strings.TrimPrefix(b.baseURL, "http") + codeUpstreamPath(msg.Path)
 	b.trace("ws_open id=%s path=%s upstream=%s", msg.ID, msg.Path, upstream)
-	header := http.Header{}
-	for key, value := range msg.Headers {
-		header.Set(key, value)
-	}
-	conn, _, err := websocket.Dial(ctx, upstream, &websocket.DialOptions{HTTPHeader: header})
+	header, subprotocols := codeWebSocketDialHeaders(b.baseURL, msg.Headers)
+	b.trace("ws_open_headers id=%s cookie=%t origin=%q subprotocols=%d", msg.ID, header.Get("Cookie") != "", header.Get("Origin"), len(subprotocols))
+	conn, _, err := websocket.Dial(ctx, upstream, &websocket.DialOptions{
+		HTTPHeader:   header,
+		Subprotocols: subprotocols,
+	})
 	if err != nil {
 		b.trace("ws_open_error id=%s error=%v", msg.ID, err)
 		_ = b.writeJSON(ctx, codeProxyMessage{Type: "ws_close", ID: msg.ID, Code: int(websocket.StatusInternalError), Reason: err.Error()})
@@ -335,7 +344,18 @@ func (b *codeBridge) openUpstreamWebSocket(ctx context.Context, msg codeProxyMes
 	}
 	b.mu.Lock()
 	b.upstream[msg.ID] = conn
+	pending := append([]codeProxyMessage(nil), b.pending[msg.ID]...)
+	delete(b.pending, msg.ID)
 	b.mu.Unlock()
+	b.trace("ws_open_ok id=%s subprotocols=%d pending=%d", msg.ID, len(subprotocols), len(pending))
+	for _, pendingMessage := range pending {
+		if err := b.writeUpstreamFrame(ctx, conn, pendingMessage); err != nil {
+			b.trace("ws_pending_write_error id=%s error=%v", msg.ID, err)
+			b.closeUpstreamWebSocket(msg.ID, websocket.StatusInternalError, err.Error())
+			_ = b.writeJSON(ctx, codeProxyMessage{Type: "ws_close", ID: msg.ID, Code: int(websocket.StatusInternalError), Reason: err.Error()})
+			return
+		}
+	}
 	go b.readUpstreamWebSocket(ctx, msg.ID, conn)
 }
 
@@ -361,16 +381,37 @@ func (b *codeBridge) readUpstreamWebSocket(ctx context.Context, id string, conn 
 }
 
 func (b *codeBridge) writeUpstreamWebSocket(ctx context.Context, msg codeProxyMessage) {
-	data, _ := base64.StdEncoding.DecodeString(msg.Body)
 	b.mu.Lock()
 	conn := b.upstream[msg.ID]
-	b.mu.Unlock()
 	if conn == nil {
-		b.trace("ws_downstream_missing id=%s frame=%s bytes=%d", msg.ID, msg.Frame, len(data))
+		pending := b.pending[msg.ID]
+		if len(pending) >= maxPendingCodeBridgeWebSocketMessages {
+			b.mu.Unlock()
+			b.trace("ws_downstream_drop id=%s frame=%s pending=%d", msg.ID, msg.Frame, len(pending))
+			_ = b.writeJSON(ctx, codeProxyMessage{Type: "ws_close", ID: msg.ID, Code: int(websocket.StatusPolicyViolation), Reason: "too many pending websocket messages"})
+			return
+		}
+		b.pending[msg.ID] = append(pending, msg)
+		b.mu.Unlock()
+		b.trace("ws_downstream_buffered id=%s frame=%s pending=%d", msg.ID, msg.Frame, len(pending)+1)
 		return
 	}
-	b.trace("ws_downstream_data id=%s frame=%s bytes=%d", msg.ID, websocketMessageType(msg.Frame), len(data))
-	_ = conn.Write(ctx, websocketMessageType(msg.Frame), data)
+	b.mu.Unlock()
+	if err := b.writeUpstreamFrame(ctx, conn, msg); err != nil {
+		b.trace("ws_downstream_write_error id=%s error=%v", msg.ID, err)
+		b.closeUpstreamWebSocket(msg.ID, websocket.StatusInternalError, err.Error())
+		_ = b.writeJSON(ctx, codeProxyMessage{Type: "ws_close", ID: msg.ID, Code: int(websocket.StatusInternalError), Reason: err.Error()})
+	}
+}
+
+func (b *codeBridge) writeUpstreamFrame(ctx context.Context, conn *websocket.Conn, msg codeProxyMessage) error {
+	data, err := base64.StdEncoding.DecodeString(msg.Body)
+	if err != nil {
+		return err
+	}
+	frameType := websocketMessageType(msg.Frame)
+	b.trace("ws_downstream_data id=%s frame=%s bytes=%d", msg.ID, codeFrameType(frameType), len(data))
+	return conn.Write(ctx, frameType, data)
 }
 
 func (b *codeBridge) closeUpstreamWebSocket(id string, code websocket.StatusCode, reason string) {
@@ -380,6 +421,7 @@ func (b *codeBridge) closeUpstreamWebSocket(id string, code websocket.StatusCode
 	b.mu.Lock()
 	conn := b.upstream[id]
 	delete(b.upstream, id)
+	delete(b.pending, id)
 	b.mu.Unlock()
 	if conn != nil {
 		_ = conn.Close(code, reason)
@@ -473,6 +515,32 @@ func websocketMessageType(frame string) websocket.MessageType {
 		return websocket.MessageText
 	}
 	return websocket.MessageBinary
+}
+
+func codeWebSocketDialHeaders(baseURL string, values map[string]string) (http.Header, []string) {
+	headers := http.Header{}
+	for key, value := range values {
+		headers.Set(key, value)
+	}
+	subprotocols := websocketSubprotocols(headers)
+	headers.Del("Sec-WebSocket-Protocol")
+	if headers.Get("Origin") != "" {
+		headers.Set("Origin", baseURL)
+	}
+	return headers, subprotocols
+}
+
+func websocketSubprotocols(headers http.Header) []string {
+	var out []string
+	for _, value := range headers.Values("Sec-WebSocket-Protocol") {
+		for _, part := range strings.Split(value, ",") {
+			protocol := strings.TrimSpace(part)
+			if protocol != "" {
+				out = append(out, protocol)
+			}
+		}
+	}
+	return out
 }
 
 func availableLocalCodePort() string {

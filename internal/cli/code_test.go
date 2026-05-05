@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"net/http"
 	"strings"
 	"testing"
 
@@ -109,5 +110,37 @@ func TestCodeFrameType(t *testing.T) {
 	}
 	if got := websocketMessageType(""); got != websocket.MessageBinary {
 		t.Fatalf("websocketMessageType default=%v", got)
+	}
+}
+
+func TestWebSocketSubprotocols(t *testing.T) {
+	headers := http.Header{}
+	headers.Add("Sec-WebSocket-Protocol", "vscode-remote, crabbox")
+	headers.Add("Sec-WebSocket-Protocol", " second-token ")
+	got := websocketSubprotocols(headers)
+	want := []string{"vscode-remote", "crabbox", "second-token"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("websocketSubprotocols=%q want %q", got, want)
+	}
+}
+
+func TestCodeWebSocketDialHeadersRewritesOrigin(t *testing.T) {
+	headers, subprotocols := codeWebSocketDialHeaders("http://127.0.0.1:8081", map[string]string{
+		"cookie":                 "vscode-tkn=remote-token",
+		"origin":                 "https://crabbox.openclaw.ai",
+		"sec-websocket-protocol": "proto-a, proto-b",
+	})
+
+	if headers.Get("Origin") != "http://127.0.0.1:8081" {
+		t.Fatalf("origin=%q", headers.Get("Origin"))
+	}
+	if headers.Get("Cookie") != "vscode-tkn=remote-token" {
+		t.Fatalf("cookie=%q", headers.Get("Cookie"))
+	}
+	if headers.Get("Sec-WebSocket-Protocol") != "" {
+		t.Fatalf("raw subprotocol header should be removed: %q", headers.Get("Sec-WebSocket-Protocol"))
+	}
+	if strings.Join(subprotocols, "|") != "proto-a|proto-b" {
+		t.Fatalf("subprotocols=%q", subprotocols)
 	}
 }
