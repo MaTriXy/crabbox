@@ -456,17 +456,6 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 			recorder.Event("sync.finished", "synced", fmt.Sprintf("duration=%s mode=archive", timings.sync.Round(time.Millisecond)))
 			goto afterSync
 		}
-		if isWindowsWSL2Target(target) {
-			stepStart = time.Now()
-			if err := syncWindowsWSL2(ctx, target, repo, cfg, workdir, manifest, a.Stdout, a.Stderr, rsyncOptions{Debug: *debugSync, Delete: cfg.Sync.Delete, Checksum: cfg.Sync.Checksum, Timeout: cfg.Sync.Timeout, HeartbeatInterval: 15 * time.Second}); err != nil {
-				return recordFailure(err)
-			}
-			timings.syncSteps.rsync = time.Since(stepStart)
-			timings.sync = time.Since(syncStart)
-			fmt.Fprintf(a.Stderr, "sync complete in %s\n", timings.sync.Round(time.Millisecond))
-			recorder.Event("sync.finished", "synced", fmt.Sprintf("duration=%s mode=archive-wsl2", timings.sync.Round(time.Millisecond)))
-			goto afterSync
-		}
 		fingerprint := ""
 		if cfg.Sync.Fingerprint {
 			stepStart = time.Now()

@@ -168,7 +168,6 @@ func TestApplyServerTypeFlagOverridesUsesTargetAwareAWSDefaults(t *testing.T) {
 				WindowsMode: windowsModeNormal,
 				Class:       "beast",
 				ServerType:  "c7a.48xlarge",
-				WorkRoot:    defaultWindowsWorkRoot,
 			}
 			fs := newFlagSet("test", io.Discard)
 			provider := fs.String("provider", cfg.Provider, "")
@@ -187,67 +186,8 @@ func TestApplyServerTypeFlagOverridesUsesTargetAwareAWSDefaults(t *testing.T) {
 			if cfg.ServerType != tt.want {
 				t.Fatalf("serverType=%q want %q", cfg.ServerType, tt.want)
 			}
-			if cfg.WindowsMode == windowsModeWSL2 && cfg.WorkRoot != defaultPOSIXWorkRoot {
-				t.Fatalf("workRoot=%q want %q", cfg.WorkRoot, defaultPOSIXWorkRoot)
-			}
 			if cfg.ServerTypeExplicit {
 				t.Fatal("ServerTypeExplicit=true, want false")
-			}
-		})
-	}
-}
-
-func TestApplyTargetFlagOverridesRefreshesDefaultWorkRoot(t *testing.T) {
-	tests := []struct {
-		name string
-		cfg  Config
-		args []string
-		want string
-	}{
-		{
-			name: "native windows to wsl2",
-			cfg: Config{
-				TargetOS:    targetWindows,
-				WindowsMode: windowsModeNormal,
-				WorkRoot:    defaultWindowsWorkRoot,
-			},
-			args: []string{"--windows-mode", "wsl2"},
-			want: defaultPOSIXWorkRoot,
-		},
-		{
-			name: "wsl2 to native windows",
-			cfg: Config{
-				TargetOS:    targetWindows,
-				WindowsMode: windowsModeWSL2,
-				WorkRoot:    defaultPOSIXWorkRoot,
-			},
-			args: []string{"--windows-mode", "normal"},
-			want: defaultWindowsWorkRoot,
-		},
-		{
-			name: "custom root is preserved",
-			cfg: Config{
-				TargetOS:    targetWindows,
-				WindowsMode: windowsModeNormal,
-				WorkRoot:    `/custom/root`,
-			},
-			args: []string{"--windows-mode", "wsl2"},
-			want: `/custom/root`,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fs := newFlagSet("test", io.Discard)
-			targetFlags := registerTargetFlags(fs, tt.cfg)
-			if err := parseFlags(fs, tt.args); err != nil {
-				t.Fatal(err)
-			}
-			cfg := tt.cfg
-			if err := applyTargetFlagOverrides(&cfg, fs, targetFlags); err != nil {
-				t.Fatal(err)
-			}
-			if cfg.WorkRoot != tt.want {
-				t.Fatalf("workRoot=%q want %q", cfg.WorkRoot, tt.want)
 			}
 		})
 	}

@@ -371,26 +371,6 @@ func TestRemoteApplySyncManifestOnlyCommitsManifest(t *testing.T) {
 	}
 }
 
-func TestPOSIXPrepareWorkdirDeletesButPreservesGit(t *testing.T) {
-	workdir := t.TempDir()
-	mustWriteTestFile(t, filepath.Join(workdir, ".git", "config"), "git")
-	mustWriteTestFile(t, filepath.Join(workdir, "stale.txt"), "stale")
-	mustWriteTestFile(t, filepath.Join(workdir, "old", "nested.txt"), "old")
-
-	cmd := exec.Command("bash", "-lc", posixPrepareWorkdir(workdir, true))
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("posix prepare failed: %v\n%s", err, out)
-	}
-	if _, err := os.Stat(filepath.Join(workdir, ".git", "config")); err != nil {
-		t.Fatalf(".git should survive prepare: %v", err)
-	}
-	for _, rel := range []string{"stale.txt", "old"} {
-		if _, err := os.Stat(filepath.Join(workdir, rel)); !os.IsNotExist(err) {
-			t.Fatalf("%s should be removed, stat err=%v", rel, err)
-		}
-	}
-}
-
 func TestRemoteGitHydrateStatusUsesMarkerAndRemoteBase(t *testing.T) {
 	got := remoteGitHydrateStatus("/work/repo", "main", "abc123")
 	for _, want := range []string{

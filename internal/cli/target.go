@@ -12,16 +12,17 @@ const (
 
 	windowsModeNormal = "normal"
 	windowsModeWSL2   = "wsl2"
-
-	defaultPOSIXWorkRoot   = "/work/crabbox"
-	defaultWindowsWorkRoot = `C:\crabbox`
 )
 
 func normalizeTargetConfig(cfg *Config) {
 	cfg.TargetOS = normalizeTargetOS(cfg.TargetOS)
 	cfg.WindowsMode = normalizeWindowsMode(cfg.WindowsMode)
-	if isDefaultWorkRoot(cfg.WorkRoot) {
-		cfg.WorkRoot = defaultWorkRootForTarget(cfg.TargetOS, cfg.WindowsMode)
+	if cfg.TargetOS == targetWindows && cfg.WorkRoot == "/work/crabbox" {
+		if cfg.WindowsMode == windowsModeWSL2 {
+			cfg.WorkRoot = "/work/crabbox"
+		} else {
+			cfg.WorkRoot = `C:\crabbox`
+		}
 	}
 	if cfg.Provider == "aws" && cfg.TargetOS == targetMacOS && cfg.SSHUser == baseConfig().SSHUser {
 		cfg.SSHUser = "ec2-user"
@@ -38,22 +39,6 @@ func normalizeTargetConfig(cfg *Config) {
 	if cfg.Static.WorkRoot != "" {
 		cfg.WorkRoot = cfg.Static.WorkRoot
 	}
-}
-
-func isDefaultWorkRoot(value string) bool {
-	switch value {
-	case "", defaultPOSIXWorkRoot, defaultWindowsWorkRoot:
-		return true
-	default:
-		return false
-	}
-}
-
-func defaultWorkRootForTarget(targetOS, windowsMode string) string {
-	if targetOS == targetWindows && windowsMode == windowsModeNormal {
-		return defaultWindowsWorkRoot
-	}
-	return defaultPOSIXWorkRoot
 }
 
 func normalizeTargetOS(value string) string {
