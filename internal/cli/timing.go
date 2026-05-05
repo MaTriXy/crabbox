@@ -76,7 +76,6 @@ func syncTimingPhases(steps syncStepTimings) []timingPhase {
 	if steps.gitHydrateSkipped {
 		phases = append(phases, timingPhase{Name: "git_hydrate", Skipped: true, Reason: steps.gitHydrateSkipReason})
 	}
-	appendDuration("finalize", steps.finalize)
 	appendDuration("fingerprint_write", steps.fingerprintWrite)
 	return phases
 }
