@@ -89,6 +89,79 @@ func TestSyncManifestPrunesAppleDoubleSidecars(t *testing.T) {
 	}
 }
 
+func TestCrabboxIgnoreExtendsSyncExcludes(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@example.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	writeFile(t, filepath.Join(dir, ".crabboxignore"), "# local-only artifacts\nlocal-artifacts\n*.tmp\n\n")
+	writeFile(t, filepath.Join(dir, "src", "main.go"), "package main\n")
+	writeFile(t, filepath.Join(dir, "local-artifacts", "cache.bin"), "cache")
+	writeFile(t, filepath.Join(dir, "notes.tmp"), "tmp")
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "init")
+
+	excludes, err := syncExcludes(dir, baseConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := syncManifest(dir, excludes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(manifest.Files, ",")
+	if !strings.Contains(got, "src/main.go") {
+		t.Fatalf("manifest missing source file: %q", got)
+	}
+	for _, notWant := range []string{"local-artifacts/cache.bin", "notes.tmp"} {
+		if strings.Contains(got, notWant) {
+			t.Fatalf("manifest %q should exclude .crabboxignore pattern %q", got, notWant)
+		}
+	}
+}
+
+func TestCrabboxIgnorePrunesDeletedPaths(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@example.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	writeFile(t, filepath.Join(dir, ".crabboxignore"), "generated.bin\n")
+	writeFile(t, filepath.Join(dir, "generated.bin"), "old")
+	writeFile(t, filepath.Join(dir, "deleted.txt"), "old")
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "init")
+	if err := os.Remove(filepath.Join(dir, "generated.bin")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(dir, "deleted.txt")); err != nil {
+		t.Fatal(err)
+	}
+
+	excludes, err := syncExcludes(dir, baseConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := syncManifest(dir, excludes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(manifest.Deleted, ",") != "deleted.txt" {
+		t.Fatalf("deleted manifest should omit .crabboxignore patterns: %v", manifest.Deleted)
+	}
+}
+
+func TestReadCrabboxIgnoreSkipsBlankAndCommentLines(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, ".crabboxignore"), "\n# comment\n  build-output  \n*.tmp\r\n")
+	got, err := readCrabboxIgnore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(got, ",") != "build-output,*.tmp" {
+		t.Fatalf("patterns=%q", got)
+	}
+}
+
 func TestSyncManifestRecordsTrackedDeletes(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, "init")
