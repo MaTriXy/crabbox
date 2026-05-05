@@ -543,6 +543,17 @@ describe("fleet lease identity and idle", () => {
     const pageBody = await page.text();
     expect(pageBody).toContain("crabbox code --id blue-lobster --open");
 
+    const health = await fleet.fetch(
+      request("GET", "/portal/leases/blue-lobster/code/health", { headers }),
+    );
+    expect(health.status).toBe(200);
+    const healthBody = (await health.json()) as {
+      lease: { id: string; code: boolean };
+      code: { agentConnected: boolean };
+    };
+    expect(healthBody.lease).toMatchObject({ id: "cbx_000000000001", code: true });
+    expect(healthBody.code.agentConnected).toBe(false);
+
     const plain = await fleet.fetch(
       request("GET", "/portal/leases/plain-lobster/code/", { headers }),
     );

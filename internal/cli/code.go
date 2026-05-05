@@ -12,8 +12,11 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
+	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"nhooyr.io/websocket"
@@ -37,6 +40,7 @@ type codeProxyMessage struct {
 	Code    int               `json:"code,omitempty"`
 	Reason  string            `json:"reason,omitempty"`
 	Frame   string            `json:"frame,omitempty"`
+	ChunkID string            `json:"chunkID,omitempty"`
 }
 
 const (
@@ -110,8 +114,14 @@ func (a App) webCode(ctx context.Context, args []string) error {
 		return err
 	}
 	a.touchActiveLeaseBestEffort(ctx, cfg, server, leaseID)
-	workdir := remoteJoin(cfg, leaseID, repo.Name)
-	if err := ensureRemoteCodeServer(ctx, target, workdir); err != nil {
+	workspace, folder, hydratedByActions := codeWorkspace(ctx, target, cfg, leaseID, repo)
+	if hydratedByActions {
+		fmt.Fprintf(a.Stderr, "using GitHub Actions workspace %s\n", workspace)
+	}
+	if folder != workspace {
+		fmt.Fprintf(a.Stderr, "opening remote folder %s\n", folder)
+	}
+	if err := ensureRemoteCodeServer(ctx, target, workspace); err != nil {
 		return err
 	}
 	if *localPort == "" {
@@ -122,7 +132,7 @@ func (a App) webCode(ctx context.Context, args []string) error {
 		return err
 	}
 	defer stopProcess(tunnel)
-	portal := webCodePortalURL(coord.BaseURL, leaseID)
+	portal := webCodePortalURL(coord.BaseURL, leaseID, folder)
 
 	opened := false
 	for {
@@ -153,9 +163,6 @@ func (a App) webCode(ctx context.Context, args []string) error {
 }
 
 func ensureRemoteCodeServer(ctx context.Context, target SSHTarget, workdir string) error {
-	if err := runSSHQuiet(ctx, target, codeServerReadyCommand()); err == nil {
-		return nil
-	}
 	if err := runSSHQuiet(ctx, target, startCodeServerCommand(workdir)); err != nil {
 		return exit(5, "start code-server: %v", err)
 	}
@@ -172,6 +179,32 @@ func ensureRemoteCodeServer(ctx context.Context, target SSHTarget, workdir strin
 	return exit(5, "timed out waiting for code-server on 127.0.0.1:%s", managedCodePort)
 }
 
+func codeWorkspace(ctx context.Context, target SSHTarget, cfg Config, leaseID string, repo Repo) (string, string, bool) {
+	workspace := remoteJoin(cfg, leaseID, repo.Name)
+	hydrated := false
+	if state, err := readActionsHydrationState(ctx, target, leaseID); err == nil && state.Workspace != "" {
+		workspace = state.Workspace
+		hydrated = true
+	}
+	return workspace, mappedRemoteCodeFolder(workspace, repo), hydrated
+}
+
+func mappedRemoteCodeFolder(workspace string, repo Repo) string {
+	wd, err := os.Getwd()
+	if err != nil || repo.Root == "" {
+		return workspace
+	}
+	rel, err := filepath.Rel(repo.Root, wd)
+	if err != nil || rel == "." {
+		return workspace
+	}
+	rel = filepath.ToSlash(rel)
+	if rel == ".." || strings.HasPrefix(rel, "../") {
+		return workspace
+	}
+	return path.Join(workspace, rel)
+}
+
 func codeServerReadyCommand() string {
 	return "curl -fsS http://127.0.0.1:" + managedCodePort + "/healthz >/dev/null || curl -fsS http://127.0.0.1:" + managedCodePort + "/ >/dev/null"
 }
@@ -180,7 +213,7 @@ func startCodeServerCommand(workdir string) string {
 	pidfile := "/tmp/crabbox-code-server.pid"
 	return strings.Join([]string{
 		"mkdir -p " + shellQuote(workdir),
-		"pidfile=" + shellQuote(pidfile) + "; if [ -s \"$pidfile\" ]; then oldpid=$(cat \"$pidfile\" 2>/dev/null || true); if [ -n \"$oldpid\" ] && kill -0 \"$oldpid\" 2>/dev/null; then kill \"$oldpid\" 2>/dev/null || true; fi; fi",
+		"pidfile=" + shellQuote(pidfile) + "; if [ -s \"$pidfile\" ]; then oldpid=$(cat \"$pidfile\" 2>/dev/null || true); if [ -n \"$oldpid\" ] && kill -0 \"$oldpid\" 2>/dev/null; then kill \"$oldpid\" 2>/dev/null || true; for i in 1 2 3 4 5 6 7 8 9 10; do kill -0 \"$oldpid\" 2>/dev/null || break; sleep 0.2; done; if kill -0 \"$oldpid\" 2>/dev/null; then kill -9 \"$oldpid\" 2>/dev/null || true; fi; fi; fi",
 		"(nohup env VSCODE_PROXY_URI='./proxy/{{port}}' " + codeServerBinary +
 			" --auth none --bind-addr 127.0.0.1:" + managedCodePort +
 			" --disable-telemetry --disable-update-check " + shellQuote(workdir) +
@@ -189,14 +222,22 @@ func startCodeServerCommand(workdir string) string {
 }
 
 type codeBridge struct {
-	ws       *websocket.Conn
-	baseURL  string
-	client   *http.Client
-	debug    bool
-	mu       sync.Mutex
-	writeMu  sync.Mutex
-	upstream map[string]*websocket.Conn
-	pending  map[string][]codeProxyMessage
+	ws             *websocket.Conn
+	baseURL        string
+	client         *http.Client
+	debug          bool
+	mu             sync.Mutex
+	writeMu        sync.Mutex
+	upstream       map[string]*websocket.Conn
+	pending        map[string][]codeProxyMessage
+	incomingFrames map[string]codePendingWebSocketFrame
+	chunkSeq       atomic.Uint64
+}
+
+type codePendingWebSocketFrame struct {
+	id     string
+	frame  string
+	chunks []string
 }
 
 func connectCodeBridge(ctx context.Context, coord *CoordinatorClient, leaseID, host, port string) (*codeBridge, error) {
@@ -217,9 +258,10 @@ func connectCodeBridge(ctx context.Context, coord *CoordinatorClient, leaseID, h
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		debug:    os.Getenv("CRABBOX_CODE_DEBUG") == "1",
-		upstream: map[string]*websocket.Conn{},
-		pending:  map[string][]codeProxyMessage{},
+		debug:          os.Getenv("CRABBOX_CODE_DEBUG") == "1",
+		upstream:       map[string]*websocket.Conn{},
+		pending:        map[string][]codeProxyMessage{},
+		incomingFrames: map[string]codePendingWebSocketFrame{},
 	}, nil
 }
 
@@ -242,6 +284,12 @@ func (b *codeBridge) Serve(ctx context.Context) error {
 			go b.openUpstreamWebSocket(ctx, msg)
 		case "ws_data":
 			b.writeUpstreamWebSocket(ctx, msg)
+		case "ws_start":
+			b.startIncomingWebSocketFrame(msg)
+		case "ws_body":
+			b.appendIncomingWebSocketFrame(msg)
+		case "ws_end":
+			b.finishIncomingWebSocketFrame(ctx, msg)
 		case "ws_close":
 			b.closeUpstreamWebSocket(msg.ID, websocket.StatusCode(msg.Code), msg.Reason)
 		}
@@ -263,6 +311,9 @@ func (b *codeBridge) Close(code websocket.StatusCode, reason string) {
 	}
 	for id := range b.pending {
 		delete(b.pending, id)
+	}
+	for id := range b.incomingFrames {
+		delete(b.incomingFrames, id)
 	}
 }
 
@@ -388,8 +439,34 @@ func (b *codeBridge) readUpstreamWebSocket(ctx context.Context, id string, conn 
 			return
 		}
 		b.trace("ws_upstream_data id=%s frame=%s bytes=%d", id, codeFrameType(typ), len(data))
-		_ = b.writeJSON(ctx, codeProxyMessage{Type: "ws_data", ID: id, Frame: codeFrameType(typ), Body: base64.StdEncoding.EncodeToString(data)})
+		_ = b.writeWebSocketData(ctx, id, typ, data)
 	}
+}
+
+func (b *codeBridge) writeWebSocketData(ctx context.Context, id string, typ websocket.MessageType, data []byte) error {
+	frame := codeFrameType(typ)
+	if len(data) <= maxCodeBridgeBodyChunkBytes {
+		return b.writeJSON(ctx, codeProxyMessage{Type: "ws_data", ID: id, Frame: frame, Body: base64.StdEncoding.EncodeToString(data)})
+	}
+	chunkID := fmt.Sprintf("%s-%d", id, b.chunkSeq.Add(1))
+	if err := b.writeJSON(ctx, codeProxyMessage{Type: "ws_start", ID: id, Frame: frame, ChunkID: chunkID}); err != nil {
+		return err
+	}
+	for len(data) > 0 {
+		n := min(len(data), maxCodeBridgeBodyChunkBytes)
+		if err := b.writeJSON(ctx, codeProxyMessage{Type: "ws_body", ID: id, ChunkID: chunkID, Body: base64.StdEncoding.EncodeToString(data[:n])}); err != nil {
+			return err
+		}
+		data = data[n:]
+		if len(data) > 0 {
+			select {
+			case <-ctx.Done():
+				return context.Cause(ctx)
+			case <-time.After(codeBridgeBodyChunkDelay):
+			}
+		}
+	}
+	return b.writeJSON(ctx, codeProxyMessage{Type: "ws_end", ID: id, ChunkID: chunkID})
 }
 
 func (b *codeBridge) writeUpstreamWebSocket(ctx context.Context, msg codeProxyMessage) {
@@ -424,6 +501,47 @@ func (b *codeBridge) writeUpstreamFrame(ctx context.Context, conn *websocket.Con
 	frameType := websocketMessageType(msg.Frame)
 	b.trace("ws_downstream_data id=%s frame=%s bytes=%d", msg.ID, codeFrameType(frameType), len(data))
 	return conn.Write(ctx, frameType, data)
+}
+
+func (b *codeBridge) startIncomingWebSocketFrame(msg codeProxyMessage) {
+	if msg.ChunkID == "" {
+		return
+	}
+	b.mu.Lock()
+	b.incomingFrames[msg.ChunkID] = codePendingWebSocketFrame{id: msg.ID, frame: msg.Frame}
+	b.mu.Unlock()
+}
+
+func (b *codeBridge) appendIncomingWebSocketFrame(msg codeProxyMessage) {
+	if msg.ChunkID == "" {
+		return
+	}
+	b.mu.Lock()
+	frame, ok := b.incomingFrames[msg.ChunkID]
+	if ok {
+		frame.chunks = append(frame.chunks, msg.Body)
+		b.incomingFrames[msg.ChunkID] = frame
+	}
+	b.mu.Unlock()
+}
+
+func (b *codeBridge) finishIncomingWebSocketFrame(ctx context.Context, msg codeProxyMessage) {
+	if msg.ChunkID == "" {
+		return
+	}
+	b.mu.Lock()
+	frame, ok := b.incomingFrames[msg.ChunkID]
+	delete(b.incomingFrames, msg.ChunkID)
+	b.mu.Unlock()
+	if !ok {
+		return
+	}
+	b.writeUpstreamWebSocket(ctx, codeProxyMessage{
+		Type:  "ws_data",
+		ID:    frame.id,
+		Frame: frame.frame,
+		Body:  strings.Join(frame.chunks, ""),
+	})
 }
 
 func (b *codeBridge) closeUpstreamWebSocket(id string, code websocket.StatusCode, reason string) {
@@ -585,13 +703,17 @@ func webCodeAgentURL(base, leaseID, ticket string) string {
 	return u.String()
 }
 
-func webCodePortalURL(base, leaseID string) string {
+func webCodePortalURL(base, leaseID string, folder ...string) string {
 	u, err := url.Parse(base)
 	if err != nil {
 		return base
 	}
 	u.Path = strings.TrimRight(u.Path, "/") + "/portal/leases/" + url.PathEscape(leaseID) + "/code/"
-	u.RawQuery = ""
+	values := url.Values{}
+	if len(folder) > 0 && folder[0] != "" {
+		values.Set("folder", folder[0])
+	}
+	u.RawQuery = values.Encode()
 	u.Fragment = ""
 	return u.String()
 }

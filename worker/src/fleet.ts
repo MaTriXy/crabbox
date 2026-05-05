@@ -40,6 +40,7 @@ const webVNCTicketTTLSeconds = 120;
 const codeTicketTTLSeconds = 120;
 const maxPendingWebVNCBytes = 1024 * 1024;
 const maxCodeRequestBytes = 10 * 1024 * 1024;
+const maxCodeWebSocketFrameChunkBytes = 15 * 1024;
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
@@ -100,11 +101,37 @@ interface CodeWebSocketData {
   frame?: "text" | "binary";
 }
 
+interface CodeWebSocketFrameStart {
+  type: "ws_start";
+  id: string;
+  chunkID: string;
+  frame?: "text" | "binary";
+}
+
+interface CodeWebSocketFrameBody {
+  type: "ws_body";
+  id?: string;
+  chunkID: string;
+  body: string;
+}
+
+interface CodeWebSocketFrameEnd {
+  type: "ws_end";
+  id?: string;
+  chunkID: string;
+}
+
 interface CodeWebSocketClose {
   type: "ws_close";
   id: string;
   code?: number;
   reason?: string;
+}
+
+interface CodePendingWebSocketFrame {
+  id: string;
+  frame: "text" | "binary";
+  chunks: string[];
 }
 
 type BridgeAttachment =
@@ -120,6 +147,7 @@ export class FleetDurableObject implements DurableObject {
   private readonly codeAgents = new Map<string, WebSocket>();
   private readonly codeViewers = new Map<string, WebSocket>();
   private readonly pendingCodeRequests = new Map<string, CodePendingRequest>();
+  private readonly pendingCodeFrames = new Map<string, CodePendingWebSocketFrame>();
 
   constructor(
     private readonly state: DurableObjectState,
@@ -324,13 +352,12 @@ export class FleetDurableObject implements DurableObject {
         }
         const data = await normalizeWebVNCData(message);
         const bytes = typeof data === "string" ? textEncoder.encode(data) : new Uint8Array(data);
-        const outbound: CodeWebSocketData = {
+        this.sendCodeWebSocketData(agent, {
           type: "ws_data",
           id: attachment.id,
           frame: typeof data === "string" ? "text" : "binary",
           body: bytesToBase64(bytes),
-        };
-        agent.send(JSON.stringify(outbound));
+        });
         break;
       }
     }
@@ -829,6 +856,9 @@ export class FleetDurableObject implements DurableObject {
       return portalError("Code unavailable", error, 409);
     }
     const agent = this.codeAgents.get(lease.id);
+    if (request.method.toUpperCase() === "GET" && _rest.length === 1 && _rest[0] === "health") {
+      return this.codePortalHealth(lease, agent);
+    }
     if (!agent || agent.readyState !== WebSocket.OPEN) {
       return portalCode(lease);
     }
@@ -836,6 +866,21 @@ export class FleetDurableObject implements DurableObject {
       return this.codeViewerWebSocket(request, lease, agent);
     }
     return await this.codeProxyHTTP(request, lease, agent);
+  }
+
+  private codePortalHealth(lease: LeaseRecord, agent: WebSocket | undefined): Response {
+    return json({
+      lease: {
+        id: lease.id,
+        slug: lease.slug,
+        state: lease.state,
+        code: lease.code === true,
+      },
+      code: {
+        agentConnected: agent?.readyState === WebSocket.OPEN,
+        pendingRequests: this.pendingCodeRequests.size,
+      },
+    });
   }
 
   private async codeProxyHTTP(
@@ -897,12 +942,52 @@ export class FleetDurableObject implements DurableObject {
     return new Response(null, { status: 101, webSocket: client });
   }
 
+  private sendCodeWebSocketData(agent: WebSocket, message: CodeWebSocketData): void {
+    const data = base64ToBytes(message.body);
+    if (data.byteLength <= maxCodeWebSocketFrameChunkBytes) {
+      agent.send(JSON.stringify(message));
+      return;
+    }
+    const chunkID = crypto.randomUUID();
+    const frame = message.frame ?? "binary";
+    const start: CodeWebSocketFrameStart = {
+      type: "ws_start",
+      id: message.id,
+      chunkID,
+      frame,
+    };
+    agent.send(JSON.stringify(start));
+    for (let offset = 0; offset < data.byteLength; offset += maxCodeWebSocketFrameChunkBytes) {
+      const body: CodeWebSocketFrameBody = {
+        type: "ws_body",
+        id: message.id,
+        chunkID,
+        body: bytesToBase64(data.slice(offset, offset + maxCodeWebSocketFrameChunkBytes)),
+      };
+      agent.send(JSON.stringify(body));
+    }
+    const end: CodeWebSocketFrameEnd = { type: "ws_end", id: message.id, chunkID };
+    agent.send(JSON.stringify(end));
+  }
+
+  private sendCodeDataToViewer(message: CodeWebSocketData): void {
+    const viewer = this.codeViewers.get(message.id);
+    if (viewer?.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    const data = base64ToBytes(message.body);
+    viewer.send(message.frame === "text" ? textDecoder.decode(data) : data);
+  }
+
   private async handleCodeAgentMessage(leaseID: string, rawData: unknown): Promise<void> {
     const raw = await normalizeWebVNCData(rawData);
     const text = typeof raw === "string" ? raw : textDecoder.decode(raw);
     let message:
       | CodeProxyResponse
       | CodeWebSocketData
+      | CodeWebSocketFrameStart
+      | CodeWebSocketFrameBody
+      | CodeWebSocketFrameEnd
       | CodeWebSocketClose
       | { type?: string; id?: string; error?: string };
     try {
@@ -951,12 +1036,37 @@ export class FleetDurableObject implements DurableObject {
       return;
     }
     if (message.type === "ws_data" && message.id) {
-      const viewer = this.codeViewers.get(message.id);
-      if (viewer?.readyState === WebSocket.OPEN) {
-        const data = base64ToBytes((message as CodeWebSocketData).body);
-        viewer.send(
-          (message as CodeWebSocketData).frame === "text" ? textDecoder.decode(data) : data,
-        );
+      this.sendCodeDataToViewer(message as CodeWebSocketData);
+      return;
+    }
+    if (message.type === "ws_start" && message.id) {
+      const start = message as CodeWebSocketFrameStart;
+      this.pendingCodeFrames.set(start.chunkID, {
+        id: start.id,
+        frame: start.frame ?? "binary",
+        chunks: [],
+      });
+      return;
+    }
+    if (message.type === "ws_body") {
+      const body = message as CodeWebSocketFrameBody;
+      const pending = this.pendingCodeFrames.get(body.chunkID);
+      if (pending) {
+        pending.chunks.push(body.body);
+      }
+      return;
+    }
+    if (message.type === "ws_end") {
+      const end = message as CodeWebSocketFrameEnd;
+      const pending = this.pendingCodeFrames.get(end.chunkID);
+      this.pendingCodeFrames.delete(end.chunkID);
+      if (pending) {
+        this.sendCodeDataToViewer({
+          type: "ws_data",
+          id: pending.id,
+          frame: pending.frame,
+          body: pending.chunks.join(""),
+        });
       }
       return;
     }
@@ -1009,6 +1119,7 @@ export class FleetDurableObject implements DurableObject {
       this.pendingCodeRequests.delete(id);
       pending.resolve({ type: "http", id, status: 502, error: "code bridge disconnected" });
     }
+    this.pendingCodeFrames.clear();
   }
 
   private async webVNCViewer(request: Request, identifier: string): Promise<Response> {

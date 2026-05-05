@@ -3,6 +3,8 @@ package cli
 import (
 	"encoding/base64"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -15,6 +17,28 @@ func TestWebCodeURLs(t *testing.T) {
 	}
 	if got := webCodePortalURL("https://crabbox.openclaw.ai/", "cbx_abcdef123456"); got != "https://crabbox.openclaw.ai/portal/leases/cbx_abcdef123456/code/" {
 		t.Fatalf("portal URL=%q", got)
+	}
+	if got := webCodePortalURL("https://crabbox.openclaw.ai/", "cbx_abcdef123456", "/work/cbx/repo/worker"); got != "https://crabbox.openclaw.ai/portal/leases/cbx_abcdef123456/code/?folder=%2Fwork%2Fcbx%2Frepo%2Fworker" {
+		t.Fatalf("portal URL with folder=%q", got)
+	}
+}
+
+func TestMappedRemoteCodeFolderTracksCurrentSubdirectory(t *testing.T) {
+	root := t.TempDir()
+	subdir := filepath.Join(root, "worker", "src")
+	if err := os.MkdirAll(subdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(subdir)
+
+	got := mappedRemoteCodeFolder("/work/cbx/repo", Repo{Root: root})
+	if got != "/work/cbx/repo/worker/src" {
+		t.Fatalf("mapped folder=%q", got)
+	}
+
+	t.Chdir(t.TempDir())
+	if got := mappedRemoteCodeFolder("/work/cbx/repo", Repo{Root: root}); got != "/work/cbx/repo" {
+		t.Fatalf("outside repo folder=%q", got)
 	}
 }
 
