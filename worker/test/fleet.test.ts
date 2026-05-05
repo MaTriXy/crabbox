@@ -650,7 +650,7 @@ describe("fleet lease identity and idle", () => {
     expect(pageBody).toContain("/portal/assets/novnc/rfb.js");
     expect(pageBody).toContain("function scheduleRetry");
     expect(pageBody).toContain("/portal/leases/cbx_000000000001/vnc/status");
-    expect(pageBody).toContain("copyBridge");
+    expect(pageBody).toContain("vnc-copy");
     expect(pageBody).toContain("no bridge connected; run the bridge command below");
     expect(pageBody).toContain('fragment.get("username")');
     expect(pageBody).toContain('types.includes("username")');
