@@ -45,6 +45,9 @@ func TestCodeBridgeBodyChunkStaysBelowWebSocketFrameLimit(t *testing.T) {
 	if codeBridgeBodyChunkDelay <= 0 {
 		t.Fatal("large bridge responses should be paced")
 	}
+	if maxCodeBridgeReadBytes < 16*1024*1024 {
+		t.Fatalf("read limit=%d should allow VS Code websocket messages", maxCodeBridgeReadBytes)
+	}
 }
 
 func TestStartCodeServerCommand(t *testing.T) {

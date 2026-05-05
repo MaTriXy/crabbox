@@ -41,6 +41,7 @@ type codeProxyMessage struct {
 
 const (
 	maxCodeBridgeBodyChunkBytes           = 15 * 1024
+	maxCodeBridgeReadBytes                = 64 * 1024 * 1024
 	maxPendingCodeBridgeWebSocketMessages = 32
 	codeBridgeBodyChunkDelay              = 5 * time.Millisecond
 )
@@ -209,6 +210,7 @@ func connectCodeBridge(ctx context.Context, coord *CoordinatorClient, leaseID, h
 	if err != nil {
 		return nil, err
 	}
+	ws.SetReadLimit(maxCodeBridgeReadBytes)
 	return &codeBridge{
 		ws:      ws,
 		baseURL: "http://" + host + ":" + port,
@@ -351,6 +353,7 @@ func (b *codeBridge) openUpstreamWebSocket(ctx context.Context, msg codeProxyMes
 		_ = b.writeJSON(ctx, codeProxyMessage{Type: "ws_close", ID: msg.ID, Code: int(websocket.StatusInternalError), Reason: err.Error()})
 		return
 	}
+	conn.SetReadLimit(maxCodeBridgeReadBytes)
 	b.mu.Lock()
 	b.upstream[msg.ID] = conn
 	pending := append([]codeProxyMessage(nil), b.pending[msg.ID]...)
