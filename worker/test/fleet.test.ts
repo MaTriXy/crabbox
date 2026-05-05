@@ -586,7 +586,7 @@ describe("fleet lease identity and idle", () => {
     expect(missingTicket.status).toBe(401);
   });
 
-  it("buffers initial WebVNC bridge bytes until the viewer attaches", () => {
+  it("buffers initial WebVNC bridge bytes until the viewer attaches", async () => {
     const buffers = new Map<string, WebVNCBuffer>();
     const sent: Array<string | ArrayBuffer> = [];
     const viewer = {
@@ -596,7 +596,7 @@ describe("fleet lease identity and idle", () => {
       },
     } as WebSocket;
 
-    forwardOrBufferWebVNC("RFB 003.008\n", undefined, buffers, "cbx_000000000001");
+    await forwardOrBufferWebVNC("RFB 003.008\n", undefined, buffers, "cbx_000000000001");
     expect(sent).toEqual([]);
     expect(buffers.get("cbx_000000000001")).toMatchObject({
       chunks: ["RFB 003.008\n"],
@@ -605,6 +605,23 @@ describe("fleet lease identity and idle", () => {
 
     flushPendingWebVNC(buffers, "cbx_000000000001", viewer);
     expect(sent).toEqual(["RFB 003.008\n"]);
+    expect(buffers.has("cbx_000000000001")).toBe(false);
+  });
+
+  it("converts WebVNC Blob frames before forwarding", async () => {
+    const buffers = new Map<string, WebVNCBuffer>();
+    const sent: Array<string | ArrayBuffer> = [];
+    const viewer = {
+      readyState: WebSocket.OPEN,
+      send(data: string | ArrayBuffer) {
+        sent.push(data);
+      },
+    } as WebSocket;
+
+    await forwardOrBufferWebVNC(new Blob(["RFB 003.008\n"]), viewer, buffers, "cbx_000000000001");
+
+    expect(sent).toHaveLength(1);
+    expect(new TextDecoder().decode(sent[0] as ArrayBuffer)).toBe("RFB 003.008\n");
     expect(buffers.has("cbx_000000000001")).toBe(false);
   });
 
