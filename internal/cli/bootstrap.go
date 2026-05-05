@@ -81,13 +81,13 @@ runcmd:
     }
     retry apt-get update
     retry apt-get install -y --no-install-recommends openssh-server ca-certificates curl git rsync jq
-%[7]s
     mkdir -p %[3]s /var/cache/crabbox/pnpm /var/cache/crabbox/npm
     chown -R %[1]s:%[1]s %[3]s /var/cache/crabbox
     install -d /var/lib/crabbox
-    touch /var/lib/crabbox/bootstrapped
     systemctl enable --now ssh
     systemctl restart ssh
+%[7]s
+    touch /var/lib/crabbox/bootstrapped
     crabbox-ready
     BOOT
 `, cfg.SSHUser, publicKey, cfg.WorkRoot, portLines, readyChecks, writeFiles, bootstrap)

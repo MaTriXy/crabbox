@@ -33,6 +33,24 @@ func TestCloudInitUsesRetryingBootstrap(t *testing.T) {
 	}
 }
 
+func TestCloudInitStartsSSHBeforeOptionalDesktopBootstrap(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Desktop = true
+	got := cloudInit(cfg, "ssh-ed25519 test")
+	sshIndex := strings.Index(got, "systemctl restart ssh")
+	desktopIndex := strings.Index(got, "retry apt-get install -y --no-install-recommends xvfb")
+	bootstrappedIndex := strings.Index(got, "touch /var/lib/crabbox/bootstrapped")
+	if sshIndex < 0 || desktopIndex < 0 || bootstrappedIndex < 0 {
+		t.Fatalf("cloudInit(desktop) missing expected bootstrap markers")
+	}
+	if sshIndex > desktopIndex {
+		t.Fatalf("ssh should start before slow desktop bootstrap")
+	}
+	if bootstrappedIndex < desktopIndex {
+		t.Fatalf("bootstrapped marker should stay after desktop bootstrap")
+	}
+}
+
 func TestCloudInitDesktopProfile(t *testing.T) {
 	cfg := baseConfig()
 	cfg.Desktop = true
