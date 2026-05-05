@@ -56,14 +56,14 @@ func TestCloudInitDesktopProfile(t *testing.T) {
 	cfg.Desktop = true
 	got := cloudInit(cfg, "ssh-ed25519 test")
 	for _, want := range []string{
-		"xvfb xfce4 xfce4-terminal x11vnc xauth dbus-x11",
+		"xvfb openbox x11vnc xauth dbus-x11",
 		"x11-xserver-utils xterm scrot xdotool wmctrl",
 		"/etc/systemd/system/crabbox-xvfb.service",
 		"/etc/systemd/system/crabbox-desktop.service",
 		"/usr/local/bin/crabbox-desktop-session",
 		"/etc/systemd/system/crabbox-desktop-session.service",
 		"/etc/systemd/system/crabbox-x11vnc.service",
-		"ExecStart=/usr/bin/startxfce4",
+		"ExecStart=/usr/bin/openbox",
 		"systemctl is-active --quiet crabbox-desktop.service",
 		"systemctl is-active --quiet crabbox-desktop-session.service",
 		"xsetroot -solid '#20242b'",

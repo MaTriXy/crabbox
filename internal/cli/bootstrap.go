@@ -463,14 +463,14 @@ func cloudInitOptionalWriteFiles(cfg Config) string {
     permissions: '0644'
     content: |
       [Unit]
-      Description=Crabbox XFCE desktop session
+      Description=Crabbox lightweight desktop session
       After=crabbox-xvfb.service
       Requires=crabbox-xvfb.service
 
       [Service]
       User=crabbox
       Environment=DISPLAY=:99
-      ExecStart=/usr/bin/startxfce4
+      ExecStart=/usr/bin/openbox
       Restart=always
 
       [Install]
@@ -528,7 +528,7 @@ func cloudInitOptionalBootstrap(cfg Config) string {
 		parts = append(parts, cloudInitTailscaleBootstrap(cfg))
 	}
 	if cfg.Desktop {
-		parts = append(parts, `    retry apt-get install -y --no-install-recommends xvfb xfce4 xfce4-terminal x11vnc xauth dbus-x11 x11-xserver-utils xterm scrot xdotool wmctrl fonts-dejavu-core fonts-liberation iproute2 openssl
+		parts = append(parts, `    retry apt-get install -y --no-install-recommends xvfb openbox x11vnc xauth dbus-x11 x11-xserver-utils xterm scrot xdotool wmctrl fonts-dejavu-core fonts-liberation iproute2 openssl
     install -d -m 0750 -o crabbox -g crabbox /var/lib/crabbox
     if [ ! -s /var/lib/crabbox/vnc.password ]; then
       (umask 077 && openssl rand -base64 18 > /var/lib/crabbox/vnc.password)
