@@ -186,6 +186,7 @@ type codeBridge struct {
 	baseURL  string
 	client   *http.Client
 	mu       sync.Mutex
+	writeMu  sync.Mutex
 	upstream map[string]*websocket.Conn
 }
 
@@ -371,6 +372,8 @@ func (b *codeBridge) writeJSON(ctx context.Context, msg codeProxyMessage) error 
 	if err != nil {
 		return err
 	}
+	b.writeMu.Lock()
+	defer b.writeMu.Unlock()
 	return b.ws.Write(ctx, websocket.MessageText, data)
 }
 
@@ -382,7 +385,9 @@ func isRetryableCodeBridgeError(err error) bool {
 	if errors.As(err, &closeErr) {
 		return closeErr.Code == websocket.StatusInternalError || closeErr.Code == websocket.StatusServiceRestart
 	}
-	return strings.Contains(err.Error(), "failed to read frame header: EOF")
+	text := err.Error()
+	return strings.Contains(text, "failed to read frame header: EOF") ||
+		strings.Contains(text, "tls: bad record MAC")
 }
 
 func codeUpstreamPath(path string) string {
