@@ -4,28 +4,25 @@
 
 ### Added
 
-- Added `crabbox desktop launch --webvnc --open` to launch a desktop browser/app and immediately bridge the same lease into the WebVNC portal.
-- Added `crabbox webvnc --daemon`/`--background` plus `--status`/`--stop` for background WebVNC bridges without tmux.
-- Added `crabbox media preview` for creating motion-trimmed GIF previews and optional trimmed MP4 clips from desktop recordings.
+- Added `provider: daytona` for Daytona sandbox leases using Daytona's SDK/toolbox for sync and command execution, with short-lived SSH access available through `crabbox ssh`.
+- Added Daytona CLI profile auth fallback so `daytona login --api-key ...` can satisfy Crabbox Daytona auth without duplicating `DAYTONA_API_KEY`.
+- Added `provider: islo` for delegated Islo sandbox runs using the Islo Go SDK.
+- Added a provider backend registry and authoring guide so delegated and SSH-backed providers can live in provider-owned packages while core keeps command parsing, rendering, and capability validation.
+- Added `--tailscale-exit-node` and `--tailscale-exit-node-allow-lan-access` so managed Linux leases can route egress through an approved tailnet exit node.
+- Added broker capacity hints for AWS leases, including selected market, attempted regions, quota/capacity advice, and configurable high-pressure class warnings.
 - Added `crabbox code` and per-lease `/code/` portal URLs for authenticated code-server access on `--code` Linux leases.
 - Added per-lease portal detail pages with bridge status, access-panel copy commands, recent run links, and a stop action.
 - Added portal run detail pages with command metadata, result summaries, dense viewport-fitted portal tables, provider/OS badges, active/ended/provider/target filters, sticky portal chrome, and copyable retained log previews.
-- Added admin portal visibility for non-owned runner leases, including `mine`/`system` filters and matching detail/code/VNC drilldowns for operator sessions.
-- Added portal visibility for external Blacksmith Testbox runners synced from `crabbox list --provider blacksmith-testbox`, with owner-scoped runner rows and stale markers.
 - Added latest lease telemetry snapshots for coordinator-backed Linux leases, including load, memory, disk, and uptime in `status --json` and the portal detail view.
 - Added bounded lease telemetry history with portal sparklines and stale/high-resource badges on lease detail pages.
 - Added run-level telemetry summaries with start/end Linux resource snapshots in run history JSON, human history output, and portal run tables/details.
 - Added live run telemetry samples for longer Linux commands, including bounded coordinator storage and portal load/memory/disk trend lines on run detail pages.
-- Added `.crabboxignore` for repo-local sync-only exclude patterns shared by `run` and `sync-plan`.
+- Added portal visibility for external Blacksmith Testbox runners synced from `crabbox list --provider blacksmith-testbox`, with owner-scoped runner rows, stale markers, GitHub Actions links, status badges, stuck filters, detail pages, and copyable local stop commands.
+- Added admin portal visibility for non-owned runner leases, including `mine`/`system` filters and matching detail/code/VNC drilldowns for operator sessions.
+- Added `crabbox desktop launch --webvnc --open` to launch a desktop browser/app and immediately bridge the same lease into the WebVNC portal.
+- Added `crabbox webvnc --daemon`/`--background` plus `--status`/`--stop` for background WebVNC bridges without tmux.
+- Added `crabbox media preview` for creating motion-trimmed GIF previews and optional trimmed MP4 clips from desktop recordings.
 - Documented the prebaked runner image boundary: provider-owned AMIs/snapshots hold machine capabilities while repo/runtime caches stay in QA workflows or warm leases.
-- Added a provider backend registry and authoring guide so delegated and SSH-backed providers can live in provider-owned packages while core keeps command parsing, rendering, and capability validation.
-- Added `provider: daytona` for Daytona sandbox leases using Daytona's SDK/toolbox for sync and command execution, with short-lived SSH access available through `crabbox ssh`.
-- Added Daytona CLI profile auth fallback so `daytona login --api-key ...` can satisfy Crabbox Daytona auth without duplicating `DAYTONA_API_KEY`.
-- Added `provider: islo` for delegated Islo sandbox runs using the Islo Go SDK.
-- Added best-effort GitHub Actions run and workflow links for external Blacksmith Testbox rows in the portal.
-- Added GitHub Actions status badges, stuck filters, and copyable local stop commands for external Blacksmith Testbox rows in the portal.
-- Added external runner detail pages in the portal with owner, Actions, lifecycle timestamps, boundary notes, and copyable stop commands.
-- Added broker capacity hints for AWS leases, including selected market, attempted regions, quota/capacity advice, and configurable high-pressure class warnings.
 
 ### Changed
 
@@ -37,6 +34,12 @@
 
 ### Fixed
 
+- Fixed Daytona SDK sync so tar creation and Daytona toolbox upload stream from disk instead of buffering large archives in memory.
+- Fixed Daytona resource override handling so snapshot-only sandboxes reject generic `--class` and `--type` flags instead of accepting no-op compute settings.
+- Fixed Islo delegated runs so shell-mode commands preserve raw shell strings and truncated exec streams fail instead of silently reporting success.
+- Fixed provider-owned flags and target/capability validation to run through registered provider specs while preserving script-facing list JSON compatibility for coordinator and Blacksmith backends.
+- Fixed Blacksmith Testbox queued/outage failures so users see the upstream queue state and practical fallback guidance instead of an opaque timeout.
+- Fixed Blacksmith Testbox repo inference for mirrored repositories and portal runner sync for stale or external Testbox rows.
 - Fixed managed Linux desktop/browser leases to preinstall video capture and native addon build helpers, avoiding per-scenario apt installs in browser QA runs.
 - Fixed managed Linux desktop leases to use a slim XFCE session instead of bare Openbox, preserving a real panel/window-manager desktop while avoiding the full XFCE meta package.
 - Fixed SSH readiness progress logs to distinguish open TCP ports, failed SSH authentication, and failed Crabbox ready checks.
@@ -53,20 +56,29 @@
 - Fixed portal access and time columns to use compact capability icons, relative time labels, and sortable time metadata instead of wide action buttons and Zulu timestamps.
 - Fixed lease detail layout so local commands live inside the access panel instead of forcing a separate full-width commands section above recent runs.
 - Fixed portal run detail layout density, responsive action alignment, and run telemetry readability so long-lived run pages fit operator viewports cleanly.
+- Fixed generated docs-site navigation so the sidebar scroll position is preserved while moving between pages.
 - Fixed Windows WebVNC credential handling so generated portal links preserve special characters and managed TightVNC sessions copy service passwords into the logged-in user's registry profile.
 - Fixed managed Linux browser setup so Chrome/Chromium launches skip first-run and default-browser prompts.
 - Fixed managed Linux browser cloud-init setup so Chrome/Chromium policy and wrapper generation cannot break YAML parsing.
-- Fixed Islo delegated runs so shell-mode commands preserve raw shell strings and truncated exec streams fail instead of silently reporting success.
-- Fixed Daytona SDK sync so tar creation and Daytona toolbox upload stream from disk instead of buffering large archives in memory.
-- Fixed Daytona resource override handling so snapshot-only sandboxes reject generic `--class` and `--type` flags instead of accepting no-op compute settings.
 - Fixed WebVNC portal passwords with escaped special characters and kept the bridge alive across viewer resets and transient coordinator EOFs.
+
+## 0.5.1 - 2026-05-05
+
+### Added
+
+- Added `.crabboxignore` for repo-local sync-only exclude patterns shared by `run` and `sync-plan`.
+- Added WebVNC portal controls for reconnect, fullscreen, and clipboard-ready bridge commands.
+
+### Fixed
+
 - Fixed managed AWS Windows WSL2 bootstrap by using the current Ubuntu WSL rootfs URL, downloading large rootfs files through `curl.exe`, and retrying empty or partial rootfs downloads instead of reusing a poisoned tarball. Thanks @vincentkoc.
 - Fixed AWS Windows WSL2 mode overrides so they refresh the default instance type to a nested-virtualization-capable family. Thanks @steipete.
 - Fixed AWS Windows WSL2 runs so mode overrides also refresh the default work root to `/work/crabbox` while keeping WSL2 sync on the fast rsync path.
 - Fixed remote git seeding so an unfetchable local commit cannot leave an empty `.git` worktree that makes sync sanity report every tracked file as deleted.
 - Skipped remote git seeding for local commits that are not present in any remote-tracking ref, avoiding slow doomed clone/fetch attempts before rsync.
+- Fixed WebVNC bridge reconnects so reloading or reconnecting the browser no longer requires restarting the local bridge.
 - Fixed Windows archive sync from macOS so Apple extended attributes do not spam remote tar warnings.
-- Fixed provider-owned flags and target/capability validation to run through registered provider specs while preserving script-facing list JSON compatibility for coordinator and Blacksmith backends.
+- Fixed the Homebrew formula test command so GoReleaser emits the expected formula syntax.
 
 ## 0.5.0 - 2026-05-04
 
