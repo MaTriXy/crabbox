@@ -146,7 +146,7 @@ host's VNC or Screen Sharing prompt.
 
 | Provider / target | Managed VNC | Notes |
 | --- | --- | --- |
-| Hetzner Linux | Yes | Requires `--desktop`; installs Openbox, Xvfb, x11vnc, and capture tools. |
+| Hetzner Linux | Yes | Requires `--desktop`; installs slim XFCE, Xvfb, x11vnc, and capture tools. |
 | AWS Linux | Yes | Requires `--desktop`; same Linux desktop profile. |
 | AWS Windows | Yes | Requires `--target windows --desktop`; installs Git for Windows and TightVNC after EC2Launch enables OpenSSH. Spot or On-Demand follows the AWS capacity config. |
 | AWS macOS | Yes | Requires `--target macos --desktop --market on-demand` plus `CRABBOX_AWS_MAC_HOST_ID` or `aws.macHostId`. |

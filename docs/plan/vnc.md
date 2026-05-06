@@ -127,7 +127,11 @@ Install the smallest useful visible-session stack:
 
 ```text
 xvfb
-openbox
+xfce4-session
+xfwm4
+xfce4-panel
+xfdesktop4
+xfce4-terminal
 x11vnc
 xauth
 dbus-x11
@@ -139,7 +143,7 @@ ca-certificates
 Use systemd units so the desktop survives command boundaries on kept leases:
 
 - `crabbox-xvfb.service`
-- `crabbox-openbox.service`
+- `crabbox-desktop.service`
 - `crabbox-x11vnc.service`
 
 Suggested unit behavior:
@@ -148,8 +152,8 @@ Suggested unit behavior:
 crabbox-xvfb:
   Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp -ac
 
-crabbox-openbox:
-  DISPLAY=:99 openbox
+crabbox-desktop:
+  DISPLAY=:99 startxfce4
 
 crabbox-x11vnc:
   x11vnc -display :99 -localhost -rfbport 5900 -forever -shared -nopw
@@ -159,7 +163,7 @@ crabbox-x11vnc:
 
 ```sh
 systemctl is-active --quiet crabbox-xvfb.service
-systemctl is-active --quiet crabbox-openbox.service
+systemctl is-active --quiet crabbox-desktop.service
 systemctl is-active --quiet crabbox-x11vnc.service
 ss -ltn | grep -q '127.0.0.1:5900'
 ```

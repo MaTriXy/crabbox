@@ -349,14 +349,14 @@ function optionalWriteFiles(config: LeaseConfig): string {
     permissions: '0644'
     content: |
       [Unit]
-      Description=Crabbox lightweight desktop session
+      Description=Crabbox XFCE desktop session
       After=crabbox-xvfb.service
       Requires=crabbox-xvfb.service
 
       [Service]
       User=crabbox
       Environment=DISPLAY=:99
-      ExecStart=/usr/bin/openbox
+      ExecStart=/usr/bin/startxfce4
       Restart=always
 
       [Install]
@@ -370,7 +370,9 @@ function optionalWriteFiles(config: LeaseConfig): string {
       if command -v xsetroot >/dev/null 2>&1; then
         xsetroot -solid '#20242b' || true
       fi
-      if command -v xterm >/dev/null 2>&1 && ! pgrep -u "$(id -u)" -f 'xterm -title Crabbox Desktop' >/dev/null 2>&1; then
+      if command -v xfce4-terminal >/dev/null 2>&1 && ! pgrep -u "$(id -u)" -f 'xfce4-terminal.*Crabbox Desktop' >/dev/null 2>&1; then
+        xfce4-terminal --title='Crabbox Desktop' --geometry=110x32+48+48 &
+      elif command -v xterm >/dev/null 2>&1 && ! pgrep -u "$(id -u)" -f 'xterm -title Crabbox Desktop' >/dev/null 2>&1; then
         xterm -title 'Crabbox Desktop' -geometry 110x32+48+48 -bg '#111827' -fg '#e5e7eb' &
       fi
       tail -f /dev/null
@@ -414,7 +416,7 @@ function optionalBootstrap(config: LeaseConfig): string {
     parts.push(tailscaleBootstrap(config));
   }
   if (config.desktop) {
-    parts.push(`    retry apt-get install -y --no-install-recommends xvfb openbox x11vnc xauth dbus-x11 x11-xserver-utils xterm scrot ffmpeg xdotool wmctrl fonts-dejavu-core fonts-liberation iproute2 openssl
+    parts.push(`    retry apt-get install -y --no-install-recommends xvfb xfce4-session xfwm4 xfce4-panel xfdesktop4 xfce4-terminal xfconf xfce4-settings x11vnc xauth dbus-x11 x11-xserver-utils xterm scrot ffmpeg xdotool wmctrl fonts-dejavu-core fonts-liberation iproute2 openssl
     install -d -m 0750 -o crabbox -g crabbox /var/lib/crabbox
     if [ ! -s /var/lib/crabbox/vnc.password ]; then
       (umask 077 && openssl rand -base64 18 > /var/lib/crabbox/vnc.password)

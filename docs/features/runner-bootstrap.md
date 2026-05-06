@@ -27,7 +27,7 @@ Bootstrap installs:
 Bootstrap intentionally does not install project language runtimes such as Go, Node, pnpm, Docker, databases, or service dependencies. Those belong in GitHub Actions hydration, devcontainers, Nix, mise/asdf, or repository setup scripts. A brokered machine should not pass readiness until `crabbox-ready` succeeds over SSH.
 
 Interactive desktop and browser tooling are optional lease profiles, not part
-of the minimal bootstrap. The desktop profile installs Xvfb/Openbox, x11vnc,
+of the minimal bootstrap. The desktop profile installs Xvfb/slim XFCE, x11vnc,
 screenshots, and video capture tools. The browser profile installs
 Chrome/Chromium plus native addon build helpers that browser-channel QA often
 needs during dependency fallback installs. Crabbox owns these machine

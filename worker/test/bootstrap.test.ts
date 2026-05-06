@@ -71,17 +71,19 @@ describe("cloud-init bootstrap", () => {
 
   it("adds desktop services only when requested", () => {
     const got = cloudInit({ ...config, desktop: true });
-    expect(got).toContain("xvfb openbox x11vnc xauth dbus-x11");
+    expect(got).toContain("xvfb xfce4-session xfwm4 xfce4-panel xfdesktop4 xfce4-terminal");
+    expect(got).toContain("xfconf xfce4-settings x11vnc xauth dbus-x11");
     expect(got).toContain("/etc/systemd/system/crabbox-xvfb.service");
     expect(got).toContain("/etc/systemd/system/crabbox-desktop.service");
     expect(got).toContain("/usr/local/bin/crabbox-desktop-session");
     expect(got).toContain("/etc/systemd/system/crabbox-desktop-session.service");
     expect(got).toContain("/etc/systemd/system/crabbox-x11vnc.service");
-    expect(got).toContain("ExecStart=/usr/bin/openbox");
+    expect(got).toContain("ExecStart=/usr/bin/startxfce4");
     expect(got).toContain("systemctl is-active --quiet crabbox-desktop.service");
     expect(got).toContain("systemctl is-active --quiet crabbox-desktop-session.service");
     expect(got).toContain("x11-xserver-utils xterm scrot ffmpeg xdotool wmctrl");
     expect(got).toContain("xsetroot -solid '#20242b'");
+    expect(got).toContain("xfce4-terminal --title='Crabbox Desktop'");
     expect(got).toContain("xterm -title 'Crabbox Desktop'");
     expect(got).toContain("(umask 077 && openssl rand -base64 18 > /var/lib/crabbox/vnc.password)");
     expect(got).toContain("-rfbauth /var/lib/crabbox/vnc.pass");

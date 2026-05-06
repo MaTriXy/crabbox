@@ -54,7 +54,7 @@ This page maps user-facing behavior back to implementation files. Keep docs desc
 
 Bootstrap is intentionally tiny unless optional lease capabilities are requested:
 OpenSSH, CA certificates, curl, Git, rsync, jq, `/work/crabbox`, cache
-directories, and `crabbox-ready`. `--desktop` adds Xvfb/Openbox/x11vnc and
+directories, and `crabbox-ready`. `--desktop` adds Xvfb/slim XFCE/x11vnc and
 loopback VNC. `--browser` adds Chrome stable or a Chromium fallback. `--code`
 adds code-server for authenticated portal editor access. Project
 runtimes such as Go, Node, pnpm, Docker, databases, and services are

@@ -29,7 +29,7 @@ Bake machine capabilities:
 
 - current OS security updates;
 - SSH, Git, rsync, curl, jq, and readiness helpers;
-- Xvfb/Openbox/VNC for desktop leases;
+- Xvfb/slim XFCE/VNC for desktop leases;
 - Chrome/Chromium for browser leases;
 - `ffmpeg`, `ffprobe`, `scrot`, `xdotool`, and other capture helpers;
 - Node 22, npm, corepack, pnpm;

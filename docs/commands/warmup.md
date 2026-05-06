@@ -97,7 +97,7 @@ Warmup records a local claim tying the lease to the current repo; `--reclaim` ov
 browser automation. Managed Linux tries Google Chrome stable first, then a
 Chromium package fallback.
 
-`--desktop` provisions Xvfb, Openbox, and loopback-bound x11vnc for visible UI
+`--desktop` provisions Xvfb, slim XFCE, and loopback-bound x11vnc for visible UI
 automation and operator takeover. It does not imply a browser. Use
 `--desktop --browser` when a headed browser should run in the visible display.
 
