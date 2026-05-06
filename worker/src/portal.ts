@@ -587,7 +587,12 @@ function providerBadge(provider: string | undefined): string {
 
 function targetBadge(target: string | undefined, windowsMode?: string): string {
   const value = target || "linux";
-  const label = windowsMode && value === "windows" ? `${value} / ${windowsMode}` : value;
+  const label =
+    value === "windows"
+      ? windowsMode && windowsMode !== "normal"
+        ? `win (${windowsMode})`
+        : "win"
+      : value;
   return `<span class="icon-label" data-target="${escapeHTML(value)}">${targetIcon(value)}<span>${escapeHTML(label)}</span></span>`;
 }
 

@@ -503,6 +503,30 @@ describe("fleet lease identity and idle", () => {
         endedAt: "2026-05-01T00:20:00.000Z",
       }),
     );
+    storage.seed(
+      "lease:cbx_000000000004",
+      testLease({
+        id: "cbx_000000000004",
+        slug: "silver-window",
+        owner: "peter@example.com",
+        org: "openclaw",
+        provider: "aws",
+        target: "windows",
+        windowsMode: "normal",
+      }),
+    );
+    storage.seed(
+      "lease:cbx_000000000005",
+      testLease({
+        id: "cbx_000000000005",
+        slug: "wsl-window",
+        owner: "peter@example.com",
+        org: "openclaw",
+        provider: "aws",
+        target: "windows",
+        windowsMode: "wsl2",
+      }),
+    );
 
     const response = await fleet.fetch(
       request("GET", "/portal", {
@@ -523,6 +547,9 @@ describe("fleet lease identity and idle", () => {
     expect(body).toContain('data-filter-default="active"');
     expect(body).toContain('data-provider="hetzner"');
     expect(body).toContain('data-target="linux"');
+    expect(body).toContain('data-target="windows"');
+    expect(body).toContain("<span>win</span>");
+    expect(body).toContain("<span>win (wsl2)</span>");
     expect(body).toContain('data-filter-tags="active hetzner linux"');
     expect(body).toContain("blue-lobster");
     expect(body).toContain("old-clam");
