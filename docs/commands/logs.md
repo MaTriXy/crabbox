@@ -1,20 +1,70 @@
 # logs
 
-`crabbox logs` prints the retained remote output for a recorded run.
+`crabbox logs` prints the retained command output for a recorded run.
 
 ```sh
-crabbox logs run_...
-crabbox logs --id run_...
-crabbox logs run_... --json
+crabbox logs run_abcdef123456
+crabbox logs --id run_abcdef123456
+crabbox logs run_abcdef123456 --json
 ```
 
-The plain form writes the log text to stdout. `--json` returns run metadata plus the log.
+## What Gets Stored
 
-Logs are bounded remote stdout/stderr captures. The CLI keeps up to 8 MiB per run and the coordinator stores larger captures in chunks, so failures from noisy parallel runs remain visible without turning run history into unlimited archival storage.
+When `crabbox run` runs against a coordinator, it streams remote stdout and
+stderr to the local terminal *and* records a bounded copy on the
+coordinator. The CLI keeps up to 8 MiB of capture per run; the coordinator
+stores larger captures in chunks so a noisy parallel run does not exceed
+Durable Object storage limits.
+
+Output beyond the cap is truncated with an `output.truncated` marker on the
+last event so the consumer knows the tail is missing.
+
+## Output
+
+The plain form writes the log text to stdout. `--json` returns run metadata
+plus the log:
+
+```json
+{
+  "runId": "run_abcdef123456",
+  "leaseId": "cbx_abcdef123456",
+  "exitCode": 0,
+  "truncated": false,
+  "log": "..."
+}
+```
+
+`--json` is stable enough for scripts that filter by exit code and want the
+log text in one payload.
+
+## Flags
+
+```text
+--id <run-id>       run id (also accepted as a positional argument)
+--json              print JSON with metadata and log text
+```
+
+## When To Use Logs vs Events vs Attach
+
+- `logs` returns the retained command output. Use when you want the full
+  bounded transcript after the run finished.
+- `events` returns ordered run events (lease, sync, command, output chunks,
+  finish). Use when you need to know *what happened* and *when*.
+- `attach` follows live events. Use when the run is still active and you
+  want to watch it without re-attaching the original CLI.
+
+Logs and events are independent surfaces - logs stay focused on command
+output, events stay focused on lifecycle.
+
+## Direct Mode
+
+Direct-provider mode does not record runs centrally, so `crabbox logs` has
+nothing to fetch. Use shell output or the local terminal log instead.
 
 Related docs:
 
 - [history](history.md)
 - [events](events.md)
 - [attach](attach.md)
+- [results](results.md)
 - [History and logs](../features/history-logs.md)
