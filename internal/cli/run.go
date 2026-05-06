@@ -342,6 +342,7 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 			}
 		}
 		recorder.CaptureTelemetryStart(ctx, target)
+		recorder.StartTelemetrySampler(ctx, target)
 		recorder.Event("sync.started", "sync", "")
 		timings.syncSteps.sshReady = time.Since(stepStart)
 		excludes, err := syncExcludes(repo.Root, cfg)
@@ -485,6 +486,7 @@ afterSync:
 		}
 	}
 	recorder.CaptureTelemetryStart(ctx, target)
+	recorder.StartTelemetrySampler(ctx, target)
 	if *noSync {
 		mkdirCommand := remoteMkdir(workdir)
 		if isWindowsNativeTarget(target) {

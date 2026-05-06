@@ -110,6 +110,7 @@ export interface LeaseTelemetry {
 export interface RunTelemetrySummary {
   start?: LeaseTelemetry;
   end?: LeaseTelemetry;
+  samples?: LeaseTelemetry[];
 }
 
 export interface LeaseRecord {
@@ -232,6 +233,10 @@ export interface RunFinishRequest {
   logTruncated?: boolean;
   results?: TestResultSummary;
   telemetry?: RunTelemetrySummary;
+}
+
+export interface RunTelemetryRequest {
+  telemetry?: Partial<LeaseTelemetry>;
 }
 
 export interface RunEventRecord {

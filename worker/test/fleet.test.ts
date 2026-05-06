@@ -1540,6 +1540,84 @@ describe("fleet run history", () => {
     expect(await logs.text()).toBe("ok\n");
   });
 
+  it("appends live run telemetry samples and preserves them on finish", async () => {
+    const storage = new MemoryStorage();
+    const fleet = testFleet(storage);
+    const ownerHeaders = {
+      "x-crabbox-owner": "peter@example.com",
+      "x-crabbox-org": "openclaw",
+    };
+    storage.seed(
+      "lease:cbx_000000000001",
+      testLease({
+        id: "cbx_000000000001",
+        slug: "blue-lobster",
+        owner: "peter@example.com",
+        org: "openclaw",
+      }),
+    );
+    const create = await fleet.fetch(
+      request("POST", "/v1/runs", {
+        headers: ownerHeaders,
+        body: { leaseID: "cbx_000000000001", command: ["sleep", "60"] },
+      }),
+    );
+    const { run } = (await create.json()) as { run: RunRecord };
+
+    const firstSample = await fleet.fetch(
+      request("POST", `/v1/runs/${run.id}/telemetry`, {
+        headers: ownerHeaders,
+        body: {
+          telemetry: {
+            capturedAt: "2026-05-01T00:00:10Z",
+            source: "ssh-linux",
+            load1: 0.4,
+            memoryPercent: 40,
+          },
+        },
+      }),
+    );
+    expect(firstSample.status).toBe(200);
+    const sampled = (await firstSample.json()) as { run: RunRecord };
+    expect(sampled.run.telemetry?.start).toMatchObject({ load1: 0.4, memoryPercent: 40 });
+    expect(sampled.run.telemetry?.samples).toHaveLength(1);
+
+    await fleet.fetch(
+      request("POST", `/v1/runs/${run.id}/telemetry`, {
+        headers: ownerHeaders,
+        body: {
+          telemetry: {
+            capturedAt: "2026-05-01T00:00:20Z",
+            source: "ssh-linux",
+            load1: 0.9,
+            memoryPercent: 55,
+          },
+        },
+      }),
+    );
+
+    const finish = await fleet.fetch(
+      request("POST", `/v1/runs/${run.id}/finish`, {
+        headers: ownerHeaders,
+        body: {
+          exitCode: 0,
+          telemetry: {
+            end: {
+              capturedAt: "2026-05-01T00:00:30Z",
+              source: "ssh-linux",
+              load1: 1.2,
+              memoryPercent: 60,
+            },
+          },
+        },
+      }),
+    );
+    expect(finish.status).toBe(200);
+    const finished = (await finish.json()) as { run: RunRecord };
+    expect(finished.run.telemetry?.end).toMatchObject({ load1: 1.2, memoryPercent: 60 });
+    expect(finished.run.telemetry?.samples?.map((sample) => sample.load1)).toEqual([0.4, 0.9]);
+  });
+
   it("accepts Go nil slices in passing test results", async () => {
     const fleet = testFleet();
     const create = await fleet.fetch(

@@ -26,8 +26,9 @@ type LeaseTelemetry struct {
 }
 
 type RunTelemetrySummary struct {
-	Start *LeaseTelemetry `json:"start,omitempty"`
-	End   *LeaseTelemetry `json:"end,omitempty"`
+	Start   *LeaseTelemetry   `json:"start,omitempty"`
+	End     *LeaseTelemetry   `json:"end,omitempty"`
+	Samples []*LeaseTelemetry `json:"samples,omitempty"`
 }
 
 type leaseTelemetryCollector func(context.Context) (*LeaseTelemetry, error)
@@ -170,11 +171,11 @@ func leaseTelemetryStatusSummary(telemetry *LeaseTelemetry) string {
 	return strings.Join(parts, " ")
 }
 
-func runTelemetrySummary(start, end *LeaseTelemetry) *RunTelemetrySummary {
-	if start == nil && end == nil {
+func runTelemetrySummary(start, end *LeaseTelemetry, samples []*LeaseTelemetry) *RunTelemetrySummary {
+	if start == nil && end == nil && len(samples) == 0 {
 		return nil
 	}
-	return &RunTelemetrySummary{Start: start, End: end}
+	return &RunTelemetrySummary{Start: start, End: end, Samples: samples}
 }
 
 func runTelemetryStatusSummary(telemetry *RunTelemetrySummary) string {
@@ -182,6 +183,9 @@ func runTelemetryStatusSummary(telemetry *RunTelemetrySummary) string {
 		return ""
 	}
 	current := telemetry.End
+	if current == nil {
+		current = latestTelemetrySample(telemetry.Samples)
+	}
 	if current == nil {
 		current = telemetry.Start
 	}
@@ -204,6 +208,13 @@ func runTelemetryStatusSummary(telemetry *RunTelemetrySummary) string {
 		parts = append(parts, "mem_delta="+delta)
 	}
 	return strings.Join(parts, " ")
+}
+
+func latestTelemetrySample(samples []*LeaseTelemetry) *LeaseTelemetry {
+	if len(samples) == 0 {
+		return nil
+	}
+	return samples[len(samples)-1]
 }
 
 func telemetryDeltaBytes(start, end *LeaseTelemetry, metric string) string {

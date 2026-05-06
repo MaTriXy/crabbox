@@ -9,19 +9,25 @@ import (
 	"time"
 )
 
+const runTelemetrySampleInterval = 15 * time.Second
+
 type runRecorder struct {
-	coord           *CoordinatorClient
-	command         []string
-	runID           string
-	stderr          io.Writer
-	deferUntilLease bool
-	eventsMu        sync.Mutex
-	eventsDisabled  bool
-	finished        bool
-	warned          bool
-	warnMu          sync.Mutex
-	output          *runOutputEventQueue
-	telemetryStart  *LeaseTelemetry
+	coord            *CoordinatorClient
+	command          []string
+	runID            string
+	stderr           io.Writer
+	deferUntilLease  bool
+	eventsMu         sync.Mutex
+	eventsDisabled   bool
+	finished         bool
+	warned           bool
+	warnMu           sync.Mutex
+	output           *runOutputEventQueue
+	telemetryStart   *LeaseTelemetry
+	telemetryMu      sync.Mutex
+	telemetrySamples []*LeaseTelemetry
+	telemetryCancel  func()
+	telemetryDone    chan struct{}
 }
 
 func newRunRecorder(ctx context.Context, coord *CoordinatorClient, cfg Config, command []string, stderr io.Writer) *runRecorder {
@@ -100,6 +106,41 @@ func (r *runRecorder) CaptureTelemetryStart(ctx context.Context, target SSHTarge
 		return
 	}
 	r.telemetryStart = collectLeaseTelemetryBestEffort(ctx, leaseTelemetryCollectorForTarget(target))
+	r.recordTelemetrySample(r.telemetryStart)
+	r.appendTelemetryBestEffort(r.telemetryStart)
+}
+
+func (r *runRecorder) StartTelemetrySampler(ctx context.Context, target SSHTarget) {
+	if r == nil || r.coord == nil || r.runID == "" {
+		return
+	}
+	r.telemetryMu.Lock()
+	if r.telemetryCancel != nil {
+		r.telemetryMu.Unlock()
+		return
+	}
+	sampleCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	r.telemetryCancel = cancel
+	r.telemetryDone = done
+	r.telemetryMu.Unlock()
+
+	collector := leaseTelemetryCollectorForTarget(target)
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(runTelemetrySampleInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				sample := collectLeaseTelemetryBestEffort(sampleCtx, collector)
+				r.recordTelemetrySample(sample)
+				r.appendTelemetryBestEffort(sample)
+			case <-sampleCtx.Done():
+				return
+			}
+		}
+	}()
 }
 
 func (r *runRecorder) attachRun(run CoordinatorRun) {
@@ -121,10 +162,12 @@ func (r *runRecorder) Finish(ctx context.Context, target SSHTarget, exitCode int
 	}
 	r.waitForOutputEvents(runEventOutputPostWait)
 	r.finished = true
+	r.stopTelemetrySampler()
 	telemetryEnd := collectLeaseTelemetryBestEffort(ctx, leaseTelemetryCollectorForTarget(target))
+	r.recordTelemetrySample(telemetryEnd)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if _, err := r.coord.FinishRun(ctx, r.runID, exitCode, sync, command, log, truncated, results, runTelemetrySummary(r.telemetryStart, telemetryEnd)); err != nil {
+	if _, err := r.coord.FinishRun(ctx, r.runID, exitCode, sync, command, log, truncated, results, runTelemetrySummary(r.telemetryStart, telemetryEnd, r.telemetrySnapshot())); err != nil {
 		r.warn("run history finish failed for %s: %v", r.runID, err)
 	}
 }
@@ -153,6 +196,69 @@ func (r *runRecorder) warn(format string, args ...any) {
 	}
 	r.warned = true
 	fmt.Fprintf(r.stderr, "warning: "+format+"\n", args...)
+}
+
+func (r *runRecorder) recordTelemetrySample(sample *LeaseTelemetry) {
+	if r == nil || sample == nil || sample.CapturedAt == "" {
+		return
+	}
+	r.telemetryMu.Lock()
+	defer r.telemetryMu.Unlock()
+	for index, existing := range r.telemetrySamples {
+		if existing != nil && existing.CapturedAt == sample.CapturedAt {
+			r.telemetrySamples[index] = sample
+			return
+		}
+	}
+	r.telemetrySamples = append(r.telemetrySamples, sample)
+	if len(r.telemetrySamples) > 60 {
+		r.telemetrySamples = r.telemetrySamples[len(r.telemetrySamples)-60:]
+	}
+}
+
+func (r *runRecorder) telemetrySnapshot() []*LeaseTelemetry {
+	if r == nil {
+		return nil
+	}
+	r.telemetryMu.Lock()
+	defer r.telemetryMu.Unlock()
+	if len(r.telemetrySamples) == 0 {
+		return nil
+	}
+	samples := make([]*LeaseTelemetry, len(r.telemetrySamples))
+	copy(samples, r.telemetrySamples)
+	return samples
+}
+
+func (r *runRecorder) appendTelemetryBestEffort(sample *LeaseTelemetry) {
+	if r == nil || r.coord == nil || r.runID == "" || sample == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := r.coord.AppendRunTelemetry(ctx, r.runID, sample); err != nil && !isCoordinatorNotFoundError(err) {
+		r.warn("run telemetry append failed for %s: %v", r.runID, err)
+	}
+}
+
+func (r *runRecorder) stopTelemetrySampler() {
+	if r == nil {
+		return
+	}
+	r.telemetryMu.Lock()
+	cancel := r.telemetryCancel
+	done := r.telemetryDone
+	r.telemetryCancel = nil
+	r.telemetryDone = nil
+	r.telemetryMu.Unlock()
+	if cancel == nil {
+		return
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+	}
 }
 
 func (r *runRecorder) waitForOutputEvents(timeout time.Duration) {

@@ -585,6 +585,14 @@ func (c *CoordinatorClient) FinishRun(ctx context.Context, runID string, exitCod
 	return res.Run, err
 }
 
+func (c *CoordinatorClient) AppendRunTelemetry(ctx context.Context, runID string, telemetry *LeaseTelemetry) (CoordinatorRun, error) {
+	var res CoordinatorRunResponse
+	err := c.do(ctx, http.MethodPost, "/v1/runs/"+url.PathEscape(runID)+"/telemetry", map[string]any{
+		"telemetry": telemetry,
+	}, &res)
+	return res.Run, err
+}
+
 func (c *CoordinatorClient) AppendRunEvent(ctx context.Context, runID string, input CoordinatorRunEventInput) (CoordinatorRunEvent, error) {
 	var res CoordinatorRunEventResponse
 	err := c.do(ctx, http.MethodPost, "/v1/runs/"+url.PathEscape(runID)+"/events", input, &res)

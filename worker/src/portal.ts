@@ -884,11 +884,12 @@ function formatTelemetryValue(value: number, unit: string): string {
 
 function runTelemetryPanel(telemetry: RunRecord["telemetry"]): string {
   if (!telemetry) {
-    return `<div class="run-telemetry-grid"><div class="run-metric" data-muted="true"><span>telemetry</span><strong>not sampled</strong><small>no box metrics</small></div></div>`;
+    return `<div class="run-telemetry-panel"><div class="run-telemetry-grid"><div class="run-metric" data-muted="true"><span>telemetry</span><strong>not sampled</strong><small>no box metrics</small></div></div></div>`;
   }
-  const current = telemetry.end || telemetry.start;
+  const samples = runTelemetrySamples(telemetry);
+  const current = telemetry.end || samples.at(-1) || telemetry.start;
   if (!current) {
-    return `<div class="run-telemetry-grid"><div class="run-metric" data-muted="true"><span>telemetry</span><strong>not sampled</strong><small>no box metrics</small></div></div>`;
+    return `<div class="run-telemetry-panel"><div class="run-telemetry-grid"><div class="run-metric" data-muted="true"><span>telemetry</span><strong>not sampled</strong><small>no box metrics</small></div></div></div>`;
   }
   const memory = telemetryStorage(
     current.memoryUsedBytes,
@@ -896,11 +897,36 @@ function runTelemetryPanel(telemetry: RunRecord["telemetry"]): string {
     current.memoryPercent,
   );
   const disk = telemetryStorage(current.diskUsedBytes, current.diskTotalBytes, current.diskPercent);
-  return `<div class="run-telemetry-grid">
-    ${runMetric("load", telemetryLoad(current), "1 / 5 / 15")}
-    ${runMetric("memory", memory, telemetryDeltaLabel("delta", telemetry.start?.memoryUsedBytes, telemetry.end?.memoryUsedBytes))}
-    ${runMetric("disk", disk, telemetryDeltaLabel("delta", telemetry.start?.diskUsedBytes, telemetry.end?.diskUsedBytes))}
-    ${runMetric("sampled", current.capturedAt ? relativeTime(current.capturedAt) : undefined, current.capturedAt || "no timestamp")}
+  const sampleLabel =
+    samples.length > 1
+      ? `${samples.length} samples`
+      : samples.length === 1
+        ? "1 sample"
+        : "no history";
+  return `<div class="run-telemetry-panel">
+    <div class="run-telemetry-grid">
+      ${runMetric("load", telemetryLoad(current), "1 / 5 / 15")}
+      ${runMetric("memory", memory, telemetryDeltaLabel("delta", telemetry.start?.memoryUsedBytes, telemetry.end?.memoryUsedBytes))}
+      ${runMetric("disk", disk, telemetryDeltaLabel("delta", telemetry.start?.diskUsedBytes, telemetry.end?.diskUsedBytes))}
+      ${runMetric("sampled", current.capturedAt ? relativeTime(current.capturedAt) : undefined, sampleLabel)}
+    </div>
+    <div class="run-telemetry-trends">
+      ${telemetrySparkline(
+        "load",
+        samples.map((sample) => sample.load1),
+        "load",
+      )}
+      ${telemetrySparkline(
+        "memory",
+        samples.map((sample) => sample.memoryPercent),
+        "%",
+      )}
+      ${telemetrySparkline(
+        "disk",
+        samples.map((sample) => sample.diskPercent),
+        "%",
+      )}
+    </div>
   </div>`;
 }
 
@@ -925,7 +951,7 @@ function runTelemetryCell(telemetry: RunRecord["telemetry"]): string {
   if (!telemetry) {
     return "-";
   }
-  const current = telemetry.end || telemetry.start;
+  const current = telemetry.end || runTelemetrySamples(telemetry).at(-1) || telemetry.start;
   if (!current) {
     return "-";
   }
@@ -941,6 +967,21 @@ function runTelemetryCell(telemetry: RunRecord["telemetry"]): string {
     parts.push(delta);
   }
   return parts.length ? parts.join(" · ") : "-";
+}
+
+function runTelemetrySamples(telemetry: RunRecord["telemetry"]): LeaseTelemetrySample[] {
+  if (!telemetry) {
+    return [];
+  }
+  const byTime = new Map<string, LeaseTelemetrySample>();
+  for (const sample of [telemetry.start, ...(telemetry.samples ?? []), telemetry.end]) {
+    if (sample?.capturedAt) {
+      byTime.set(sample.capturedAt, sample);
+    }
+  }
+  return [...byTime.values()].toSorted((left, right) =>
+    left.capturedAt.localeCompare(right.capturedAt),
+  );
 }
 
 function telemetryDelta(start: number | undefined, end: number | undefined): string | undefined {
@@ -1118,13 +1159,17 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .run-artifact-card .run-artifacts { gap:6px; padding:8px; }
     .run-artifact-card .button { width:100%; }
     .run-artifact-card .result-grid { grid-column:1 / -1; }
-    .run-telemetry-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); border-top:1px solid var(--line-soft); background:var(--panel-2); }
+    .run-telemetry-panel { border-top:1px solid var(--line-soft); background:var(--panel-2); }
+    .run-telemetry-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); }
     .run-metric { min-width:0; padding:7px 10px; border-right:1px solid var(--line-soft); }
     .run-metric:last-child { border-right:0; }
     .run-metric span { display:block; color:var(--muted); font-size:10px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; }
     .run-metric strong { display:block; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }
     .run-metric small { display:block; margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); font-size:11px; }
     .run-metric[data-muted="true"] { grid-column:1 / -1; }
+    .run-telemetry-trends { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border-top:1px solid var(--line-soft); }
+    .run-telemetry-trends .telemetry-line { grid-template-columns:54px minmax(0,1fr) 46px; padding:7px 10px; border-right:1px solid var(--line-soft); }
+    .run-telemetry-trends .telemetry-line:last-child { border-right:0; }
     .result-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0; margin:4px -14px -14px; border-top:1px solid var(--line-soft); }
     .result-grid div { padding:8px 10px; border-bottom:1px solid var(--line-soft); }
     .result-grid dt { color:var(--muted); font-size:11px; text-transform:uppercase; margin-bottom:3px; }
@@ -1223,6 +1268,9 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
       .run-shell .detail-grid { grid-template-columns:1fr; }
       .run-shell .meta-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
       .run-telemetry-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .run-telemetry-trends { grid-template-columns:1fr; }
+      .run-telemetry-trends .telemetry-line { border-right:0; border-bottom:1px solid var(--line-soft); }
+      .run-telemetry-trends .telemetry-line:last-child { border-bottom:0; }
     }
     @media (max-width: 760px) {
       main { width:min(100vw - 20px, 1180px); padding:10px 0; }

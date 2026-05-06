@@ -269,6 +269,28 @@ func TestCoordinatorTouchAndUpdateHeartbeatBodies(t *testing.T) {
 	}
 }
 
+func TestCoordinatorAppendRunTelemetry(t *testing.T) {
+	var body string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/runs/run_123/telemetry" {
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		data, _ := io.ReadAll(r.Body)
+		body = string(data)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"run":{"id":"run_123","leaseID":"cbx_123","owner":"peter@example.com","org":"openclaw","provider":"aws","class":"standard","serverType":"t3.small","command":["sleep","60"],"state":"running","logBytes":0,"logTruncated":false,"startedAt":"2026-05-02T00:00:00Z"}}`))
+	}))
+	defer server.Close()
+	client := CoordinatorClient{BaseURL: server.URL, Client: server.Client()}
+	load := 0.42
+	if _, err := client.AppendRunTelemetry(context.Background(), "run_123", &LeaseTelemetry{Load1: &load}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body, `"telemetry"`) || !strings.Contains(body, `"load1":0.42`) {
+		t.Fatalf("append telemetry body=%q", body)
+	}
+}
+
 func TestCoordinatorHeartbeatTouchesImmediately(t *testing.T) {
 	touches := make(chan struct{}, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -36,6 +36,7 @@ import type {
   RunEventRequest,
   RunFinishRequest,
   RunRecord,
+  RunTelemetryRequest,
   RunTelemetrySummary,
   TestFailure,
   TestResultSummary,
@@ -47,6 +48,7 @@ const fleetID = "default";
 const maxStoredRunLogBytes = 8 * 1024 * 1024;
 const runLogChunkBytes = 64 * 1024;
 const maxLeaseTelemetryHistory = 60;
+const maxRunTelemetrySamples = 60;
 const webVNCTicketTTLSeconds = 120;
 const codeTicketTTLSeconds = 120;
 const maxPendingWebVNCBytes = 1024 * 1024;
@@ -1518,10 +1520,28 @@ export class FleetDurableObject implements DurableObject {
       const event = await this.appendRunEventRecord(run, input);
       return json({ event }, { status: 201 });
     }
+    if (method === "POST" && action === "telemetry") {
+      return this.appendRunTelemetry(request, runID);
+    }
     if (method === "POST" && action === "finish") {
       return this.finishRun(request, runID);
     }
     return json({ error: "not_found" }, { status: 404 });
+  }
+
+  private async appendRunTelemetry(request: Request, runID: string): Promise<Response> {
+    const run = await this.getRun(runID);
+    if (!run || !this.runVisibleToRequest(run, request)) {
+      return notFound();
+    }
+    const input = await readJson<RunTelemetryRequest>(request);
+    const telemetry = sanitizeLeaseTelemetry(input.telemetry, new Date());
+    if (!telemetry) {
+      return json({ error: "invalid_telemetry" }, { status: 400 });
+    }
+    run.telemetry = appendRunTelemetrySample(run.telemetry, telemetry);
+    await this.putRun(run);
+    return json({ run });
   }
 
   private async finishRun(request: Request, runID: string): Promise<Response> {
@@ -1555,7 +1575,7 @@ export class FleetDurableObject implements DurableObject {
     }
     const telemetry = sanitizeRunTelemetry(input.telemetry, now);
     if (telemetry) {
-      run.telemetry = telemetry;
+      run.telemetry = mergeRunTelemetry(run.telemetry, telemetry);
     }
     await this.writeRunLog(runID, logInput.log);
     await this.putRun(run);
@@ -2639,7 +2659,12 @@ function sanitizeRunTelemetry(
   }
   const start = sanitizeLeaseTelemetry(input.start, now);
   const end = sanitizeLeaseTelemetry(input.end, now);
-  if (!start && !end) {
+  const samples = Array.isArray(input.samples)
+    ? input.samples
+        .map((sample) => sanitizeLeaseTelemetry(sample, now))
+        .filter((sample): sample is LeaseTelemetry => sample !== undefined)
+    : [];
+  if (!start && !end && samples.length === 0) {
     return undefined;
   }
   const telemetry: RunTelemetrySummary = {};
@@ -2649,19 +2674,65 @@ function sanitizeRunTelemetry(
   if (end) {
     telemetry.end = end;
   }
+  if (samples.length > 0) {
+    telemetry.samples = boundedTelemetrySamples(samples, maxRunTelemetrySamples);
+  }
   return telemetry;
+}
+
+function mergeRunTelemetry(
+  existing: RunTelemetrySummary | undefined,
+  incoming: RunTelemetrySummary,
+): RunTelemetrySummary {
+  const telemetry: RunTelemetrySummary = {
+    ...(existing ?? {}),
+    ...incoming,
+  };
+  telemetry.samples = boundedTelemetrySamples(
+    [
+      ...((existing?.samples ?? []).filter(Boolean) as LeaseTelemetry[]),
+      ...((incoming.samples ?? []).filter(Boolean) as LeaseTelemetry[]),
+    ],
+    maxRunTelemetrySamples,
+  );
+  if (telemetry.samples.length === 0) {
+    delete telemetry.samples;
+  }
+  return telemetry;
+}
+
+function appendRunTelemetrySample(
+  telemetry: RunTelemetrySummary | undefined,
+  sample: LeaseTelemetry,
+): RunTelemetrySummary {
+  const next: RunTelemetrySummary = { ...(telemetry ?? {}) };
+  next.samples = boundedTelemetrySamples([...(next.samples ?? []), sample], maxRunTelemetrySamples);
+  if (!next.start) {
+    next.start = sample;
+  }
+  return next;
 }
 
 function appendLeaseTelemetryHistory(
   history: LeaseTelemetry[] | undefined,
   telemetry: LeaseTelemetry,
 ): LeaseTelemetry[] {
-  const existing = Array.isArray(history) ? history : [];
-  const next = [
-    ...existing.filter((sample) => sample && sample.capturedAt !== telemetry.capturedAt),
-    telemetry,
-  ].toSorted((left, right) => left.capturedAt.localeCompare(right.capturedAt));
-  return next.slice(-maxLeaseTelemetryHistory);
+  return boundedTelemetrySamples(
+    [...(Array.isArray(history) ? history : []), telemetry],
+    maxLeaseTelemetryHistory,
+  );
+}
+
+function boundedTelemetrySamples(samples: LeaseTelemetry[], max: number): LeaseTelemetry[] {
+  const byTime = new Map<string, LeaseTelemetry>();
+  for (const sample of samples) {
+    if (sample?.capturedAt) {
+      byTime.set(sample.capturedAt, sample);
+    }
+  }
+  return [...byTime.values()]
+    .toSorted((left, right) => left.capturedAt.localeCompare(right.capturedAt))
+    .slice(-max);
 }
 
 function sanitizeTelemetryTimestamp(value: string | undefined, now: Date): string {
