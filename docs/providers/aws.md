@@ -26,8 +26,8 @@ already exists.
 ## Commands
 
 ```sh
-crabbox warmup --provider aws --class beast
-crabbox run --provider aws --class beast -- pnpm test
+crabbox warmup --provider aws --class standard
+crabbox run --provider aws --class fast -- pnpm test
 crabbox run --provider aws --market on-demand -- pnpm check
 crabbox warmup --provider aws --target windows --desktop
 crabbox warmup --provider aws --target windows --windows-mode wsl2
@@ -69,6 +69,8 @@ CRABBOX_AWS_INSTANCE_PROFILE
 CRABBOX_AWS_ROOT_GB
 CRABBOX_AWS_SSH_CIDRS
 CRABBOX_AWS_MAC_HOST_ID
+CRABBOX_CAPACITY_REGIONS
+CRABBOX_CAPACITY_AVAILABILITY_ZONES
 ```
 
 Brokered AWS credentials belong in the Worker, not on developer machines.
@@ -109,6 +111,9 @@ provider labels and `crabbox cleanup`.
 
 - Spot capacity and quota errors are normal. Prefer classes over exact `--type`
   when you want fallback.
+- During capacity pressure, prefer `standard` or `fast` plus multiple
+  `CRABBOX_CAPACITY_REGIONS`; `beast` starts at 48xlarge candidates and can
+  consume 192 vCPUs per request.
 - Windows WSL2 needs nested virtualization instance families.
 - EC2 Mac needs an explicit Dedicated Host id.
 - VNC stays behind SSH tunnels; do not expose VNC ports directly.

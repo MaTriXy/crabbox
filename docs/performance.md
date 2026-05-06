@@ -86,7 +86,7 @@ Typical choices:
 - `large`: broad test shards or heavy builds.
 - `beast`: high-core changed-test runs.
 
-Hetzner dedicated classes can hit account quota. AWS Spot classes can hit regional capacity or account policy limits. For AWS, class requests try the configured high-core candidates first and can fall back to a small burstable type when the account rejects those candidates. `CRABBOX_CAPACITY_STRATEGY=most-available` and multiple `CRABBOX_CAPACITY_REGIONS` give the coordinator more room to find capacity.
+Hetzner dedicated classes can hit account quota. AWS Spot classes can hit regional capacity or account policy limits. For AWS, class requests try the configured high-core candidates first and can fall back to a small burstable type when the account rejects those candidates. Multiple `CRABBOX_CAPACITY_REGIONS` let brokered and direct AWS launches move to another region before giving up.
 
 ## Measure The Loop
 

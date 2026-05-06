@@ -108,7 +108,8 @@ Fixes:
 
 - choose a smaller class;
 - use `--market on-demand` or `--market spot` for a one-off AWS capacity-market override;
-- set `CRABBOX_CAPACITY_REGIONS` for AWS Spot placement-score selection;
+- set `CRABBOX_CAPACITY_REGIONS` so brokered and direct AWS launches can try multiple regions;
+- set `CRABBOX_CAPACITY_AVAILABILITY_ZONES` only when you intentionally want a specific zone in those regions;
 - set `CRABBOX_CAPACITY_STRATEGY=most-available`;
 - raise the AWS `Running On-Demand Standard (A, C, D, H, I, M, R, T, Z) instances` quota for C/M/R/T/Z families, or the matching Spot quota when using Spot;
 - raise Hetzner dedicated-core quota when dedicated classes are required;

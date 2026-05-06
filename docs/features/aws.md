@@ -36,6 +36,17 @@ AWS Linux defaults to Spot. Use `--market on-demand` for one lease when Spot is
 blocked or when an account only has On-Demand quota. `capacity.fallback` can
 fall back to On-Demand after Spot capacity/quota failures when configured.
 
+Set `CRABBOX_CAPACITY_REGIONS` or `capacity.regions` to give AWS more regional
+headroom. Brokered and direct AWS launches try the primary region first, then
+the configured capacity regions in order. The public coordinator defaults to:
+
+```sh
+CRABBOX_CAPACITY_REGIONS=eu-west-1,eu-west-2,eu-central-1,us-east-1,us-west-2
+```
+
+Prefer `standard` or `fast` during capacity incidents. `beast` starts at
+48xlarge candidates and can consume 192 vCPUs per request before fallback.
+
 Crabbox tries ordered instance candidates for the requested class. Explicit
 `--type` is exact: if EC2 rejects it, Crabbox fails clearly instead of silently
 choosing another type.
@@ -91,6 +102,8 @@ CRABBOX_AWS_INSTANCE_PROFILE
 CRABBOX_AWS_ROOT_GB
 CRABBOX_AWS_SSH_CIDRS
 CRABBOX_AWS_MAC_HOST_ID
+CRABBOX_CAPACITY_REGIONS
+CRABBOX_CAPACITY_AVAILABILITY_ZONES
 ```
 
 ## Security And Networking

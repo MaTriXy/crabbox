@@ -223,7 +223,7 @@ Environment:
   CRABBOX_AWS_SSH_CIDRS        Comma-separated AWS SSH source CIDRs
   CRABBOX_SSH_FALLBACK_PORTS   Comma-separated SSH fallback ports, or none
   CRABBOX_CAPACITY_MARKET      spot or on-demand
-  CRABBOX_CAPACITY_REGIONS     Comma-separated AWS Spot placement candidates
+  CRABBOX_CAPACITY_REGIONS     Comma-separated AWS region fallback candidates
   HCLOUD_TOKEN/HETZNER_TOKEN   Direct Hetzner mode
 
 Aliases:
