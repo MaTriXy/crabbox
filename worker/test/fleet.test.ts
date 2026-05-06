@@ -954,6 +954,10 @@ describe("fleet lease identity and idle", () => {
     const runBody = await runPage.text();
     expect(runBody).toContain('class="portal-shell run-shell"');
     expect(runBody).toContain("<h1>🦀 crabbox</h1>");
+    expect(runBody).toContain(
+      ".portal-header-meta { flex:1 1 auto; min-width:0; overflow:hidden; }",
+    );
+    expect(runBody).toContain(".command-row > div { min-width:0; overflow:hidden; }");
     expect(runBody).toContain("run_000000000001");
     expect(runBody).toContain("go test ./...");
     expect(runBody).toContain("data-copy-command");

@@ -1043,9 +1043,9 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     :root { color-scheme: dark; --bg:#0b0d0f; --fg:#f3f5f7; --muted:#9ca3af; --line:#262b31; --line-soft:#1d2126; --panel:#15181c; --panel-2:#0f1215; --accent:#38bdf8; --bad:#f87171; --warn:#fbbf24; --ok:#34d399; --mono: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
     * { box-sizing: border-box; }
     html { min-height:100%; background:var(--bg); }
-    body { margin:0; min-height:100vh; background:var(--bg); color:var(--fg); font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
-    main { width:min(1180px, calc(100vw - 32px)); margin:0 auto; padding:10px 0 22px; }
-    .portal-shell { width:min(1240px, calc(100vw - 16px)); height:100dvh; display:grid; grid-template-rows:auto minmax(0,1fr); gap:8px; padding:6px 0 8px; overflow:hidden; }
+    body { margin:0; min-height:100vh; overflow-x:hidden; background:var(--bg); color:var(--fg); font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    main { width:min(1180px, calc(100vw - 32px)); max-width:100%; margin:0 auto; padding:10px 0 22px; }
+    .portal-shell { width:min(1240px, calc(100vw - 16px)); max-width:100%; height:100dvh; display:grid; grid-template-rows:auto minmax(0,1fr); gap:8px; padding:6px 0 8px; overflow:hidden; }
     .lease-shell { grid-template-rows:auto auto minmax(0,1fr); }
     .run-shell { height:auto; min-height:100dvh; overflow:visible; grid-template-rows:auto; }
     h1,h2,p { margin:0; }
@@ -1054,7 +1054,7 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     a { color:inherit; }
     form { margin:0; }
     button { font:inherit; }
-    code { display:block; overflow:auto; padding:9px 10px; border:1px solid var(--line); border-radius:6px; background:#0c0e10; color:#d1fae5; font-family:var(--mono); }
+    code { display:block; max-width:100%; overflow:auto; padding:9px 10px; border:1px solid var(--line); border-radius:6px; background:#0c0e10; color:#d1fae5; font-family:var(--mono); }
     table { width:100%; border-collapse:collapse; table-layout:fixed; }
     th,td { padding:7px 10px; border-bottom:1px solid var(--line); text-align:left; vertical-align:middle; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.25; }
     th { position:sticky; top:0; z-index:2; color:var(--muted); font-size:11px; font-weight:700; text-transform:uppercase; background:var(--panel); box-shadow:0 1px 0 var(--line); }
@@ -1065,11 +1065,11 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     td { font-size:13px; }
     td small { display:block; color:var(--muted); margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .top { position:sticky; top:0; z-index:20; display:flex; justify-content:space-between; gap:12px; align-items:center; min-height:38px; margin:0; padding:4px 0; background:linear-gradient(180deg, var(--bg) 72%, color-mix(in srgb, var(--bg) 0%, transparent)); backdrop-filter:blur(10px); }
-    .portal-header-meta { min-width:0; }
+    .portal-header-meta { flex:1 1 auto; min-width:0; overflow:hidden; }
     .portal-header-meta h1 { white-space:nowrap; }
     .portal-header-meta p { font-size:12px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .top p,.muted,.empty { color:var(--muted); }
-    .panel { border:1px solid var(--line); border-radius:8px; background:var(--panel); overflow:hidden; }
+    .panel { min-width:0; border:1px solid var(--line); border-radius:8px; background:var(--panel); overflow:hidden; }
     .section-head { display:flex; justify-content:space-between; align-items:center; min-height:34px; padding:7px 10px; border-bottom:1px solid var(--line); }
     .section-actions { display:flex; align-items:center; justify-content:flex-end; gap:8px; color:var(--muted); }
     .button { display:inline-flex; align-items:center; justify-content:center; min-height:28px; padding:0 10px; border-radius:7px; background:var(--accent); color:#001018; text-decoration:none; font-size:12px; font-weight:700; white-space:nowrap; }
@@ -1190,8 +1190,9 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .vnc-bridge-cmd { display:block; flex:1; min-width:0; padding:6px 10px; border:none; border-radius:5px; background:transparent; color:#d1fae5; font-family:var(--mono); font-size:13px; overflow-x:auto; white-space:nowrap; }
     .commands { padding:12px; display:grid; gap:8px; }
     .command-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:end; }
+    .command-row > div { min-width:0; overflow:hidden; }
     .command-row small { display:block; color:var(--muted); margin-bottom:4px; text-transform:uppercase; font-size:11px; }
-    .command-row code { min-width:0; }
+    .command-row code { min-width:0; white-space:pre; }
     .error { margin-top:20vh; padding:24px; display:grid; gap:12px; }
     @media (max-width: 760px) {
       main { width:min(100vw - 20px, 1180px); padding:10px 0; }
