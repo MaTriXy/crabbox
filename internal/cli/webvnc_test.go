@@ -173,6 +173,29 @@ func TestWebVNCDaemonArgsStripBackgroundFlags(t *testing.T) {
 	}
 }
 
+func TestWebVNCDaemonSupervisorRestartsWithoutReopeningPortal(t *testing.T) {
+	got := webVNCDaemonSupervisorScript("/tmp/crabbox", []string{
+		"webvnc",
+		"--provider",
+		"hetzner",
+		"--id",
+		"pearl-krill",
+		"--open",
+	})
+	if !strings.Contains(got, "/tmp/crabbox' 'webvnc' '--provider' 'hetzner' '--id' 'pearl-krill' '--open'") {
+		t.Fatalf("first daemon command missing --open: %s", got)
+	}
+	if !strings.Contains(got, "/tmp/crabbox' 'webvnc' '--provider' 'hetzner' '--id' 'pearl-krill'\n") {
+		t.Fatalf("restart daemon command should strip --open: %s", got)
+	}
+	if strings.Count(got, "--open") != 1 {
+		t.Fatalf("daemon supervisor should only open portal once: %s", got)
+	}
+	if !strings.Contains(got, "webvnc daemon supervisor: child exited code=$code; restarting in 1s") {
+		t.Fatalf("daemon supervisor missing restart log: %s", got)
+	}
+}
+
 func TestSafeWebVNCDaemonName(t *testing.T) {
 	if got := safeWebVNCDaemonName("pearl/krill :99"); got != "pearl_krill__99" {
 		t.Fatalf("safe daemon name=%q", got)

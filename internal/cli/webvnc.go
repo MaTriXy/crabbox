@@ -105,12 +105,23 @@ func (a App) webvnc(ctx context.Context, args []string) error {
 
 	portal := webVNCPortalURL(coord.BaseURL, leaseID, username, password)
 	opened := false
+	connectedOnce := false
 	attempt := 0
 	for {
 		bridge, err := connectWebVNCBridge(ctx, coord, leaseID, connHost, connPort)
 		if err != nil {
-			return err
+			if !connectedOnce {
+				return err
+			}
+			attempt++
+			delay := webVNCReconnectDelay(attempt)
+			fmt.Fprintf(a.Stdout, "bridge: reconnect failed: %v; retrying in %s\n", err, delay)
+			if err := waitWebVNCReconnect(ctx, delay); err != nil {
+				return err
+			}
+			continue
 		}
+		connectedOnce = true
 		if attempt == 0 {
 			fmt.Fprintln(a.Stdout, "bridge: connected; keep this process running while using WebVNC")
 			fmt.Fprintf(a.Stdout, "webvnc: %s\n", portal)
@@ -137,13 +148,13 @@ func (a App) webvnc(ctx context.Context, args []string) error {
 		}
 		attempt++
 		delay := webVNCReconnectDelay(attempt)
-		fmt.Fprintf(a.Stdout, "bridge: viewer reset; reconnecting in %s\n", delay)
-		timer := time.NewTimer(delay)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return context.Cause(ctx)
-		case <-timer.C:
+		if err != nil {
+			fmt.Fprintf(a.Stdout, "bridge: viewer reset: %v; reconnecting in %s\n", err, delay)
+		} else {
+			fmt.Fprintf(a.Stdout, "bridge: viewer closed; reconnecting in %s\n", delay)
+		}
+		if err := waitWebVNCReconnect(ctx, delay); err != nil {
+			return err
 		}
 	}
 }
@@ -166,10 +177,11 @@ func (a App) startWebVNCDaemon(args []string, leaseID string) error {
 	}
 	defer logFile.Close()
 	childArgs := append([]string{"webvnc"}, stripWebVNCDaemonFlags(args)...)
-	cmd := exec.Command(exe, childArgs...)
+	cmd := exec.Command("sh", "-c", webVNCDaemonSupervisorScript(exe, childArgs))
 	cmd.Stdin = nil
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
+	configureDaemonCommand(cmd)
 	if err := cmd.Start(); err != nil {
 		return exit(5, "start WebVNC daemon: %v", err)
 	}
@@ -184,6 +196,33 @@ func (a App) startWebVNCDaemon(args []string, leaseID string) error {
 	fmt.Fprintf(a.Stdout, "webvnc daemon: pid=%d log=%s\n", pid, logPath)
 	fmt.Fprintf(a.Stdout, "webvnc daemon: stop with kill $(cat %s)\n", pidPath)
 	return nil
+}
+
+func webVNCDaemonSupervisorScript(exe string, args []string) string {
+	firstArgs := make([]string, 0, len(args)+1)
+	firstArgs = append(firstArgs, shellQuote(exe))
+	for _, arg := range args {
+		firstArgs = append(firstArgs, shellQuote(arg))
+	}
+	restartArgs := make([]string, 0, len(args)+1)
+	restartArgs = append(restartArgs, shellQuote(exe))
+	for _, arg := range stripWebVNCOpenFlags(args) {
+		restartArgs = append(restartArgs, shellQuote(arg))
+	}
+	return "set -u\n" +
+		"echo 'webvnc daemon supervisor: starting'\n" +
+		"first=1\n" +
+		"while :; do\n" +
+		"  if [ \"$first\" = 1 ]; then\n" +
+		"    " + strings.Join(firstArgs, " ") + "\n" +
+		"    first=0\n" +
+		"  else\n" +
+		"    " + strings.Join(restartArgs, " ") + "\n" +
+		"  fi\n" +
+		"  code=$?\n" +
+		"  echo \"webvnc daemon supervisor: child exited code=$code; restarting in 1s\"\n" +
+		"  sleep 1\n" +
+		"done\n"
 }
 
 func (a App) webVNCDaemonStatus(leaseID string) error {
@@ -277,6 +316,17 @@ func stripWebVNCDaemonFlags(args []string) []string {
 	for _, arg := range args {
 		if arg == "--daemon" || arg == "--background" ||
 			strings.HasPrefix(arg, "--daemon=") || strings.HasPrefix(arg, "--background=") {
+			continue
+		}
+		out = append(out, arg)
+	}
+	return out
+}
+
+func stripWebVNCOpenFlags(args []string) []string {
+	out := make([]string, 0, len(args))
+	for _, arg := range args {
+		if arg == "--open" || strings.HasPrefix(arg, "--open=") {
 			continue
 		}
 		out = append(out, arg)
@@ -395,6 +445,17 @@ func webVNCReconnectDelay(attempt int) time.Duration {
 		return 5 * time.Second
 	}
 	return delay
+}
+
+func waitWebVNCReconnect(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return context.Cause(ctx)
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (b *webVNCBridge) Close() {
