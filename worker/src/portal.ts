@@ -1133,12 +1133,11 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .lease-table th:nth-child(6) { width:118px; }
     .lease-table th:nth-child(7) { width:148px; }
     .lease-table th:nth-child(8) { width:24px; }
-    .run-table th:nth-child(1) { width:30%; }
-    .run-table th:nth-child(2) { width:86px; }
-    .run-table th:nth-child(3) { width:90px; }
-    .run-table th:nth-child(5),.run-table th:nth-child(7) { width:76px; }
-    .run-table th:nth-child(6) { width:138px; }
-    .run-table th:nth-child(8) { width:108px; }
+    .run-table th:nth-child(2),.run-table th:nth-child(3),.run-table th:nth-child(4) { width:104px; }
+    .run-table th:nth-child(5) { width:92px; }
+    .run-table th:nth-child(6) { width:190px; }
+    .run-table th:nth-child(7) { width:72px; }
+    .run-table th:nth-child(8) { width:154px; }
     .event-table th:nth-child(1) { width:58px; }
     .event-table th:nth-child(2) { width:24%; }
     .event-table th:nth-child(3) { width:96px; }
