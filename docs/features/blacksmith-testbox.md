@@ -75,20 +75,23 @@ For repos that already use Crabbox Actions hydration, `blacksmith.workflow`, `bl
 
 ## Forwarded Commands
 
-Crabbox forwards machine operations to the Blacksmith CLI:
+Crabbox forwards lifecycle and run operations to the Blacksmith CLI:
 
 ```sh
 blacksmith testbox warmup <workflow> --job <job> --ref <ref> --ssh-public-key <key> --idle-timeout <minutes>
 blacksmith testbox run --id <tbx_id> --ssh-private-key <key> <command>
-blacksmith testbox status --id <tbx_id>
 blacksmith testbox list
+blacksmith testbox list --all
 blacksmith testbox stop --id <tbx_id>
 ```
 
-The wrapper is deliberately thin. If Blacksmith adds behavior to those commands, Crabbox should prefer forwarding rather than reimplementing it.
+The wrapper is deliberately thin for warmup, run, and stop. `crabbox list` and
+`crabbox status` normalize Blacksmith data into Crabbox's common list/status
+views so rendering stays core-owned across providers. Status currently reads
+`blacksmith testbox list --all` to build that view.
 
 `crabbox list --provider blacksmith-testbox --json` parses the Blacksmith table
-output into JSON rows with the fields Crabbox can see. That parser is a
+output into compatibility JSON rows with the fields Crabbox can see. That parser is a
 compatibility layer, not a Blacksmith API contract. If the Blacksmith CLI adds
 native JSON output, Crabbox should switch to that and drop table parsing.
 

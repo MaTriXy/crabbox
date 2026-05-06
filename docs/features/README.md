@@ -13,6 +13,7 @@ Core features:
 - [Coordinator](coordinator.md): brokered leases through Cloudflare Workers and Durable Objects.
 - [Broker auth and routing](broker-auth-routing.md): GitHub login, shared bearer tokens, optional Cloudflare Access, and Worker routes.
 - [Providers](providers.md): provider overview, target matrix, classes, and fallback.
+- [Provider backends](../provider-backends.md): implementation guide for adding a new provider/backend/plugin.
 - [AWS](aws.md): EC2 Linux, Windows, WSL2, EC2 Mac, capacity, AMIs, and security groups.
 - [Hetzner](hetzner.md): Linux-only managed Hetzner behavior, classes, and cleanup.
 - [Blacksmith Testbox](blacksmith-testbox.md): delegated Testbox backend behavior.

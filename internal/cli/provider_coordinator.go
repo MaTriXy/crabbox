@@ -1,0 +1,165 @@
+package cli
+
+import (
+	"context"
+	"fmt"
+	"strings"
+)
+
+type coordinatorLeaseBackend struct {
+	spec   ProviderSpec
+	cfg    Config
+	direct SSHLeaseBackend
+	coord  *CoordinatorClient
+	rt     Runtime
+}
+
+func (b *coordinatorLeaseBackend) Spec() ProviderSpec { return b.spec }
+
+func (b *coordinatorLeaseBackend) Acquire(ctx context.Context, req AcquireRequest) (LeaseTarget, error) {
+	return acquireAttemptsRetry(b.rt, req.Keep, func() (LeaseTarget, error) {
+		return b.acquireOnce(ctx, req.Keep)
+	})
+}
+
+func (b *coordinatorLeaseBackend) acquireOnce(ctx context.Context, keep bool) (LeaseTarget, error) {
+	leaseID := newLeaseID()
+	slug := newLeaseSlug(leaseID)
+	keyPath, publicKey, err := ensureTestboxKeyForConfig(b.cfg, leaseID)
+	if err != nil {
+		return LeaseTarget{}, err
+	}
+	cfg := b.cfg
+	cfg.SSHKey = keyPath
+	cfg.ProviderKey = providerKeyForLease(leaseID)
+	if cfg.Tailscale.Enabled && cfg.Tailscale.Hostname == "" {
+		cfg.Tailscale.Hostname = renderTailscaleHostname(cfg.Tailscale.HostnameTemplate, leaseID, slug, cfg.Provider)
+	}
+	ensureAWSSSHCIDRs(ctx, &cfg)
+	fmt.Fprintf(b.rt.Stderr, "coordinator lease class=%s preferred_type=%s keep=%v slug=%s idle_timeout=%s ttl=%s\n", cfg.Class, cfg.ServerType, keep, slug, cfg.IdleTimeout, cfg.TTL)
+	lease, err := b.coord.CreateLease(ctx, cfg, publicKey, keep, leaseID, slug)
+	if err != nil {
+		return LeaseTarget{}, err
+	}
+	if lease.ID != "" && lease.ID != leaseID {
+		if err := moveStoredTestboxKey(leaseID, lease.ID); err != nil {
+			fmt.Fprintf(b.rt.Stderr, "warning: could not move local key from %s to %s: %v\n", leaseID, lease.ID, err)
+		}
+	}
+	if err := validateCoordinatorLeaseCapabilities(cfg, lease); err != nil {
+		if releaseErr := releaseCoordinatorLease(context.Background(), b.coord, blank(lease.ID, leaseID)); releaseErr != nil {
+			fmt.Fprintf(b.rt.Stderr, "warning: release failed after capability mismatch for %s: %v\n", blank(lease.ID, leaseID), releaseErr)
+		}
+		return LeaseTarget{}, err
+	}
+	server, target, leaseID := leaseToServerTarget(lease, cfg)
+	fmt.Fprintf(b.rt.Stderr, "leased %s slug=%s server=%d type=%s ip=%s via coordinator\n", leaseID, blank(lease.Slug, "-"), server.ID, server.ServerType.Name, target.Host)
+	if summary := coordinatorFallbackSummary(lease); summary != "" {
+		fmt.Fprintf(b.rt.Stderr, "fallback resolved %s\n", summary)
+	}
+	waitCtx, cancelWait := context.WithCancelCause(ctx)
+	defer cancelWait(nil)
+	stopHeartbeat := startCoordinatorHeartbeat(waitCtx, b.coord, leaseID, cfg.IdleTimeout, nil, b.rt.Stderr)
+	defer stopHeartbeat()
+	stopLeaseWatch := startCoordinatorLeaseWatch(waitCtx, b.coord, leaseID, cancelWait, b.rt.Stderr)
+	defer stopLeaseWatch()
+	if err := bootstrapAWSWindowsDesktop(waitCtx, cfg, &target, publicKey, b.rt.Stderr); err != nil {
+		if releaseErr := releaseCoordinatorLease(context.Background(), b.coord, leaseID); releaseErr != nil {
+			fmt.Fprintf(b.rt.Stderr, "warning: release failed after bootstrap error for %s: %v\n", leaseID, releaseErr)
+		}
+		return LeaseTarget{}, err
+	}
+	return LeaseTarget{Server: server, SSH: target, LeaseID: leaseID, Coordinator: b.coord}, nil
+}
+
+func (b *coordinatorLeaseBackend) Resolve(ctx context.Context, req ResolveRequest) (LeaseTarget, error) {
+	lease, err := b.coord.GetLease(ctx, req.ID)
+	if err != nil {
+		return LeaseTarget{}, err
+	}
+	server, target, leaseID := leaseToServerTarget(lease, b.cfg)
+	return LeaseTarget{Server: server, SSH: target, LeaseID: leaseID, Coordinator: b.coord}, nil
+}
+
+func (b *coordinatorLeaseBackend) List(ctx context.Context, req ListRequest) ([]Server, error) {
+	machines, activeLeaseIDs, err := b.listMachines(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return coordinatorMachinesToServers(machines, activeLeaseIDs), nil
+}
+
+func (b *coordinatorLeaseBackend) ListJSON(ctx context.Context, req ListRequest) (any, error) {
+	_ = req
+	machines, _, err := b.listMachines(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return machines, nil
+}
+
+func (b *coordinatorLeaseBackend) listMachines(ctx context.Context) ([]CoordinatorMachine, map[string]struct{}, error) {
+	if b.cfg.CoordAdminToken == "" {
+		return nil, nil, exit(2, "pool list requires broker.adminToken or CRABBOX_COORDINATOR_ADMIN_TOKEN when a coordinator is configured")
+	}
+	cfg := b.cfg
+	cfg.CoordToken = cfg.CoordAdminToken
+	coord, _, err := newCoordinatorClient(cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	machines, err := coord.Pool(ctx, cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	activeLeases, err := coord.AdminLeases(ctx, "active", "", "", 1000)
+	if err != nil {
+		fmt.Fprintf(b.rt.Stderr, "warning: active lease lookup failed; orphan status unavailable: %v\n", err)
+		return machines, nil, nil
+	}
+	return machines, activeCoordinatorLeaseIDs(activeLeases), nil
+}
+
+func (b *coordinatorLeaseBackend) ReleaseLease(ctx context.Context, req ReleaseLeaseRequest) error {
+	if req.Lease.LeaseID == "" {
+		return exit(2, "missing coordinator lease id")
+	}
+	if err := releaseCoordinatorLease(ctx, b.coord, req.Lease.LeaseID); err != nil {
+		return err
+	}
+	removeLeaseClaim(req.Lease.LeaseID)
+	return nil
+}
+
+func (b *coordinatorLeaseBackend) Touch(ctx context.Context, req TouchRequest) (Server, error) {
+	lease, err := b.coord.TouchLease(ctx, req.Lease.LeaseID)
+	if err != nil {
+		return req.Lease.Server, err
+	}
+	server, _, _ := leaseToServerTarget(lease, b.cfg)
+	return server, nil
+}
+
+func coordinatorMachinesToServers(machines []CoordinatorMachine, activeLeaseIDs map[string]struct{}) []Server {
+	servers := make([]Server, 0, len(machines))
+	for _, machine := range machines {
+		labels := map[string]string{}
+		for k, v := range machine.Labels {
+			labels[k] = v
+		}
+		if activeLeaseIDs != nil {
+			labels["orphan"] = strings.TrimSpace(coordinatorMachineOrphanField(labels, activeLeaseIDs))
+		}
+		server := Server{
+			CloudID:  string(machine.ID),
+			Provider: machine.Provider,
+			Name:     machine.Name,
+			Status:   machine.Status,
+			Labels:   labels,
+		}
+		server.ServerType.Name = machine.ServerType
+		server.PublicNet.IPv4.IP = machine.Host
+		servers = append(servers, server)
+	}
+	return servers
+}

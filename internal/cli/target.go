@@ -100,14 +100,12 @@ func validateTargetConfig(cfg Config) error {
 }
 
 func validateProviderTarget(cfg Config) error {
-	if isStaticProvider(cfg.Provider) || isBlacksmithProvider(cfg.Provider) {
-		return nil
+	provider, err := ProviderFor(cfg.Provider)
+	if err != nil {
+		return err
 	}
-	if cfg.Provider == "aws" && cfg.TargetOS == targetWindows && cfg.WindowsMode == windowsModeNormal {
-		return nil
-	}
-	if cfg.Provider == "aws" && cfg.TargetOS == targetWindows && cfg.WindowsMode == windowsModeWSL2 {
-		return nil
+	if !providerSpecSupportsTarget(provider.Spec(), cfg.TargetOS, cfg.WindowsMode) {
+		return exit(2, "%s", unsupportedManagedTargetMessage(provider.Name(), cfg.TargetOS))
 	}
 	if cfg.Provider == "aws" && cfg.TargetOS == targetMacOS {
 		if cfg.AWSMacHostID == "" && cfg.Coordinator == "" {
@@ -118,10 +116,20 @@ func validateProviderTarget(cfg Config) error {
 		}
 		return nil
 	}
-	if cfg.TargetOS != targetLinux {
-		return exit(2, "%s", unsupportedManagedTargetMessage(cfg.Provider, cfg.TargetOS))
-	}
 	return nil
+}
+
+func providerSpecSupportsTarget(spec ProviderSpec, targetOS, windowsMode string) bool {
+	for _, target := range spec.Targets {
+		if target.OS != targetOS {
+			continue
+		}
+		if targetOS == targetWindows && target.WindowsMode != "" && target.WindowsMode != windowsMode {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func unsupportedManagedTargetMessage(provider, target string) string {

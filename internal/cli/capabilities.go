@@ -33,14 +33,19 @@ func applyCapabilityFlags(cfg *Config, desktop, browser, code bool) {
 }
 
 func validateRequestedCapabilities(cfg Config) error {
-	if cfg.Desktop && isBlacksmithProvider(cfg.Provider) {
-		return exit(2, "desktop/VNC is not supported for provider=%s; Blacksmith owns machine connectivity", cfg.Provider)
+	provider, err := ProviderFor(cfg.Provider)
+	if err != nil {
+		return err
 	}
-	if cfg.Browser && isBlacksmithProvider(cfg.Provider) {
-		return exit(2, "browser provisioning is not supported for provider=%s; use Blacksmith workflow setup for headless browser automation", cfg.Provider)
+	spec := provider.Spec()
+	if cfg.Desktop && !featureSetHas(spec.Features, FeatureDesktop) {
+		return exit(2, "desktop/VNC is not supported for provider=%s", provider.Name())
 	}
-	if cfg.Code && isBlacksmithProvider(cfg.Provider) {
-		return exit(2, "web code is not supported for provider=%s; Blacksmith owns machine connectivity", cfg.Provider)
+	if cfg.Browser && !featureSetHas(spec.Features, FeatureBrowser) {
+		return exit(2, "browser provisioning is not supported for provider=%s", provider.Name())
+	}
+	if cfg.Code && !featureSetHas(spec.Features, FeatureCode) {
+		return exit(2, "web code is not supported for provider=%s", provider.Name())
 	}
 	if cfg.Code && cfg.TargetOS != targetLinux {
 		return exit(2, "web code currently supports managed Linux leases only")

@@ -78,13 +78,18 @@ func (a App) actionsHydrate(ctx context.Context, args []string) error {
 	if err := claimLeaseForRepoConfig(leaseID, slug, cfg, repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
 		return err
 	}
-	if coord, ok, err := newTargetCoordinatorClient(cfg); err != nil {
+	backend, err := loadBackend(cfg, runtimeForApp(a))
+	if err != nil {
 		return err
-	} else if ok {
+	}
+	if coord := backendCoordinator(backend); coord != nil {
 		stopHeartbeat := startCoordinatorHeartbeat(ctx, coord, leaseID, cfg.IdleTimeout, nil, a.Stderr)
 		defer stopHeartbeat()
-	} else {
-		a.touchActiveLeaseBestEffort(ctx, cfg, server, leaseID)
+	} else if sshBackend, ok := backend.(SSHLeaseBackend); ok {
+		_, err := sshBackend.Touch(ctx, TouchRequest{Lease: LeaseTarget{Server: server, SSH: target, LeaseID: leaseID}, State: blank(server.Labels["state"], "ready"), IdleTimeout: cfg.IdleTimeout})
+		if err != nil {
+			fmt.Fprintf(a.Stderr, "warning: touch failed for %s: %v\n", leaseID, err)
+		}
 	}
 	label := githubActionsLeaseLabel(leaseID)
 	if err := a.registerGitHubActionsRunner(ctx, cfg, target, leaseID, slug, ghRepo, "", nil); err != nil {
@@ -186,29 +191,15 @@ func (a App) actionsRegister(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if coord, ok, err := newTargetCoordinatorClient(cfg); err != nil {
-		return err
-	} else if ok {
-		lease, err := coord.GetLease(ctx, *leaseIDFlag)
-		if err != nil {
-			return err
-		}
-		_, target, leaseID := leaseToServerTarget(lease, cfg)
-		if err := claimLeaseForRepoConfig(leaseID, lease.Slug, cfg, repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
-			return err
-		}
-		a.touchCoordinatorLeaseBestEffort(ctx, cfg, leaseID)
-		return a.registerGitHubActionsRunner(ctx, cfg, target, leaseID, lease.Slug, ghRepo, *nameFlag, extraLabels)
-	}
-	server, target, leaseID, err := a.findLease(ctx, cfg, *leaseIDFlag)
+	server, target, leaseID, slug, err := a.resolveLeaseTargetForActions(ctx, cfg, *leaseIDFlag)
 	if err != nil {
 		return err
 	}
-	if err := claimLeaseForRepoConfig(leaseID, serverSlug(server), cfg, repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
+	if err := claimLeaseForRepoConfig(leaseID, slug, cfg, repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
 		return err
 	}
-	a.touchActiveLeaseBestEffort(ctx, cfg, server, leaseID)
-	return a.registerGitHubActionsRunner(ctx, cfg, target, leaseID, serverSlug(server), ghRepo, *nameFlag, extraLabels)
+	a.touchLeaseTargetBestEffort(ctx, cfg, LeaseTarget{Server: server, SSH: target, LeaseID: leaseID}, "")
+	return a.registerGitHubActionsRunner(ctx, cfg, target, leaseID, slug, ghRepo, *nameFlag, extraLabels)
 }
 
 func (a App) actionsDispatch(ctx context.Context, args []string) error {
@@ -277,17 +268,7 @@ func (a App) registerGitHubActionsRunner(ctx context.Context, cfg Config, target
 }
 
 func (a App) resolveLeaseTargetForActions(ctx context.Context, cfg Config, id string) (Server, SSHTarget, string, string, error) {
-	if coord, ok, err := newTargetCoordinatorClient(cfg); err != nil {
-		return Server{}, SSHTarget{}, "", "", err
-	} else if ok {
-		lease, err := coord.GetLease(ctx, id)
-		if err != nil {
-			return Server{}, SSHTarget{}, "", "", err
-		}
-		server, target, leaseID := leaseToServerTarget(lease, cfg)
-		return server, target, leaseID, lease.Slug, nil
-	}
-	server, target, leaseID, err := a.findLease(ctx, cfg, id)
+	server, target, leaseID, err := a.resolveLeaseTarget(ctx, cfg, id)
 	return server, target, leaseID, serverSlug(server), err
 }
 

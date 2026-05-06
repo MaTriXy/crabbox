@@ -12,6 +12,10 @@ func flagWasSet(fs *flag.FlagSet, name string) bool {
 	return seen
 }
 
+func FlagWasSet(fs *flag.FlagSet, name string) bool {
+	return flagWasSet(fs, name)
+}
+
 func extractBoolFlag(args []string, name string) ([]string, bool) {
 	want := "--" + name
 	out := make([]string, 0, len(args))

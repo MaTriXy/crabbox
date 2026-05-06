@@ -3,16 +3,17 @@ package cli
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 )
 
 func (a App) list(ctx context.Context, args []string) error {
+	defaults := defaultConfig()
 	fs := newFlagSet("list", a.Stderr)
-	provider := fs.String("provider", defaultConfig().Provider, "provider: hetzner, aws, ssh, or blacksmith-testbox")
+	provider := fs.String("provider", defaults.Provider, "provider: hetzner, aws, ssh, or blacksmith-testbox")
 	jsonOut := fs.Bool("json", false, "print JSON")
-	targetFlags := registerTargetFlags(fs, defaultConfig())
+	providerFlags := registerProviderFlags(fs, defaults)
+	targetFlags := registerTargetFlags(fs, defaults)
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
@@ -21,93 +22,39 @@ func (a App) list(ctx context.Context, args []string) error {
 		return err
 	}
 	cfg.Provider = *provider
+	if err := applyProviderFlags(&cfg, fs, providerFlags); err != nil {
+		return err
+	}
 	if err := applyTargetFlagOverrides(&cfg, fs, targetFlags); err != nil {
 		return err
 	}
-	if isBlacksmithProvider(cfg.Provider) {
-		return a.blacksmithList(ctx, cfg, *jsonOut)
-	}
-	if isStaticProvider(cfg.Provider) {
-		server, _, _, err := staticLease(cfg)
-		if err != nil {
-			return err
-		}
-		servers := []Server{server}
-		if *jsonOut {
-			return json.NewEncoder(a.Stdout).Encode(servers)
-		}
-		for _, s := range servers {
-			fmt.Fprintf(a.Stdout, "%-20s %-28s %-12s %-14s %-15s lease=%s slug=%s keep=%s target=%s\n",
-				s.DisplayID(), s.Name, s.Status, s.ServerType.Name, s.PublicNet.IPv4.IP, s.Labels["lease"], blank(serverSlug(s), "-"), s.Labels["keep"], s.Labels["target"])
-		}
-		return nil
-	}
-	if _, ok, err := newCoordinatorClient(cfg); err != nil {
-		return err
-	} else if ok {
-		if cfg.CoordAdminToken == "" {
-			return exit(2, "pool list requires broker.adminToken or CRABBOX_COORDINATOR_ADMIN_TOKEN when a coordinator is configured")
-		}
-		cfg.CoordToken = cfg.CoordAdminToken
-		coord, _, err := newCoordinatorClient(cfg)
-		if err != nil {
-			return err
-		}
-		machines, err := coord.Pool(ctx, cfg)
-		if err != nil {
-			return err
-		}
-		activeLeases, err := coord.AdminLeases(ctx, "active", "", "", 1000)
-		if err != nil {
-			fmt.Fprintf(a.Stderr, "warning: active lease lookup failed; orphan status unavailable: %v\n", err)
-		}
-		activeLeaseIDs := activeCoordinatorLeaseIDs(activeLeases)
-		if *jsonOut {
-			return json.NewEncoder(a.Stdout).Encode(machines)
-		}
-		for _, s := range machines {
-			extra := ""
-			if err == nil {
-				extra = coordinatorMachineOrphanField(s.Labels, activeLeaseIDs)
-			}
-			fmt.Fprintf(a.Stdout, "%-20s %-28s %-12s %-14s %-15s lease=%s slug=%s keep=%s%s\n",
-				s.ID, s.Name, s.Status, s.ServerType, s.Host, s.Labels["lease"], blank(s.Labels["slug"], "-"), s.Labels["keep"], extra)
-		}
-		return nil
-	}
-	if cfg.Provider == "aws" {
-		client, err := newAWSClient(ctx, cfg)
-		if err != nil {
-			return err
-		}
-		servers, err := client.ListCrabboxServers(ctx)
-		if err != nil {
-			return err
-		}
-		if *jsonOut {
-			return json.NewEncoder(a.Stdout).Encode(servers)
-		}
-		for _, s := range servers {
-			fmt.Fprintf(a.Stdout, "%-20s %-28s %-12s %-14s %-15s lease=%s slug=%s keep=%s\n",
-				s.DisplayID(), s.Name, s.Status, s.ServerType.Name, s.PublicNet.IPv4.IP, s.Labels["lease"], blank(serverSlug(s), "-"), s.Labels["keep"])
-		}
-		return nil
-	}
-	client, err := newHetznerClient()
+	backend, err := loadBackend(cfg, runtimeForApp(a))
 	if err != nil {
 		return err
 	}
-	servers, err := client.ListCrabboxServers(ctx)
+	var servers []Server
+	switch b := backend.(type) {
+	case SSHLeaseBackend:
+		servers, err = b.List(ctx, ListRequest{Options: leaseOptionsFromConfig(cfg)})
+	case DelegatedRunBackend:
+		servers, err = b.List(ctx, ListRequest{Options: leaseOptionsFromConfig(cfg)})
+	default:
+		return exit(2, "provider=%s does not support list", backend.Spec().Name)
+	}
 	if err != nil {
 		return err
 	}
 	if *jsonOut {
+		if jsonBackend, ok := backend.(JSONListBackend); ok {
+			view, err := jsonBackend.ListJSON(ctx, ListRequest{Options: leaseOptionsFromConfig(cfg)})
+			if err != nil {
+				return err
+			}
+			return json.NewEncoder(a.Stdout).Encode(view)
+		}
 		return json.NewEncoder(a.Stdout).Encode(servers)
 	}
-	for _, s := range servers {
-		fmt.Fprintf(a.Stdout, "%-20s %-28s %-12s %-14s %-15s lease=%s slug=%s keep=%s\n",
-			s.DisplayID(), s.Name, s.Status, s.ServerType.Name, s.PublicNet.IPv4.IP, s.Labels["lease"], blank(serverSlug(s), "-"), s.Labels["keep"])
-	}
+	renderServerList(a.Stdout, servers)
 	return nil
 }
 
@@ -133,10 +80,12 @@ func coordinatorMachineOrphanField(labels map[string]string, activeLeaseIDs map[
 }
 
 func (a App) cleanup(ctx context.Context, args []string) error {
+	defaults := defaultConfig()
 	fs := newFlagSet("machine cleanup", a.Stderr)
-	provider := fs.String("provider", defaultConfig().Provider, "provider: hetzner or aws")
+	provider := fs.String("provider", defaults.Provider, "provider: hetzner or aws")
 	dryRun := fs.Bool("dry-run", false, "only print")
-	targetFlags := registerTargetFlags(fs, defaultConfig())
+	providerFlags := registerProviderFlags(fs, defaults)
+	targetFlags := registerTargetFlags(fs, defaults)
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
@@ -145,63 +94,24 @@ func (a App) cleanup(ctx context.Context, args []string) error {
 		return err
 	}
 	cfg.Provider = *provider
+	if err := applyProviderFlags(&cfg, fs, providerFlags); err != nil {
+		return err
+	}
 	if err := applyTargetFlagOverrides(&cfg, fs, targetFlags); err != nil {
 		return err
 	}
-	if isStaticProvider(cfg.Provider) {
-		return exit(2, "machine cleanup is not supported for provider=%s", cfg.Provider)
-	}
-	if _, ok, err := newCoordinatorClient(cfg); err != nil {
+	backend, err := loadBackend(cfg, runtimeForApp(a))
+	if err != nil {
 		return err
-	} else if ok {
+	}
+	if backendCoordinator(backend) != nil {
 		return exit(2, "machine cleanup is disabled when a coordinator is configured; coordinator TTL alarms own brokered cleanup")
 	}
-	if cfg.Provider == "aws" {
-		awsClient, err := newAWSClient(ctx, cfg)
-		if err != nil {
-			return err
-		}
-		servers, err := awsClient.ListCrabboxServers(ctx)
-		if err != nil {
-			return err
-		}
-		for _, s := range servers {
-			shouldDelete, reason := shouldCleanupServer(s, time.Now().UTC())
-			if !shouldDelete {
-				fmt.Fprintf(a.Stderr, "skip server id=%s name=%s reason=%s\n", s.DisplayID(), s.Name, reason)
-				continue
-			}
-			fmt.Fprintf(a.Stderr, "delete server id=%s name=%s\n", s.DisplayID(), s.Name)
-			if !*dryRun {
-				if err := deleteServer(ctx, cfg, s); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
+	cleaner, ok := backend.(CleanupBackend)
+	if !ok {
+		return exit(2, "machine cleanup is not supported for provider=%s", cfg.Provider)
 	}
-	client, err := newHetznerClient()
-	if err != nil {
-		return err
-	}
-	servers, err := client.ListCrabboxServers(ctx)
-	if err != nil {
-		return err
-	}
-	for _, s := range servers {
-		shouldDelete, reason := shouldCleanupServer(s, time.Now().UTC())
-		if !shouldDelete {
-			fmt.Fprintf(a.Stderr, "skip server id=%s name=%s reason=%s\n", s.DisplayID(), s.Name, reason)
-			continue
-		}
-		fmt.Fprintf(a.Stderr, "delete server id=%s name=%s\n", s.DisplayID(), s.Name)
-		if !*dryRun {
-			if err := deleteServer(ctx, cfg, s); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	return cleaner.Cleanup(ctx, CleanupRequest{Options: leaseOptionsFromConfig(cfg), DryRun: *dryRun})
 }
 
 func shouldCleanupServer(server Server, now time.Time) (bool, string) {

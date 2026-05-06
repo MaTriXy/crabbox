@@ -26,6 +26,7 @@ ssh         Existing SSH host selected by static.host
 - [AWS](aws.md): EC2 Linux, Windows, WSL2, EC2 Mac, capacity, AMIs, and security groups.
 - [Hetzner](hetzner.md): Linux-only managed provider behavior, classes, and cleanup.
 - [Blacksmith Testbox](blacksmith-testbox.md): delegated Testbox backend behavior.
+- [Provider backends](../provider-backends.md): implementation guide for adding a new provider/backend/plugin.
 
 ## Hetzner Summary
 

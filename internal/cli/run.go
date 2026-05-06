@@ -60,42 +60,42 @@ func (a App) warmup(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if isBlacksmithProvider(cfg.Provider) {
-		if *actionsRunner {
-			return exit(2, "--actions-runner is not supported for provider=%s; Blacksmith owns runner hydration", cfg.Provider)
+	backend, err := loadBackend(cfg, runtimeForApp(a))
+	if err != nil {
+		return err
+	}
+	options := leaseOptionsFromConfig(cfg)
+	if delegated, ok := backend.(DelegatedRunBackend); ok {
+		return delegated.Warmup(ctx, WarmupRequest{Repo: repo, Options: options, Keep: *keep, Reclaim: *reclaim, ActionsRunner: *actionsRunner, TimingJSON: *timingJSON})
+	}
+	sshBackend, ok := backend.(SSHLeaseBackend)
+	if !ok {
+		return exit(2, "provider=%s does not support warmup", backend.Spec().Name)
+	}
+	if *actionsRunner {
+		if err := validateActionsRunnerCapability(backend, cfg); err != nil {
+			return err
 		}
-		return a.blacksmithWarmup(ctx, cfg, repo, *keep, *reclaim, *timingJSON)
 	}
-
-	coord, useCoordinator, err := newTargetCoordinatorClient(cfg)
+	lease, err := sshBackend.Acquire(ctx, AcquireRequest{Repo: repo, Options: options, Keep: *keep, Reclaim: *reclaim})
 	if err != nil {
 		return err
 	}
-	var server Server
-	var target SSHTarget
-	var leaseID string
-	if useCoordinator {
-		server, target, leaseID, err = a.acquireCoordinatorWithRetry(ctx, cfg, coord, *keep)
-	} else {
-		server, target, leaseID, err = a.acquireWithRetry(ctx, cfg, *keep)
-	}
-	if err != nil {
-		return err
-	}
+	server, target, leaseID := lease.Server, lease.SSH, lease.LeaseID
 	applyResolvedServerConfig(&cfg, server)
 	if err := claimLeaseForRepoConfig(leaseID, serverSlug(server), cfg, repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
-		a.releaseAcquiredLeaseBestEffort(ctx, cfg, coord, useCoordinator, server, target, leaseID)
+		a.releaseBackendLeaseBestEffort(ctx, sshBackend, LeaseTarget{Server: server, SSH: target, LeaseID: leaseID, Coordinator: lease.Coordinator})
 		return err
 	}
 	if serverTailscaleMetadata(server).Enabled {
 		if err := waitForSSHReady(ctx, &target, a.Stderr, "tailscale metadata", 2*time.Minute); err == nil {
-			a.refreshTailscaleMetadata(ctx, cfg, coord, useCoordinator, &server, target, leaseID)
+			a.refreshTailscaleMetadata(ctx, cfg, lease.Coordinator, lease.Coordinator != nil, &server, target, leaseID)
 		} else {
 			fmt.Fprintf(a.Stderr, "warning: tailscale metadata wait failed: %v\n", err)
 		}
 	}
 	if resolved, err := resolveNetworkTarget(ctx, cfg, server, target); err != nil {
-		a.releaseAcquiredLeaseBestEffort(ctx, cfg, coord, useCoordinator, server, target, leaseID)
+		a.releaseBackendLeaseBestEffort(ctx, sshBackend, LeaseTarget{Server: server, SSH: target, LeaseID: leaseID, Coordinator: lease.Coordinator})
 		return err
 	} else {
 		target = resolved.Target
@@ -182,28 +182,40 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 	if err != nil {
 		return err
 	}
-	if isBlacksmithProvider(cfg.Provider) {
-		return a.blacksmithRun(ctx, cfg, repo, blacksmithRunOptions{
-			ID:          *leaseIDFlag,
-			Keep:        *keep,
-			Reclaim:     *reclaim,
-			SyncOnly:    *syncOnly,
-			Debug:       *debugSync,
-			ShellMode:   *shellMode,
-			Command:     command,
-			IdleTimeout: cfg.IdleTimeout,
-			TimingJSON:  *timingJSON,
+	backend, err := loadBackend(cfg, runtimeForApp(a))
+	if err != nil {
+		return err
+	}
+	options := leaseOptionsFromConfig(cfg)
+	if delegated, ok := backend.(DelegatedRunBackend); ok {
+		_, err := delegated.Run(ctx, RunRequest{
+			Repo:           repo,
+			ID:             *leaseIDFlag,
+			Options:        options,
+			Keep:           *keep,
+			Reclaim:        *reclaim,
+			NoSync:         *noSync,
+			SyncOnly:       *syncOnly,
+			DebugSync:      *debugSync,
+			ShellMode:      *shellMode,
+			ChecksumSync:   *checksumSync,
+			ForceSyncLarge: *forceSyncLarge,
+			Command:        command,
+			TimingJSON:     *timingJSON,
 		})
+		return err
+	}
+	sshBackend, ok := backend.(SSHLeaseBackend)
+	if !ok {
+		return exit(2, "provider=%s does not support run", backend.Spec().Name)
 	}
 
 	var server Server
 	var target SSHTarget
 	var leaseID string
 	acquired := false
-	coord, useCoordinator, err := newTargetCoordinatorClient(cfg)
-	if err != nil {
-		return err
-	}
+	coord := backendCoordinator(backend)
+	useCoordinator := coord != nil
 	recorder := &runRecorder{}
 	var runFailure error
 	recordFailure := func(failure error) error {
@@ -217,48 +229,35 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 		recorder.Event("leasing.started", "leasing", "")
 	}
 	if *leaseIDFlag != "" {
-		if useCoordinator {
-			var lease CoordinatorLease
-			lease, err = coord.GetLease(ctx, *leaseIDFlag)
-			if err == nil {
-				server, target, leaseID = leaseToServerTarget(lease, cfg)
-				if resolved, resolveErr := resolveNetworkTarget(ctx, cfg, server, target); resolveErr != nil {
-					err = resolveErr
-				} else {
-					target = resolved.Target
-					if resolved.FallbackReason != "" {
-						fmt.Fprintf(a.Stderr, "network fallback %s\n", resolved.FallbackReason)
-					}
-				}
-				if !flagWasSet(fs, "idle-timeout") && lease.IdleTimeoutSeconds > 0 {
-					cfg.IdleTimeout = time.Duration(lease.IdleTimeoutSeconds) * time.Second
-				}
-			}
-		} else {
-			server, target, leaseID, err = a.findLease(ctx, cfg, *leaseIDFlag)
-			if err == nil {
-				if resolved, resolveErr := resolveNetworkTarget(ctx, cfg, server, target); resolveErr != nil {
-					err = resolveErr
-				} else {
-					target = resolved.Target
-					if resolved.FallbackReason != "" {
-						fmt.Fprintf(a.Stderr, "network fallback %s\n", resolved.FallbackReason)
-					}
-				}
-			}
-			if err == nil && !flagWasSet(fs, "idle-timeout") {
-				if duration, ok := parseDurationSecondsLabel(server.Labels["idle_timeout_secs"]); ok {
-					cfg.IdleTimeout = duration
-				} else if duration, ok := parseDurationSecondsLabel(server.Labels["idle_timeout"]); ok {
-					cfg.IdleTimeout = duration
+		var lease LeaseTarget
+		lease, err = sshBackend.Resolve(ctx, ResolveRequest{Repo: repo, Options: options, ID: *leaseIDFlag, Reclaim: *reclaim})
+		if err == nil {
+			server, target, leaseID = lease.Server, lease.SSH, lease.LeaseID
+			if resolved, resolveErr := resolveNetworkTarget(ctx, cfg, server, target); resolveErr != nil {
+				err = resolveErr
+			} else {
+				target = resolved.Target
+				if resolved.FallbackReason != "" {
+					fmt.Fprintf(a.Stderr, "network fallback %s\n", resolved.FallbackReason)
 				}
 			}
 		}
+		if err == nil && !flagWasSet(fs, "idle-timeout") {
+			if useCoordinator {
+				if duration, ok := parseDurationSecondsLabel(server.Labels["idle_timeout_secs"]); ok {
+					cfg.IdleTimeout = duration
+				}
+			} else if duration, ok := parseDurationSecondsLabel(server.Labels["idle_timeout_secs"]); ok {
+				cfg.IdleTimeout = duration
+			} else if duration, ok := parseDurationSecondsLabel(server.Labels["idle_timeout"]); ok {
+				cfg.IdleTimeout = duration
+			}
+		}
 	} else {
-		if useCoordinator {
-			server, target, leaseID, err = a.acquireCoordinatorWithRetry(ctx, cfg, coord, *keep)
-		} else {
-			server, target, leaseID, err = a.acquireWithRetry(ctx, cfg, *keep)
+		var lease LeaseTarget
+		lease, err = sshBackend.Acquire(ctx, AcquireRequest{Repo: repo, Options: options, Keep: *keep, Reclaim: *reclaim})
+		if err == nil {
+			server, target, leaseID = lease.Server, lease.SSH, lease.LeaseID
 		}
 		acquired = true
 	}
@@ -274,17 +273,21 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 	}
 	if err := claimLeaseForRepoConfig(leaseID, serverSlug(server), cfg, repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
 		if acquired && !*keep {
-			a.releaseAcquiredLeaseBestEffort(ctx, cfg, coord, useCoordinator, server, target, leaseID)
+			a.releaseBackendLeaseBestEffort(ctx, sshBackend, LeaseTarget{Server: server, SSH: target, LeaseID: leaseID, Coordinator: coord})
 		}
 		return recordFailure(err)
 	}
 	if !useCoordinator && leaseID != "" {
-		server = a.touchDirectLeaseBestEffort(ctx, cfg, server, blank(server.Labels["state"], "ready"))
+		if touched, touchErr := sshBackend.Touch(ctx, TouchRequest{Lease: LeaseTarget{Server: server, SSH: target, LeaseID: leaseID}, State: blank(server.Labels["state"], "ready"), IdleTimeout: cfg.IdleTimeout}); touchErr == nil {
+			server = touched
+		} else {
+			fmt.Fprintf(a.Stderr, "warning: direct touch failed for %s: %v\n", leaseID, touchErr)
+		}
 	}
 	if acquired {
 		defer func() {
 			if !*keep {
-				a.releaseAcquiredLeaseBestEffort(context.Background(), cfg, coord, useCoordinator, server, target, leaseID)
+				a.releaseBackendLeaseBestEffort(context.Background(), sshBackend, LeaseTarget{Server: server, SSH: target, LeaseID: leaseID, Coordinator: coord})
 				recorder.Event("lease.released", "released", "")
 			}
 		}()
@@ -493,9 +496,17 @@ afterSync:
 		}
 	}
 	if !useCoordinator {
-		server = a.touchDirectLeaseBestEffort(context.Background(), cfg, server, "running")
+		if touched, touchErr := sshBackend.Touch(context.Background(), TouchRequest{Lease: LeaseTarget{Server: server, SSH: target, LeaseID: leaseID}, State: "running", IdleTimeout: cfg.IdleTimeout}); touchErr == nil {
+			server = touched
+		} else {
+			fmt.Fprintf(a.Stderr, "warning: direct touch state=running: %v\n", touchErr)
+		}
 		defer func() {
-			server = a.touchDirectLeaseBestEffort(context.Background(), cfg, server, "ready")
+			if touched, touchErr := sshBackend.Touch(context.Background(), TouchRequest{Lease: LeaseTarget{Server: server, SSH: target, LeaseID: leaseID}, State: "ready", IdleTimeout: cfg.IdleTimeout}); touchErr == nil {
+				server = touched
+			} else {
+				fmt.Fprintf(a.Stderr, "warning: direct touch state=ready: %v\n", touchErr)
+			}
 		}()
 	}
 	fmt.Fprintf(a.Stderr, "running on %s %s\n", target.Host, strings.Join(command, " "))
@@ -674,55 +685,6 @@ func shouldUseShell(command []string) bool {
 	return false
 }
 
-func (a App) acquireCoordinator(ctx context.Context, cfg Config, coord *CoordinatorClient, keep bool) (Server, SSHTarget, string, error) {
-	leaseID := newLeaseID()
-	slug := newLeaseSlug(leaseID)
-	keyPath, publicKey, err := ensureTestboxKeyForConfig(cfg, leaseID)
-	if err != nil {
-		return Server{}, SSHTarget{}, "", err
-	}
-	cfg.SSHKey = keyPath
-	cfg.ProviderKey = providerKeyForLease(leaseID)
-	if cfg.Tailscale.Enabled && cfg.Tailscale.Hostname == "" {
-		cfg.Tailscale.Hostname = renderTailscaleHostname(cfg.Tailscale.HostnameTemplate, leaseID, slug, cfg.Provider)
-	}
-	ensureAWSSSHCIDRs(ctx, &cfg)
-	fmt.Fprintf(a.Stderr, "coordinator lease class=%s preferred_type=%s keep=%v slug=%s idle_timeout=%s ttl=%s\n", cfg.Class, cfg.ServerType, keep, slug, cfg.IdleTimeout, cfg.TTL)
-	lease, err := coord.CreateLease(ctx, cfg, publicKey, keep, leaseID, slug)
-	if err != nil {
-		return Server{}, SSHTarget{}, "", err
-	}
-	if lease.ID != "" && lease.ID != leaseID {
-		if err := moveStoredTestboxKey(leaseID, lease.ID); err != nil {
-			fmt.Fprintf(a.Stderr, "warning: could not move local key from %s to %s: %v\n", leaseID, lease.ID, err)
-		}
-	}
-	if err := validateCoordinatorLeaseCapabilities(cfg, lease); err != nil {
-		if releaseErr := releaseCoordinatorLease(context.Background(), coord, blank(lease.ID, leaseID)); releaseErr != nil {
-			fmt.Fprintf(a.Stderr, "warning: release failed after capability mismatch for %s: %v\n", blank(lease.ID, leaseID), releaseErr)
-		}
-		return Server{}, SSHTarget{}, "", err
-	}
-	server, target, leaseID := leaseToServerTarget(lease, cfg)
-	fmt.Fprintf(a.Stderr, "leased %s slug=%s server=%d type=%s ip=%s via coordinator\n", leaseID, blank(lease.Slug, "-"), server.ID, server.ServerType.Name, target.Host)
-	if summary := coordinatorFallbackSummary(lease); summary != "" {
-		fmt.Fprintf(a.Stderr, "fallback resolved %s\n", summary)
-	}
-	waitCtx, cancelWait := context.WithCancelCause(ctx)
-	defer cancelWait(nil)
-	stopHeartbeat := startCoordinatorHeartbeat(waitCtx, coord, leaseID, cfg.IdleTimeout, nil, a.Stderr)
-	defer stopHeartbeat()
-	stopLeaseWatch := startCoordinatorLeaseWatch(waitCtx, coord, leaseID, cancelWait, a.Stderr)
-	defer stopLeaseWatch()
-	if err := bootstrapAWSWindowsDesktop(waitCtx, cfg, &target, publicKey, a.Stderr); err != nil {
-		if releaseErr := releaseCoordinatorLease(context.Background(), coord, leaseID); releaseErr != nil {
-			fmt.Fprintf(a.Stderr, "warning: release failed after bootstrap error for %s: %v\n", leaseID, releaseErr)
-		}
-		return Server{}, SSHTarget{}, "", err
-	}
-	return server, target, leaseID, nil
-}
-
 func validateCoordinatorLeaseCapabilities(cfg Config, lease CoordinatorLease) error {
 	if cfg.Desktop && !lease.Desktop {
 		return exit(5, "coordinator did not provision desktop=true for lease %s; deploy the coordinator with desktop/VNC support", blank(lease.ID, "-"))
@@ -769,40 +731,6 @@ func coordinatorFallbackSummary(lease CoordinatorLease) string {
 	return fmt.Sprintf("requested_type=%s actual_type=%s attempts=%s", lease.RequestedServerType, lease.ServerType, blank(strings.Join(attempts, ","), "-"))
 }
 
-func (a App) acquireCoordinatorWithRetry(ctx context.Context, cfg Config, coord *CoordinatorClient, keep bool) (Server, SSHTarget, string, error) {
-	var lastErr error
-	attempts := acquireAttempts(keep)
-	for attempt := 1; attempt <= attempts; attempt++ {
-		server, target, leaseID, err := a.acquireCoordinator(ctx, cfg, coord, keep)
-		if err == nil {
-			return server, target, leaseID, nil
-		}
-		lastErr = err
-		if attempt == attempts || !isBootstrapWaitError(err) {
-			return Server{}, SSHTarget{}, "", err
-		}
-		fmt.Fprintf(a.Stderr, "warning: bootstrap failed; retrying with fresh lease: %v\n", err)
-	}
-	return Server{}, SSHTarget{}, "", lastErr
-}
-
-func (a App) acquireWithRetry(ctx context.Context, cfg Config, keep bool) (Server, SSHTarget, string, error) {
-	var lastErr error
-	attempts := acquireAttempts(keep)
-	for attempt := 1; attempt <= attempts; attempt++ {
-		server, target, leaseID, err := a.acquire(ctx, cfg, keep)
-		if err == nil {
-			return server, target, leaseID, nil
-		}
-		lastErr = err
-		if attempt == attempts || !isBootstrapWaitError(err) {
-			return Server{}, SSHTarget{}, "", err
-		}
-		fmt.Fprintf(a.Stderr, "warning: bootstrap failed; retrying with fresh lease: %v\n", err)
-	}
-	return Server{}, SSHTarget{}, "", lastErr
-}
-
 func acquireAttempts(bool) int {
 	return 2
 }
@@ -832,17 +760,12 @@ func releaseCoordinatorLease(ctx context.Context, coord *CoordinatorClient, leas
 	return lastErr
 }
 
-func (a App) releaseAcquiredLeaseBestEffort(ctx context.Context, cfg Config, coord *CoordinatorClient, useCoordinator bool, server Server, target SSHTarget, leaseID string) {
-	a.writeActionsHydrationStopBestEffort(ctx, target, leaseID)
-	fmt.Fprintf(a.Stderr, "releasing %s server=%s\n", leaseID, server.DisplayID())
-	if useCoordinator {
-		if err := releaseCoordinatorLease(ctx, coord, leaseID); err != nil {
-			fmt.Fprintf(a.Stderr, "warning: release failed for %s: %v\n", leaseID, err)
-		}
-	} else if err := deleteServer(ctx, cfg, server); err != nil {
-		fmt.Fprintf(a.Stderr, "warning: delete failed for %s: %v\n", leaseID, err)
+func (a App) releaseBackendLeaseBestEffort(ctx context.Context, backend SSHLeaseBackend, lease LeaseTarget) {
+	a.writeActionsHydrationStopBestEffort(ctx, lease.SSH, lease.LeaseID)
+	fmt.Fprintf(a.Stderr, "releasing %s server=%s\n", lease.LeaseID, lease.Server.DisplayID())
+	if err := backend.ReleaseLease(ctx, ReleaseLeaseRequest{Lease: lease, Force: true}); err != nil {
+		fmt.Fprintf(a.Stderr, "warning: release failed for %s: %v\n", lease.LeaseID, err)
 	}
-	removeLeaseClaim(leaseID)
 }
 
 func startCoordinatorHeartbeat(ctx context.Context, coord *CoordinatorClient, leaseID string, idleTimeout time.Duration, updateIdleTimeout *time.Duration, stderr io.Writer) func() {
@@ -947,189 +870,6 @@ func heartbeatInterval(ttl time.Duration) time.Duration {
 	return interval
 }
 
-func (a App) touchLeaseBestEffort(ctx context.Context, cfg Config, identifier, leaseID string) {
-	if _, ok, err := newTargetCoordinatorClient(cfg); err == nil && ok {
-		if leaseID == "" {
-			leaseID = identifier
-		}
-		a.touchCoordinatorLeaseBestEffort(ctx, cfg, leaseID)
-		return
-	}
-	server, _, _, err := a.findLease(ctx, cfg, identifier)
-	if err != nil {
-		fmt.Fprintf(a.Stderr, "warning: direct touch failed for %s: %v\n", identifier, err)
-		return
-	}
-	a.touchDirectLeaseBestEffort(ctx, cfg, server, blank(server.Labels["state"], "ready"))
-}
-
-func (a App) touchActiveLeaseBestEffort(ctx context.Context, cfg Config, server Server, leaseID string) Server {
-	if _, ok, err := newTargetCoordinatorClient(cfg); err == nil && ok {
-		a.touchCoordinatorLeaseBestEffort(ctx, cfg, leaseID)
-		return server
-	}
-	return a.touchDirectLeaseBestEffort(ctx, cfg, server, blank(server.Labels["state"], "ready"))
-}
-
-func (a App) touchDirectLeaseBestEffort(ctx context.Context, cfg Config, server Server, state string) Server {
-	if server.Labels == nil {
-		server.Labels = map[string]string{}
-	}
-	server.Labels = touchDirectLeaseLabels(server.Labels, cfg, state, time.Now().UTC())
-	if isStaticProvider(cfg.Provider) || server.Provider == staticProvider {
-		return server
-	}
-	if cfg.Provider == "aws" || server.Provider == "aws" || strings.HasPrefix(server.CloudID, "i-") {
-		client, err := newAWSClient(ctx, cfg)
-		if err != nil {
-			fmt.Fprintf(a.Stderr, "warning: direct touch state=%s: %v\n", state, err)
-			return server
-		}
-		if err := client.SetTags(ctx, server.CloudID, server.Labels); err != nil {
-			fmt.Fprintf(a.Stderr, "warning: direct touch state=%s: %v\n", state, err)
-		}
-		return server
-	}
-	client, err := newHetznerClient()
-	if err != nil {
-		fmt.Fprintf(a.Stderr, "warning: direct touch state=%s: %v\n", state, err)
-		return server
-	}
-	if err := client.SetLabels(ctx, server.ID, server.Labels); err != nil {
-		fmt.Fprintf(a.Stderr, "warning: direct touch state=%s: %v\n", state, err)
-	}
-	return server
-}
-
-func (a App) acquire(ctx context.Context, cfg Config, keep bool) (Server, SSHTarget, string, error) {
-	if isStaticProvider(cfg.Provider) {
-		return a.acquireStatic(ctx, cfg, keep)
-	}
-	if cfg.Tailscale.Enabled && cfg.Tailscale.AuthKey == "" {
-		return Server{}, SSHTarget{}, "", exit(2, "direct --tailscale requires %s to contain a Tailscale auth key; brokered mode uses coordinator OAuth secrets", cfg.Tailscale.AuthKeyEnv)
-	}
-	if cfg.Provider == "aws" {
-		return a.acquireAWS(ctx, cfg, keep)
-	}
-	client, err := newHetznerClient()
-	if err != nil {
-		return Server{}, SSHTarget{}, "", err
-	}
-	leaseID := newLeaseID()
-	servers, err := client.ListCrabboxServers(ctx)
-	if err != nil {
-		return Server{}, SSHTarget{}, "", err
-	}
-	slug := allocateDirectLeaseSlug(leaseID, servers)
-	keyPath, publicKey, err := ensureTestboxKeyForConfig(cfg, leaseID)
-	if err != nil {
-		return Server{}, SSHTarget{}, "", err
-	}
-	cfg.SSHKey = keyPath
-	cfg.ProviderKey = providerKeyForLease(leaseID)
-	if cfg.ProviderKey != "" {
-		providerKey, err := client.EnsureSSHKey(ctx, cfg.ProviderKey, publicKey)
-		if err != nil {
-			return Server{}, SSHTarget{}, "", err
-		}
-		cfg.ProviderKey = providerKey.Name
-	}
-	fmt.Fprintf(a.Stderr, "provisioning provider=hetzner lease=%s slug=%s class=%s preferred_type=%s location=%s keep=%v\n", leaseID, slug, cfg.Class, cfg.ServerType, cfg.Location, keep)
-	server, cfg, err := client.CreateServerWithFallback(ctx, cfg, publicKey, leaseID, slug, keep, func(format string, args ...any) {
-		fmt.Fprintf(a.Stderr, format, args...)
-	})
-	if err != nil {
-		return Server{}, SSHTarget{}, "", err
-	}
-	fmt.Fprintf(a.Stderr, "provisioned lease=%s server=%d type=%s\n", leaseID, server.ID, cfg.ServerType)
-	server, err = waitForServerIP(ctx, client, server.ID)
-	if err != nil {
-		return Server{}, SSHTarget{}, "", err
-	}
-	target := sshTargetFromConfig(cfg, server.PublicNet.IPv4.IP)
-	if err := waitForSSHReady(ctx, &target, a.Stderr, "bootstrap", bootstrapWaitTimeout(cfg)); err != nil {
-		_ = deleteServer(context.Background(), cfg, server)
-		return Server{}, SSHTarget{}, "", err
-	}
-	server.Labels["state"] = "ready"
-	if err := client.SetLabels(ctx, server.ID, server.Labels); err != nil {
-		fmt.Fprintf(a.Stderr, "warning: set labels: %v\n", err)
-	}
-	return server, target, leaseID, nil
-}
-
-func (a App) acquireAWS(ctx context.Context, cfg Config, keep bool) (Server, SSHTarget, string, error) {
-	cfg = a.chooseAWSRegion(ctx, cfg)
-	client, err := newAWSClient(ctx, cfg)
-	if err != nil {
-		return Server{}, SSHTarget{}, "", err
-	}
-	leaseID := newLeaseID()
-	servers, err := client.ListCrabboxServers(ctx)
-	if err != nil {
-		return Server{}, SSHTarget{}, "", err
-	}
-	slug := allocateDirectLeaseSlug(leaseID, servers)
-	keyPath, publicKey, err := ensureTestboxKeyForConfig(cfg, leaseID)
-	if err != nil {
-		return Server{}, SSHTarget{}, "", err
-	}
-	cfg.SSHKey = keyPath
-	cfg.ProviderKey = providerKeyForLease(leaseID)
-	ensureAWSSSHCIDRs(ctx, &cfg)
-	fmt.Fprintf(a.Stderr, "provisioning provider=aws lease=%s slug=%s class=%s preferred_type=%s region=%s keep=%v market=%s strategy=%s\n", leaseID, slug, cfg.Class, cfg.ServerType, cfg.AWSRegion, keep, cfg.Capacity.Market, cfg.Capacity.Strategy)
-	server, cfg, err := client.CreateServerWithFallback(ctx, cfg, publicKey, leaseID, slug, keep, func(format string, args ...any) {
-		fmt.Fprintf(a.Stderr, format, args...)
-	})
-	if err != nil {
-		return Server{}, SSHTarget{}, "", err
-	}
-	fmt.Fprintf(a.Stderr, "provisioned lease=%s server=%s type=%s\n", leaseID, server.DisplayID(), cfg.ServerType)
-	server, err = client.waitForServerIP(ctx, server.CloudID)
-	if err != nil {
-		return Server{}, SSHTarget{}, "", err
-	}
-	target := sshTargetFromConfig(cfg, server.PublicNet.IPv4.IP)
-	if err := bootstrapAWSWindowsDesktop(ctx, cfg, &target, publicKey, a.Stderr); err != nil {
-		_ = client.DeleteServer(context.Background(), server.CloudID)
-		return Server{}, SSHTarget{}, "", err
-	}
-	server.Labels["state"] = "ready"
-	if err := client.SetTags(ctx, server.CloudID, server.Labels); err != nil {
-		fmt.Fprintf(a.Stderr, "warning: set tags: %v\n", err)
-	}
-	return server, target, leaseID, nil
-}
-
-func (a App) chooseAWSRegion(ctx context.Context, cfg Config) Config {
-	if cfg.Provider != "aws" || cfg.Capacity.Market != "spot" || len(cfg.Capacity.Regions) < 2 {
-		return cfg
-	}
-	client, err := newAWSClient(ctx, cfg)
-	if err != nil {
-		fmt.Fprintf(a.Stderr, "warning: spot placement score unavailable: %v\n", err)
-		return cfg
-	}
-	scores, err := client.SpotPlacementScores(ctx, cfg)
-	if err != nil {
-		fmt.Fprintf(a.Stderr, "warning: spot placement score unavailable: %v\n", err)
-		return cfg
-	}
-	if len(scores) == 0 {
-		return cfg
-	}
-	best := awsString(scores[0].Region)
-	score := int32(0)
-	if scores[0].Score != nil {
-		score = *scores[0].Score
-	}
-	if best != "" && best != cfg.AWSRegion {
-		fmt.Fprintf(a.Stderr, "selected aws region=%s spot_score=%d previous=%s\n", best, score, cfg.AWSRegion)
-		cfg.AWSRegion = best
-	}
-	return cfg
-}
-
 func waitForServerIP(ctx context.Context, client *HetznerClient, id int64) (Server, error) {
 	deadline := time.Now().Add(5 * time.Minute)
 	for {
@@ -1145,76 +885,6 @@ func waitForServerIP(ctx context.Context, client *HetznerClient, id int64) (Serv
 		}
 		time.Sleep(3 * time.Second)
 	}
-}
-
-func (a App) findLease(ctx context.Context, cfg Config, id string) (Server, SSHTarget, string, error) {
-	if isStaticProvider(cfg.Provider) {
-		return a.findStaticLease(ctx, cfg, id)
-	}
-	if cfg.Provider == "aws" {
-		return a.findAWSLease(ctx, cfg, id)
-	}
-	client, err := newHetznerClient()
-	if err != nil {
-		return Server{}, SSHTarget{}, "", err
-	}
-	if serverID, ok := parseServerID(id); ok {
-		server, err := client.GetServer(ctx, serverID)
-		if err != nil {
-			return Server{}, SSHTarget{}, "", err
-		}
-		leaseID := server.Labels["lease"]
-		if leaseID == "" {
-			leaseID = id
-		}
-		target := sshTargetFromConfig(cfg, server.PublicNet.IPv4.IP)
-		useStoredTestboxKey(&target, leaseID)
-		return server, target, leaseID, nil
-	}
-	servers, err := client.ListCrabboxServers(ctx)
-	if err != nil {
-		return Server{}, SSHTarget{}, "", err
-	}
-	if server, leaseID, err := findServerByAlias(servers, id); err != nil {
-		return Server{}, SSHTarget{}, "", err
-	} else if leaseID != "" {
-		target := sshTargetFromConfig(cfg, server.PublicNet.IPv4.IP)
-		useStoredTestboxKey(&target, leaseID)
-		return server, target, leaseID, nil
-	}
-	return Server{}, SSHTarget{}, "", exit(4, "lease/server not found: %s", id)
-}
-
-func (a App) findAWSLease(ctx context.Context, cfg Config, id string) (Server, SSHTarget, string, error) {
-	client, err := newAWSClient(ctx, cfg)
-	if err != nil {
-		return Server{}, SSHTarget{}, "", err
-	}
-	if strings.HasPrefix(id, "i-") {
-		server, err := client.GetServer(ctx, id)
-		if err != nil {
-			return Server{}, SSHTarget{}, "", err
-		}
-		leaseID := server.Labels["lease"]
-		if leaseID == "" {
-			leaseID = id
-		}
-		target := sshTargetFromConfig(cfg, server.PublicNet.IPv4.IP)
-		useStoredTestboxKey(&target, leaseID)
-		return server, target, leaseID, nil
-	}
-	servers, err := client.ListCrabboxServers(ctx)
-	if err != nil {
-		return Server{}, SSHTarget{}, "", err
-	}
-	if server, leaseID, err := findServerByAlias(servers, id); err != nil {
-		return Server{}, SSHTarget{}, "", err
-	} else if leaseID != "" {
-		target := sshTargetFromConfig(cfg, server.PublicNet.IPv4.IP)
-		useStoredTestboxKey(&target, leaseID)
-		return server, target, leaseID, nil
-	}
-	return Server{}, SSHTarget{}, "", exit(4, "lease/server not found: %s", id)
 }
 
 func findServerByAlias(servers []Server, id string) (Server, string, error) {
@@ -1252,9 +922,11 @@ func findServerByAlias(servers []Server, id string) (Server, string, error) {
 }
 
 func (a App) stop(ctx context.Context, args []string) error {
+	defaults := defaultConfig()
 	fs := newFlagSet("stop", a.Stderr)
-	provider := fs.String("provider", defaultConfig().Provider, "provider: hetzner, aws, ssh, or blacksmith-testbox")
-	targetFlags := registerTargetFlags(fs, defaultConfig())
+	provider := fs.String("provider", defaults.Provider, "provider: hetzner, aws, ssh, or blacksmith-testbox")
+	providerFlags := registerProviderFlags(fs, defaults)
+	targetFlags := registerTargetFlags(fs, defaults)
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
@@ -1266,39 +938,47 @@ func (a App) stop(ctx context.Context, args []string) error {
 		return err
 	}
 	cfg.Provider = *provider
+	if err := applyProviderFlags(&cfg, fs, providerFlags); err != nil {
+		return err
+	}
 	if err := applyTargetFlagOverrides(&cfg, fs, targetFlags); err != nil {
 		return err
 	}
-	if isBlacksmithProvider(cfg.Provider) {
-		return a.blacksmithStop(ctx, cfg, fs.Arg(0))
-	}
-	if coord, ok, err := newTargetCoordinatorClient(cfg); err != nil {
-		return err
-	} else if ok {
-		if lease, err := coord.GetLease(ctx, fs.Arg(0)); err == nil {
-			_, target, leaseID := leaseToServerTarget(lease, cfg)
-			a.writeActionsHydrationStopBestEffort(ctx, target, leaseID)
-		} else {
-			fmt.Fprintf(a.Stderr, "warning: could not inspect lease before release: %v\n", err)
-		}
-		released, err := coord.ReleaseLease(ctx, fs.Arg(0), true)
-		if err != nil {
-			return err
-		}
-		removeLeaseClaim(released.ID)
-		fmt.Fprintf(a.Stderr, "released lease=%s server=%s\n", released.ID, leaseDisplayID(released))
-		return nil
-	}
-	server, target, leaseID, err := a.findLease(ctx, cfg, fs.Arg(0))
+	backend, err := loadBackend(cfg, runtimeForApp(a))
 	if err != nil {
 		return err
 	}
-	a.writeActionsHydrationStopBestEffort(ctx, target, leaseID)
-	fmt.Fprintf(a.Stderr, "deleting lease=%s server=%s name=%s\n", leaseID, server.DisplayID(), server.Name)
-	if err := deleteServer(ctx, cfg, server); err != nil {
+	if delegated, ok := backend.(DelegatedRunBackend); ok {
+		return delegated.Stop(ctx, StopRequest{Options: leaseOptionsFromConfig(cfg), ID: fs.Arg(0)})
+	}
+	sshBackend, ok := backend.(SSHLeaseBackend)
+	if !ok {
+		return exit(2, "provider=%s does not support stop", backend.Spec().Name)
+	}
+	lease, err := sshBackend.Resolve(ctx, ResolveRequest{Options: leaseOptionsFromConfig(cfg), ID: fs.Arg(0)})
+	if err != nil {
+		if backendCoordinator(backend) != nil {
+			fmt.Fprintf(a.Stderr, "warning: could not inspect lease before release: %v\n", err)
+			lease = LeaseTarget{LeaseID: fs.Arg(0)}
+		} else {
+			return err
+		}
+	}
+	if lease.SSH.Host != "" {
+		a.writeActionsHydrationStopBestEffort(ctx, lease.SSH, lease.LeaseID)
+	}
+	if err := sshBackend.ReleaseLease(ctx, ReleaseLeaseRequest{Lease: lease, Force: true}); err != nil {
 		return err
 	}
-	removeLeaseClaim(leaseID)
+	if backendCoordinator(backend) != nil {
+		fmt.Fprintf(a.Stderr, "released lease=%s server=%s\n", lease.LeaseID, lease.Server.DisplayID())
+		return nil
+	}
+	if isStaticProvider(cfg.Provider) || lease.Server.Provider == staticProvider {
+		fmt.Fprintf(a.Stderr, "released static lease=%s host=%s\n", lease.LeaseID, lease.SSH.Host)
+		return nil
+	}
+	fmt.Fprintf(a.Stderr, "deleted lease=%s server=%s name=%s\n", lease.LeaseID, lease.Server.DisplayID(), lease.Server.Name)
 	return nil
 }
 

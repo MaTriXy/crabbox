@@ -15,6 +15,7 @@ func (a App) status(ctx context.Context, args []string) error {
 	wait := fs.Bool("wait", false, "wait until ready")
 	waitTimeout := fs.Duration("wait-timeout", 5*time.Minute, "maximum wait duration")
 	jsonOut := fs.Bool("json", false, "print JSON")
+	providerFlags := registerProviderFlags(fs, defaults)
 	targetFlags := registerTargetFlags(fs, defaults)
 	networkFlags := registerNetworkModeFlag(fs, defaults)
 	if err := parseFlags(fs, args); err != nil {
@@ -25,20 +26,41 @@ func (a App) status(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := applyProviderFlags(&cfg, fs, providerFlags); err != nil {
+		return err
+	}
 	if err := requireLeaseID(*id, "crabbox status --id <lease-id-or-slug>", cfg); err != nil {
 		return err
 	}
-	if isBlacksmithProvider(cfg.Provider) {
-		return a.blacksmithStatus(ctx, cfg, *id, *wait, *waitTimeout, *jsonOut)
+	backend, err := loadBackend(cfg, runtimeForApp(a))
+	if err != nil {
+		return err
 	}
+	delegated, isDelegated := backend.(DelegatedRunBackend)
+	sshBackend, isSSH := backend.(SSHLeaseBackend)
 	deadline := time.Now().Add(*waitTimeout)
 	for {
-		state, err := a.leaseStatus(ctx, cfg, *id)
+		var state statusView
+		var err error
+		if isDelegated {
+			state, err = delegated.Status(ctx, StatusRequest{Options: leaseOptionsFromConfig(cfg), ID: *id, Wait: *wait, WaitTimeout: *waitTimeout})
+		} else if isSSH {
+			var lease LeaseTarget
+			lease, err = sshBackend.Resolve(ctx, ResolveRequest{Options: leaseOptionsFromConfig(cfg), ID: *id})
+			if err == nil {
+				state, err = statusViewFromLeaseTarget(ctx, cfg, lease)
+				if err == nil && *wait {
+					_, touchErr := sshBackend.Touch(ctx, TouchRequest{Lease: lease, State: state.State, IdleTimeout: cfg.IdleTimeout})
+					if touchErr != nil {
+						fmt.Fprintf(a.Stderr, "warning: touch failed for %s: %v\n", lease.LeaseID, touchErr)
+					}
+				}
+			}
+		} else {
+			state, err = a.leaseStatus(ctx, cfg, *id)
+		}
 		if err != nil {
 			return err
-		}
-		if *wait {
-			a.touchLeaseBestEffort(ctx, cfg, *id, state.ID)
 		}
 		if *jsonOut {
 			if !*wait || state.Ready {
@@ -59,6 +81,48 @@ func (a App) status(ctx context.Context, args []string) error {
 		}
 		time.Sleep(5 * time.Second)
 	}
+}
+
+func statusViewFromLeaseTarget(ctx context.Context, cfg Config, lease LeaseTarget) (statusView, error) {
+	server := lease.Server
+	target := lease.SSH
+	hasHost := server.PublicNet.IPv4.IP != ""
+	resolved, err := resolveNetworkTarget(ctx, cfg, server, target)
+	if err != nil {
+		return statusView{}, err
+	}
+	target = resolved.Target
+	ready := hasHost && blank(server.Labels["state"], server.Status) != "provisioning" && probeSSHReady(ctx, &target, 4*time.Second)
+	meta := serverTailscaleMetadata(server)
+	var tailscale *TailscaleMetadata
+	if meta.Enabled {
+		tailscale = &meta
+	}
+	return statusView{
+		ID:               lease.LeaseID,
+		Slug:             serverSlug(server),
+		Provider:         blank(server.Provider, cfg.Provider),
+		TargetOS:         blank(server.Labels["target"], cfg.TargetOS),
+		WindowsMode:      blank(server.Labels["windows_mode"], cfg.WindowsMode),
+		State:            blank(server.Labels["state"], server.Status),
+		ServerID:         server.DisplayID(),
+		ServerType:       server.ServerType.Name,
+		Host:             server.PublicNet.IPv4.IP,
+		Network:          resolved.Network,
+		Tailscale:        tailscale,
+		SSHHost:          target.Host,
+		SSHUser:          target.User,
+		SSHPort:          target.Port,
+		SSHFallbackPorts: target.FallbackPorts,
+		SSHKey:           target.Key,
+		LastTouchedAt:    blank(leaseLabelTimeDisplay(server.Labels["last_touched_at"]), server.Labels["last_touched_at"]),
+		IdleFor:          idleForString(server.Labels["last_touched_at"], time.Now()),
+		IdleTimeout:      leaseLabelDurationDisplay(server.Labels["idle_timeout_secs"], server.Labels["idle_timeout"]),
+		ExpiresAt:        blank(leaseLabelTimeDisplay(server.Labels["expires_at"]), server.Labels["expires_at"]),
+		Labels:           server.Labels,
+		HasHost:          hasHost,
+		Ready:            ready,
+	}, nil
 }
 
 type statusView struct {
@@ -88,102 +152,38 @@ type statusView struct {
 }
 
 func (a App) leaseStatus(ctx context.Context, cfg Config, id string) (statusView, error) {
-	if coord, ok, err := newTargetCoordinatorClient(cfg); err != nil {
-		return statusView{}, err
-	} else if ok {
-		lease, err := coord.GetLease(ctx, id)
-		if err != nil {
-			return statusView{}, err
-		}
-		server, target, _ := leaseToServerTarget(lease, cfg)
-		resolved, err := resolveNetworkTarget(ctx, cfg, server, target)
-		if err != nil {
-			return statusView{}, err
-		}
-		target = resolved.Target
-		hasHost := lease.Host != ""
-		ready := lease.State == "active" && hasHost && probeSSHReady(ctx, &target, 4*time.Second)
-		return statusView{
-			ID:               lease.ID,
-			Slug:             lease.Slug,
-			Provider:         blank(lease.Provider, cfg.Provider),
-			TargetOS:         blank(target.TargetOS, cfg.TargetOS),
-			WindowsMode:      blank(target.WindowsMode, cfg.WindowsMode),
-			State:            lease.State,
-			ServerID:         leaseDisplayID(lease),
-			ServerType:       lease.ServerType,
-			Host:             lease.Host,
-			Network:          resolved.Network,
-			Tailscale:        lease.Tailscale,
-			SSHHost:          target.Host,
-			SSHUser:          target.User,
-			SSHPort:          target.Port,
-			SSHFallbackPorts: target.FallbackPorts,
-			SSHKey:           target.Key,
-			LastTouchedAt:    lease.LastTouchedAt,
-			IdleFor:          idleForString(lease.LastTouchedAt, time.Now()),
-			IdleTimeout:      formatSecondsDuration(lease.IdleTimeoutSeconds),
-			ExpiresAt:        lease.ExpiresAt,
-			Labels:           map[string]string{"keep": fmt.Sprint(lease.Keep)},
-			HasHost:          hasHost,
-			Ready:            ready,
-		}, nil
-	}
-	server, target, leaseID, err := a.findLease(ctx, cfg, id)
+	backend, err := loadBackend(cfg, runtimeForApp(a))
 	if err != nil {
 		return statusView{}, err
 	}
-	hasHost := server.PublicNet.IPv4.IP != ""
-	resolved, err := resolveNetworkTarget(ctx, cfg, server, target)
+	if delegated, ok := backend.(DelegatedRunBackend); ok {
+		return delegated.Status(ctx, StatusRequest{Options: leaseOptionsFromConfig(cfg), ID: id})
+	}
+	sshBackend, ok := backend.(SSHLeaseBackend)
+	if !ok {
+		return statusView{}, exit(2, "provider=%s does not support status", backend.Spec().Name)
+	}
+	lease, err := sshBackend.Resolve(ctx, ResolveRequest{Options: leaseOptionsFromConfig(cfg), ID: id})
 	if err != nil {
 		return statusView{}, err
 	}
-	target = resolved.Target
-	ready := hasHost && server.Labels["state"] != "provisioning" && probeSSHReady(ctx, &target, 4*time.Second)
-	meta := serverTailscaleMetadata(server)
-	var tailscale *TailscaleMetadata
-	if meta.Enabled {
-		tailscale = &meta
-	}
-	return statusView{
-		ID:               leaseID,
-		Slug:             serverSlug(server),
-		Provider:         blank(server.Provider, cfg.Provider),
-		TargetOS:         blank(server.Labels["target"], cfg.TargetOS),
-		WindowsMode:      blank(server.Labels["windows_mode"], cfg.WindowsMode),
-		State:            blank(server.Labels["state"], server.Status),
-		ServerID:         server.DisplayID(),
-		ServerType:       server.ServerType.Name,
-		Host:             server.PublicNet.IPv4.IP,
-		Network:          resolved.Network,
-		Tailscale:        tailscale,
-		SSHHost:          target.Host,
-		SSHUser:          target.User,
-		SSHPort:          target.Port,
-		SSHFallbackPorts: target.FallbackPorts,
-		SSHKey:           target.Key,
-		LastTouchedAt:    blank(leaseLabelTimeDisplay(server.Labels["last_touched_at"]), server.Labels["last_touched_at"]),
-		IdleFor:          idleForString(server.Labels["last_touched_at"], time.Now()),
-		IdleTimeout:      leaseLabelDurationDisplay(server.Labels["idle_timeout_secs"], server.Labels["idle_timeout"]),
-		ExpiresAt:        blank(leaseLabelTimeDisplay(server.Labels["expires_at"]), server.Labels["expires_at"]),
-		Labels:           server.Labels,
-		HasHost:          hasHost,
-		Ready:            ready,
-	}, nil
+	return statusViewFromLeaseTarget(ctx, cfg, lease)
 }
 
 func (a App) resolveLeaseTarget(ctx context.Context, cfg Config, id string) (Server, SSHTarget, string, error) {
-	if coord, ok, err := newTargetCoordinatorClient(cfg); err != nil {
+	backend, err := loadBackend(cfg, runtimeForApp(a))
+	if err != nil {
 		return Server{}, SSHTarget{}, "", err
-	} else if ok {
-		lease, err := coord.GetLease(ctx, id)
-		if err != nil {
-			return Server{}, SSHTarget{}, "", err
-		}
-		server, target, leaseID := leaseToServerTarget(lease, cfg)
-		return server, target, leaseID, nil
 	}
-	return a.findLease(ctx, cfg, id)
+	sshBackend, ok := backend.(SSHLeaseBackend)
+	if !ok {
+		return Server{}, SSHTarget{}, "", exit(2, "provider=%s does not expose an SSH target", backend.Spec().Name)
+	}
+	lease, err := sshBackend.Resolve(ctx, ResolveRequest{Options: leaseOptionsFromConfig(cfg), ID: id})
+	if err != nil {
+		return Server{}, SSHTarget{}, "", err
+	}
+	return lease.Server, lease.SSH, lease.LeaseID, nil
 }
 
 func idleForString(value string, now time.Time) string {

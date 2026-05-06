@@ -1,9 +1,7 @@
 package cli
 
 import (
-	"context"
 	"flag"
-	"fmt"
 	"strings"
 	"time"
 )
@@ -51,30 +49,6 @@ func applyTargetFlagOverrides(cfg *Config, fs *flag.FlagSet, values targetFlagVa
 	}
 	normalizeTargetConfig(cfg)
 	return validateTargetConfig(*cfg)
-}
-
-func (a App) acquireStatic(ctx context.Context, cfg Config, keep bool) (Server, SSHTarget, string, error) {
-	server, target, leaseID, err := staticLease(cfg)
-	if err != nil {
-		return Server{}, SSHTarget{}, "", err
-	}
-	fmt.Fprintf(a.Stderr, "using static target lease=%s slug=%s target=%s windows_mode=%s host=%s keep=%v\n", leaseID, serverSlug(server), cfg.TargetOS, cfg.WindowsMode, target.Host, keep)
-	if err := waitForSSH(ctx, &target, a.Stderr); err != nil {
-		return Server{}, SSHTarget{}, "", err
-	}
-	server.Labels["state"] = "ready"
-	return server, target, leaseID, nil
-}
-
-func (a App) findStaticLease(_ context.Context, cfg Config, id string) (Server, SSHTarget, string, error) {
-	server, target, leaseID, err := staticLease(cfg)
-	if err != nil {
-		return Server{}, SSHTarget{}, "", err
-	}
-	if id == "" || id == leaseID || id == server.Name || id == serverSlug(server) || id == cfg.Static.Host {
-		return server, target, leaseID, nil
-	}
-	return Server{}, SSHTarget{}, "", exit(4, "static lease not found: %s", id)
 }
 
 func staticLease(cfg Config) (Server, SSHTarget, string, error) {

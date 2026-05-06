@@ -36,11 +36,22 @@ This page maps user-facing behavior back to implementation files. Keep docs desc
 - Direct Hetzner provider: `internal/cli/hcloud.go`
 - Direct AWS provider: `internal/cli/aws.go`
 - Static SSH macOS/Windows provider: `internal/cli/static.go`
-- Blacksmith Testbox CLI wrapper: `internal/cli/blacksmith.go`
+- Blacksmith Testbox argument/parsing helpers: `internal/cli/blacksmith.go`
+- Provider backend interfaces, registry, and request/result types:
+  `internal/cli/provider_backend.go`
+- Built-in provider registration packages:
+  `internal/providers/hetzner`, `internal/providers/aws`,
+  `internal/providers/ssh`, `internal/providers/blacksmith`,
+  `internal/providers/all`
+- Built-in provider backend implementations:
+  `internal/cli/providers_common.go`, `internal/cli/provider_aws.go`,
+  `internal/cli/provider_hetzner.go`, `internal/cli/provider_static.go`,
+  `internal/cli/provider_coordinator.go`, `internal/cli/provider_blacksmith.go`
 - Worker Hetzner provider: `worker/src/hetzner.ts`
 - Worker AWS EC2 provider: `worker/src/aws.ts`
 - Worker AWS AMI create/read/promote routes: `worker/src/fleet.ts`, `worker/src/aws.ts`
 - Provider feature docs: `docs/features/aws.md`, `docs/features/hetzner.md`, `docs/features/blacksmith-testbox.md`
+- Provider/backend authoring guide: `docs/provider-backends.md`
 - CLI cloud-init bootstrap: `internal/cli/bootstrap.go`
 - Worker cloud-init bootstrap: `worker/src/bootstrap.ts`
 - Tailscale feature contract: `docs/features/tailscale.md`

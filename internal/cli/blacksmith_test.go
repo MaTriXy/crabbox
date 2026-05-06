@@ -2,15 +2,36 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 )
+
+type blacksmithFuncRunner struct {
+	calls [][]string
+	fn    func(LocalCommandRequest) (LocalCommandResult, error)
+}
+
+func (r *blacksmithFuncRunner) Run(_ context.Context, req LocalCommandRequest) (LocalCommandResult, error) {
+	r.calls = append(r.calls, append([]string(nil), req.Args...))
+	if r.fn != nil {
+		return r.fn(req)
+	}
+	return LocalCommandResult{}, nil
+}
+
+func newTestBlacksmithBackend(cfg Config, runner CommandRunner) *blacksmithBackend {
+	return &blacksmithBackend{
+		spec: testBlacksmithProvider{}.Spec(),
+		cfg:  cfg,
+		rt:   Runtime{Stdout: io.Discard, Stderr: io.Discard, Clock: realClock{}, Exec: runner},
+	}
+}
 
 func TestBlacksmithWarmupArgs(t *testing.T) {
 	cfg := baseConfig()
@@ -66,18 +87,14 @@ func TestBlacksmithWarmupFailureRemovesPendingKey(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	original := blacksmithCommandContext
-	blacksmithCommandContext = func(context.Context, string, ...string) *exec.Cmd {
-		return exec.Command("sh", "-c", "exit 1")
-	}
-	t.Cleanup(func() {
-		blacksmithCommandContext = original
-	})
+	runner := &blacksmithFuncRunner{fn: func(LocalCommandRequest) (LocalCommandResult, error) {
+		return LocalCommandResult{ExitCode: 1}, errors.New("exit status 1")
+	}}
 
 	cfg := baseConfig()
 	cfg.Blacksmith.Workflow = ".github/workflows/testbox.yml"
-	app := App{Stdout: io.Discard, Stderr: io.Discard}
-	_, _, err := app.blacksmithWarmupLease(context.Background(), cfg, Repo{Root: "/repo"}, false)
+	backend := newTestBlacksmithBackend(cfg, runner)
+	_, _, err := backend.warmupLease(context.Background(), Repo{Root: "/repo"}, false)
 	if err == nil {
 		t.Fatal("expected warmup failure")
 	}
@@ -98,27 +115,23 @@ func TestBlacksmithWarmupFailureStopsPrintedTestbox(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	original := blacksmithCommandContext
 	var stopped string
-	blacksmithCommandContext = func(_ context.Context, _ string, args ...string) *exec.Cmd {
-		if len(args) >= 3 && args[0] == "testbox" && args[1] == "stop" {
-			for i, arg := range args {
-				if arg == "--id" && i+1 < len(args) {
-					stopped = args[i+1]
+	runner := &blacksmithFuncRunner{fn: func(req LocalCommandRequest) (LocalCommandResult, error) {
+		if len(req.Args) >= 3 && req.Args[0] == "testbox" && req.Args[1] == "stop" {
+			for i, arg := range req.Args {
+				if arg == "--id" && i+1 < len(req.Args) {
+					stopped = req.Args[i+1]
 				}
 			}
-			return exec.Command("sh", "-c", "exit 0")
+			return LocalCommandResult{}, nil
 		}
-		return exec.Command("sh", "-c", "printf 'queued tbx_leaked123\\n'; exit 1")
-	}
-	t.Cleanup(func() {
-		blacksmithCommandContext = original
-	})
+		return LocalCommandResult{ExitCode: 1, Stdout: "queued tbx_leaked123\n"}, errors.New("exit status 1")
+	}}
 
 	cfg := baseConfig()
 	cfg.Blacksmith.Workflow = ".github/workflows/testbox.yml"
-	app := App{Stdout: io.Discard, Stderr: io.Discard}
-	_, _, err := app.blacksmithWarmupLease(context.Background(), cfg, Repo{Root: "/repo"}, false)
+	backend := newTestBlacksmithBackend(cfg, runner)
+	_, _, err := backend.warmupLease(context.Background(), Repo{Root: "/repo"}, false)
 	if err == nil {
 		t.Fatal("expected warmup failure")
 	}
@@ -131,7 +144,6 @@ func TestBlacksmithWarmupFailureStopsNewListedTestbox(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	original := blacksmithCommandContext
 	originalDelay := blacksmithCleanupDelay
 	originalAttempts := blacksmithCleanupAttempts
 	originalQuiet := blacksmithCleanupQuiet
@@ -140,26 +152,25 @@ func TestBlacksmithWarmupFailureStopsNewListedTestbox(t *testing.T) {
 	blacksmithCleanupQuiet = 1
 	var stopped string
 	listCalls := 0
-	blacksmithCommandContext = func(_ context.Context, _ string, args ...string) *exec.Cmd {
-		if len(args) >= 3 && args[0] == "testbox" && args[1] == "list" {
+	runner := &blacksmithFuncRunner{fn: func(req LocalCommandRequest) (LocalCommandResult, error) {
+		if len(req.Args) >= 3 && req.Args[0] == "testbox" && req.Args[1] == "list" {
 			listCalls++
 			if listCalls < 3 {
-				return exec.Command("sh", "-c", "printf 'ID STATUS REPO WORKFLOW JOB REF CREATED\\n'")
+				return LocalCommandResult{Stdout: "ID STATUS REPO WORKFLOW JOB REF CREATED\n"}, nil
 			}
-			return exec.Command("sh", "-c", "printf 'tbx_async123 queued openclaw .github/workflows/testbox.yml check main 2026-05-04T21:23:47.000000Z\\n'")
+			return LocalCommandResult{Stdout: "tbx_async123 queued openclaw .github/workflows/testbox.yml check main 2026-05-04T21:23:47.000000Z\n"}, nil
 		}
-		if len(args) >= 3 && args[0] == "testbox" && args[1] == "stop" {
-			for i, arg := range args {
-				if arg == "--id" && i+1 < len(args) {
-					stopped = args[i+1]
+		if len(req.Args) >= 3 && req.Args[0] == "testbox" && req.Args[1] == "stop" {
+			for i, arg := range req.Args {
+				if arg == "--id" && i+1 < len(req.Args) {
+					stopped = req.Args[i+1]
 				}
 			}
-			return exec.Command("sh", "-c", "exit 0")
+			return LocalCommandResult{}, nil
 		}
-		return exec.Command("sh", "-c", "printf 'workflow missing\\n'; exit 1")
-	}
+		return LocalCommandResult{ExitCode: 1, Stdout: "workflow missing\n"}, errors.New("exit status 1")
+	}}
 	t.Cleanup(func() {
-		blacksmithCommandContext = original
 		blacksmithCleanupDelay = originalDelay
 		blacksmithCleanupAttempts = originalAttempts
 		blacksmithCleanupQuiet = originalQuiet
@@ -169,8 +180,8 @@ func TestBlacksmithWarmupFailureStopsNewListedTestbox(t *testing.T) {
 	cfg.Blacksmith.Workflow = ".github/workflows/testbox.yml"
 	cfg.Blacksmith.Job = "check"
 	cfg.Blacksmith.Ref = "main"
-	app := App{Stdout: io.Discard, Stderr: io.Discard}
-	_, _, err := app.blacksmithWarmupLease(context.Background(), cfg, Repo{Root: "/repo"}, false)
+	backend := newTestBlacksmithBackend(cfg, runner)
+	_, _, err := backend.warmupLease(context.Background(), Repo{Root: "/repo"}, false)
 	if err == nil {
 		t.Fatal("expected warmup failure")
 	}
@@ -183,7 +194,6 @@ func TestBlacksmithWarmupFailureContinuesAfterFirstDelayedStop(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	original := blacksmithCommandContext
 	originalDelay := blacksmithCleanupDelay
 	originalAttempts := blacksmithCleanupAttempts
 	originalQuiet := blacksmithCleanupQuiet
@@ -192,30 +202,29 @@ func TestBlacksmithWarmupFailureContinuesAfterFirstDelayedStop(t *testing.T) {
 	blacksmithCleanupQuiet = 1
 	stopped := []string{}
 	listCalls := 0
-	blacksmithCommandContext = func(_ context.Context, _ string, args ...string) *exec.Cmd {
-		if len(args) >= 3 && args[0] == "testbox" && args[1] == "list" {
+	runner := &blacksmithFuncRunner{fn: func(req LocalCommandRequest) (LocalCommandResult, error) {
+		if len(req.Args) >= 3 && req.Args[0] == "testbox" && req.Args[1] == "list" {
 			listCalls++
 			switch listCalls {
 			case 2:
-				return exec.Command("sh", "-c", "printf 'tbx_delayed1 queued openclaw .github/workflows/testbox.yml check main 2026-05-04T21:23:47.000000Z\\n'")
+				return LocalCommandResult{Stdout: "tbx_delayed1 queued openclaw .github/workflows/testbox.yml check main 2026-05-04T21:23:47.000000Z\n"}, nil
 			case 3:
-				return exec.Command("sh", "-c", "printf 'tbx_delayed2 queued openclaw .github/workflows/testbox.yml check main 2026-05-04T21:23:48.000000Z\\n'")
+				return LocalCommandResult{Stdout: "tbx_delayed2 queued openclaw .github/workflows/testbox.yml check main 2026-05-04T21:23:48.000000Z\n"}, nil
 			default:
-				return exec.Command("sh", "-c", "printf 'ID STATUS REPO WORKFLOW JOB REF CREATED\\n'")
+				return LocalCommandResult{Stdout: "ID STATUS REPO WORKFLOW JOB REF CREATED\n"}, nil
 			}
 		}
-		if len(args) >= 3 && args[0] == "testbox" && args[1] == "stop" {
-			for i, arg := range args {
-				if arg == "--id" && i+1 < len(args) {
-					stopped = append(stopped, args[i+1])
+		if len(req.Args) >= 3 && req.Args[0] == "testbox" && req.Args[1] == "stop" {
+			for i, arg := range req.Args {
+				if arg == "--id" && i+1 < len(req.Args) {
+					stopped = append(stopped, req.Args[i+1])
 				}
 			}
-			return exec.Command("sh", "-c", "exit 0")
+			return LocalCommandResult{}, nil
 		}
-		return exec.Command("sh", "-c", "printf 'workflow missing\\n'; exit 1")
-	}
+		return LocalCommandResult{ExitCode: 1, Stdout: "workflow missing\n"}, errors.New("exit status 1")
+	}}
 	t.Cleanup(func() {
-		blacksmithCommandContext = original
 		blacksmithCleanupDelay = originalDelay
 		blacksmithCleanupAttempts = originalAttempts
 		blacksmithCleanupQuiet = originalQuiet
@@ -225,8 +234,8 @@ func TestBlacksmithWarmupFailureContinuesAfterFirstDelayedStop(t *testing.T) {
 	cfg.Blacksmith.Workflow = ".github/workflows/testbox.yml"
 	cfg.Blacksmith.Job = "check"
 	cfg.Blacksmith.Ref = "main"
-	app := App{Stdout: io.Discard, Stderr: io.Discard}
-	_, _, err := app.blacksmithWarmupLease(context.Background(), cfg, Repo{Root: "/repo"}, false)
+	backend := newTestBlacksmithBackend(cfg, runner)
+	_, _, err := backend.warmupLease(context.Background(), Repo{Root: "/repo"}, false)
 	if err == nil {
 		t.Fatal("expected warmup failure")
 	}
@@ -240,30 +249,25 @@ func TestBlacksmithOneShotRunRemovesClaimAfterStop(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("XDG_STATE_HOME", filepath.Join(home, ".local", "state"))
-	original := blacksmithCommandContext
-	calls := 0
-	blacksmithCommandContext = func(_ context.Context, _ string, args ...string) *exec.Cmd {
-		calls++
-		if len(args) >= 3 && args[0] == "testbox" && args[1] == "warmup" {
-			return exec.Command("sh", "-c", "printf 'ready tbx_abc123\\n'")
+	runner := &blacksmithFuncRunner{fn: func(req LocalCommandRequest) (LocalCommandResult, error) {
+		if len(req.Args) >= 3 && req.Args[0] == "testbox" && req.Args[1] == "warmup" {
+			return LocalCommandResult{Stdout: "ready tbx_abc123\n"}, nil
 		}
-		return exec.Command("sh", "-c", "exit 0")
-	}
-	t.Cleanup(func() {
-		blacksmithCommandContext = original
-	})
+		return LocalCommandResult{}, nil
+	}}
 
 	cfg := baseConfig()
 	cfg.Blacksmith.Workflow = ".github/workflows/testbox.yml"
-	app := App{Stdout: io.Discard, Stderr: io.Discard}
-	err := app.blacksmithRun(context.Background(), cfg, Repo{Root: "/repo"}, blacksmithRunOptions{
+	backend := newTestBlacksmithBackend(cfg, runner)
+	_, err := backend.Run(context.Background(), RunRequest{
+		Repo:    Repo{Root: "/repo"},
 		Command: []string{"true"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls != 4 {
-		t.Fatalf("blacksmith calls=%d, want list/warmup/run/stop", calls)
+	if len(runner.calls) != 4 {
+		t.Fatalf("blacksmith calls=%d, want list/warmup/run/stop", len(runner.calls))
 	}
 	if claim, err := readLeaseClaim("tbx_abc123"); err != nil {
 		t.Fatal(err)

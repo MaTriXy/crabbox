@@ -1,13 +1,8 @@
 package cli
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
-	"os/exec"
 	"regexp"
 	"strings"
 	"time"
@@ -16,24 +11,11 @@ import (
 const blacksmithTestboxProvider = "blacksmith-testbox"
 
 var (
-	blacksmithCommandContext  = exec.CommandContext
 	blacksmithIDPattern       = regexp.MustCompile(`\btbx_[A-Za-z0-9_-]+\b`)
 	blacksmithCleanupAttempts = 36
 	blacksmithCleanupDelay    = 5 * time.Second
 	blacksmithCleanupQuiet    = 12
 )
-
-type blacksmithRunOptions struct {
-	ID          string
-	Keep        bool
-	Reclaim     bool
-	SyncOnly    bool
-	Debug       bool
-	ShellMode   bool
-	Command     []string
-	IdleTimeout time.Duration
-	TimingJSON  bool
-}
 
 type blacksmithFlagValues struct {
 	Org      *string
@@ -78,204 +60,6 @@ func applyBlacksmithFlagOverrides(cfg *Config, fs *flag.FlagSet, values blacksmi
 	if flagWasSet(fs, "blacksmith-ref") {
 		cfg.Blacksmith.Ref = *values.Ref
 	}
-}
-
-func (a App) blacksmithWarmup(ctx context.Context, cfg Config, repo Repo, keep, reclaim, timingJSON bool) error {
-	started := time.Now()
-	leaseID, slug, err := a.blacksmithWarmupLease(ctx, cfg, repo, reclaim)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(a.Stdout, "leased %s slug=%s provider=%s idle_timeout=%s\n", leaseID, slug, blacksmithTestboxProvider, blacksmithIdleTimeout(cfg))
-	if !keep {
-		fmt.Fprintf(a.Stderr, "warning: blacksmith warmup keeps the testbox until idle timeout or explicit stop\n")
-	}
-	fmt.Fprintf(a.Stdout, "warmup complete total=%s\n", time.Since(started).Round(time.Millisecond))
-	if timingJSON {
-		total := time.Since(started)
-		if err := writeTimingJSON(a.Stderr, timingReport{
-			Provider: blacksmithTestboxProvider,
-			LeaseID:  leaseID,
-			Slug:     slug,
-			TotalMs:  total.Milliseconds(),
-			ExitCode: 0,
-		}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (a App) blacksmithRun(ctx context.Context, cfg Config, repo Repo, opts blacksmithRunOptions) error {
-	if opts.SyncOnly {
-		return exit(2, "blacksmith-testbox delegates sync to Blacksmith; --sync-only is not supported")
-	}
-	started := time.Now()
-	leaseID := opts.ID
-	acquired := false
-	var err error
-	if leaseID == "" {
-		leaseID, _, err = a.blacksmithWarmupLease(ctx, cfg, repo, opts.Reclaim)
-		if err != nil {
-			return err
-		}
-		acquired = true
-	} else {
-		leaseID, err = resolveBlacksmithLeaseID(leaseID, repo.Root, opts.Reclaim)
-		if err != nil {
-			return err
-		}
-		slug, err := blacksmithClaimSlug(opts.ID, leaseID)
-		if err != nil {
-			return err
-		}
-		if err := claimLeaseForRepoProvider(leaseID, slug, blacksmithTestboxProvider, repo.Root, opts.IdleTimeout, opts.Reclaim); err != nil {
-			return err
-		}
-	}
-	if acquired && !opts.Keep {
-		defer func() {
-			if err := a.blacksmithStopLease(context.Background(), cfg, leaseID); err != nil {
-				fmt.Fprintf(a.Stderr, "warning: blacksmith stop failed for %s: %v\n", leaseID, err)
-				return
-			}
-			removeLeaseClaim(leaseID)
-			removeStoredTestboxKey(leaseID)
-		}()
-	}
-	fmt.Fprintf(a.Stderr, "provider=blacksmith-testbox id=%s sync=delegated auth=blacksmith\n", leaseID)
-	commandStart := time.Now()
-	code := a.runBlacksmithTestbox(ctx, cfg, leaseID, opts.Command, opts.Debug, opts.ShellMode)
-	commandDuration := time.Since(commandStart)
-	total := time.Since(started)
-	fmt.Fprintf(a.Stderr, "blacksmith run summary sync=delegated command=%s total=%s exit=%d\n", commandDuration.Round(time.Millisecond), total.Round(time.Millisecond), code)
-	if opts.TimingJSON {
-		if err := writeTimingJSON(a.Stderr, timingReport{
-			Provider:      blacksmithTestboxProvider,
-			LeaseID:       leaseID,
-			SyncPhases:    []timingPhase{{Name: "delegated", Skipped: true, Reason: "blacksmith-testbox owns sync"}},
-			SyncDelegated: true,
-			CommandMs:     commandDuration.Milliseconds(),
-			TotalMs:       total.Milliseconds(),
-			ExitCode:      code,
-		}); err != nil {
-			return err
-		}
-	}
-	if code != 0 {
-		return ExitError{Code: code, Message: fmt.Sprintf("blacksmith testbox run exited %d", code)}
-	}
-	return nil
-}
-
-func (a App) blacksmithList(ctx context.Context, cfg Config, jsonOut bool) error {
-	args := blacksmithListArgs(cfg)
-	if !jsonOut {
-		return a.streamBlacksmith(ctx, args)
-	}
-	cmd := blacksmithCommandContext(ctx, "blacksmith", args...)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return ExitError{Code: exitCode(err), Message: fmt.Sprintf("blacksmith failed: %v: %s", err, strings.TrimSpace(string(out)))}
-	}
-	return json.NewEncoder(a.Stdout).Encode(parseBlacksmithList(string(out)))
-}
-
-func (a App) blacksmithStatus(ctx context.Context, cfg Config, id string, wait bool, waitTimeout time.Duration, jsonOut bool) error {
-	if jsonOut {
-		return exit(2, "blacksmith-testbox status does not support --json")
-	}
-	leaseID, err := resolveBlacksmithLeaseID(id, "", false)
-	if err != nil {
-		return err
-	}
-	return a.streamBlacksmith(ctx, blacksmithStatusArgs(cfg, leaseID, wait, waitTimeout))
-}
-
-func (a App) blacksmithStop(ctx context.Context, cfg Config, id string) error {
-	leaseID, err := resolveBlacksmithLeaseID(id, "", false)
-	if err != nil {
-		return err
-	}
-	if err := a.blacksmithStopLease(ctx, cfg, leaseID); err != nil {
-		return err
-	}
-	removeLeaseClaim(leaseID)
-	removeStoredTestboxKey(leaseID)
-	return nil
-}
-
-func (a App) blacksmithWarmupLease(ctx context.Context, cfg Config, repo Repo, reclaim bool) (string, string, error) {
-	pendingID := "tbx_pending_" + strings.TrimPrefix(newLeaseID(), "cbx_")
-	cleanupKeyID := pendingID
-	defer func() {
-		if cleanupKeyID != "" {
-			removeStoredTestboxKey(cleanupKeyID)
-		}
-	}()
-	_, publicKey, err := ensureTestboxKey(pendingID)
-	if err != nil {
-		return "", "", err
-	}
-	args, err := blacksmithWarmupArgs(cfg, publicKey)
-	if err != nil {
-		return "", "", err
-	}
-	beforeWarmup := a.blacksmithListIDsBestEffort(ctx, cfg)
-	var output bytes.Buffer
-	cmd := blacksmithCommandContext(ctx, "blacksmith", args...)
-	cmd.Stdout = io.MultiWriter(a.Stdout, &output)
-	cmd.Stderr = io.MultiWriter(a.Stderr, &output)
-	if err := cmd.Run(); err != nil {
-		a.cleanupFailedBlacksmithWarmup(ctx, cfg, beforeWarmup, output.String())
-		return "", "", exit(exitCode(err), "blacksmith testbox warmup failed: %v", err)
-	}
-	leaseID := parseBlacksmithID(output.String())
-	if leaseID == "" {
-		return "", "", exit(5, "blacksmith testbox warmup did not print a tbx_ id")
-	}
-	if err := moveStoredTestboxKey(pendingID, leaseID); err != nil {
-		_ = a.blacksmithStopLease(ctx, cfg, leaseID)
-		return "", "", exit(2, "store blacksmith key for %s: %v", leaseID, err)
-	}
-	cleanupKeyID = leaseID
-	slug := newLeaseSlug(leaseID)
-	if err := claimLeaseForRepoProvider(leaseID, slug, blacksmithTestboxProvider, repo.Root, blacksmithIdleTimeout(cfg), reclaim); err != nil {
-		_ = a.blacksmithStopLease(ctx, cfg, leaseID)
-		return "", "", err
-	}
-	cleanupKeyID = ""
-	return leaseID, slug, nil
-}
-
-func (a App) runBlacksmithTestbox(ctx context.Context, cfg Config, leaseID string, command []string, debug, shellMode bool) int {
-	keyPath, err := testboxKeyPath(leaseID)
-	if err != nil {
-		fmt.Fprintf(a.Stderr, "blacksmith key path failed: %v\n", err)
-		return 2
-	}
-	args := blacksmithRunArgs(cfg, leaseID, keyPath, command, debug || cfg.Blacksmith.Debug, shellMode)
-	cmd := blacksmithCommandContext(ctx, "blacksmith", args...)
-	cmd.Stdout = a.Stdout
-	cmd.Stderr = a.Stderr
-	if err := cmd.Run(); err != nil {
-		return exitCode(err)
-	}
-	return 0
-}
-
-func (a App) blacksmithStopLease(ctx context.Context, cfg Config, leaseID string) error {
-	return a.streamBlacksmith(ctx, blacksmithStopArgs(cfg, leaseID))
-}
-
-func (a App) streamBlacksmith(ctx context.Context, args []string) error {
-	cmd := blacksmithCommandContext(ctx, "blacksmith", args...)
-	cmd.Stdout = a.Stdout
-	cmd.Stderr = a.Stderr
-	if err := cmd.Run(); err != nil {
-		return ExitError{Code: exitCode(err), Message: fmt.Sprintf("blacksmith failed: %v", err)}
-	}
-	return nil
 }
 
 func blacksmithWarmupArgs(cfg Config, publicKey string) ([]string, error) {
@@ -334,61 +118,6 @@ func blacksmithListAllArgs(cfg Config) []string {
 	return append(blacksmithListArgs(cfg), "--all")
 }
 
-func (a App) blacksmithListIDsBestEffort(ctx context.Context, cfg Config) map[string]bool {
-	out, err := blacksmithCommandOutput(ctx, cfg, blacksmithListAllArgs(cfg))
-	if err != nil {
-		return map[string]bool{}
-	}
-	ids := map[string]bool{}
-	for _, item := range parseBlacksmithList(out) {
-		ids[item.ID] = true
-	}
-	return ids
-}
-
-func (a App) cleanupFailedBlacksmithWarmup(ctx context.Context, cfg Config, before map[string]bool, output string) {
-	if leaseID := parseBlacksmithID(output); leaseID != "" {
-		if err := a.blacksmithStopLease(ctx, cfg, leaseID); err == nil {
-			before[leaseID] = true
-		}
-	}
-	stoppedAny := false
-	quietAttempts := 0
-	for attempt := 0; attempt < blacksmithCleanupAttempts; attempt++ {
-		if attempt > 0 {
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(blacksmithCleanupDelay):
-			}
-		}
-		list, err := blacksmithCommandOutput(ctx, cfg, blacksmithListAllArgs(cfg))
-		if err != nil {
-			return
-		}
-		stopped := false
-		for _, item := range parseBlacksmithList(list) {
-			if before[item.ID] || !blacksmithMatchesConfig(item, cfg) {
-				continue
-			}
-			_ = a.blacksmithStopLease(ctx, cfg, item.ID)
-			before[item.ID] = true
-			stopped = true
-		}
-		if stopped {
-			stoppedAny = true
-			quietAttempts = 0
-			continue
-		}
-		if stoppedAny {
-			quietAttempts++
-			if quietAttempts >= blacksmithCleanupQuiet {
-				return
-			}
-		}
-	}
-}
-
 func blacksmithMatchesConfig(item blacksmithListItem, cfg Config) bool {
 	if workflow := blacksmithWorkflow(cfg); workflow != "" && item.Workflow != workflow {
 		return false
@@ -400,15 +129,6 @@ func blacksmithMatchesConfig(item blacksmithListItem, cfg Config) bool {
 		return false
 	}
 	return true
-}
-
-func blacksmithCommandOutput(ctx context.Context, cfg Config, args []string) (string, error) {
-	cmd := blacksmithCommandContext(ctx, "blacksmith", args...)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", err
-	}
-	return string(out), nil
 }
 
 func parseBlacksmithList(output string) []blacksmithListItem {

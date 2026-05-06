@@ -14,7 +14,10 @@ crabbox list --json
 
 In `provider=ssh` mode this prints the configured static target.
 
-In `blacksmith-testbox` mode this forwards to `blacksmith testbox list`. Human output preserves the Blacksmith table; `--json` emits Crabbox-parsed rows with id, status, repo, workflow, job, ref, and created time when the upstream table exposes those columns.
+In `blacksmith-testbox` mode this reads `blacksmith testbox list` and renders the
+same Crabbox list shape as other providers. `--json` keeps the compatibility
+shape parsed from the Blacksmith table: id, status, repo, workflow, job, ref,
+and created time when the upstream table exposes those columns.
 
 Flags:
 

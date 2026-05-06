@@ -63,7 +63,7 @@ func (a App) desktopLaunch(ctx context.Context, args []string) error {
 	if err := claimLeaseForRepoConfig(leaseID, serverSlug(server), cfg, repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
 		return err
 	}
-	a.touchActiveLeaseBestEffort(ctx, cfg, server, leaseID)
+	a.touchLeaseTargetBestEffort(ctx, cfg, LeaseTarget{Server: server, SSH: target, LeaseID: leaseID}, "")
 	if err := waitForLoopbackVNC(ctx, &target); err != nil {
 		return err
 	}

@@ -8,36 +8,36 @@ import (
 )
 
 type leaseCreateFlagValues struct {
-	Provider   *string
-	Profile    *string
-	Class      *string
-	ServerType *string
-	Market     *string
-	TTL        *time.Duration
-	Idle       *time.Duration
-	Desktop    *bool
-	Browser    *bool
-	Code       *bool
-	Blacksmith blacksmithFlagValues
-	Target     targetFlagValues
-	Network    networkFlagValues
+	Provider      *string
+	Profile       *string
+	Class         *string
+	ServerType    *string
+	Market        *string
+	TTL           *time.Duration
+	Idle          *time.Duration
+	Desktop       *bool
+	Browser       *bool
+	Code          *bool
+	ProviderFlags providerFlagValues
+	Target        targetFlagValues
+	Network       networkFlagValues
 }
 
 func registerLeaseCreateFlags(fs *flag.FlagSet, defaults Config) leaseCreateFlagValues {
 	return leaseCreateFlagValues{
-		Provider:   fs.String("provider", defaults.Provider, "provider: hetzner, aws, ssh, or blacksmith-testbox"),
-		Profile:    fs.String("profile", defaults.Profile, "profile"),
-		Class:      fs.String("class", defaults.Class, "machine class"),
-		ServerType: fs.String("type", getenv("CRABBOX_SERVER_TYPE", ""), "provider server/instance type"),
-		Market:     fs.String("market", defaults.Capacity.Market, "capacity market: spot or on-demand"),
-		TTL:        fs.Duration("ttl", defaults.TTL, "maximum lease lifetime"),
-		Idle:       fs.Duration("idle-timeout", defaults.IdleTimeout, "idle timeout"),
-		Desktop:    fs.Bool("desktop", defaults.Desktop, "provision or require a visible desktop/VNC session"),
-		Browser:    fs.Bool("browser", defaults.Browser, "provision or require a browser binary"),
-		Code:       fs.Bool("code", defaults.Code, "provision or require web code-server capability"),
-		Blacksmith: registerBlacksmithFlags(fs, defaults),
-		Target:     registerTargetFlags(fs, defaults),
-		Network:    registerNetworkFlags(fs, defaults),
+		Provider:      fs.String("provider", defaults.Provider, "provider: hetzner, aws, ssh, or blacksmith-testbox"),
+		Profile:       fs.String("profile", defaults.Profile, "profile"),
+		Class:         fs.String("class", defaults.Class, "machine class"),
+		ServerType:    fs.String("type", getenv("CRABBOX_SERVER_TYPE", ""), "provider server/instance type"),
+		Market:        fs.String("market", defaults.Capacity.Market, "capacity market: spot or on-demand"),
+		TTL:           fs.Duration("ttl", defaults.TTL, "maximum lease lifetime"),
+		Idle:          fs.Duration("idle-timeout", defaults.IdleTimeout, "idle timeout"),
+		Desktop:       fs.Bool("desktop", defaults.Desktop, "provision or require a visible desktop/VNC session"),
+		Browser:       fs.Bool("browser", defaults.Browser, "provision or require a browser binary"),
+		Code:          fs.Bool("code", defaults.Code, "provision or require web code-server capability"),
+		ProviderFlags: registerProviderFlags(fs, defaults),
+		Target:        registerTargetFlags(fs, defaults),
+		Network:       registerNetworkFlags(fs, defaults),
 	}
 }
 
@@ -62,7 +62,9 @@ func applyLeaseCreateFlags(cfg *Config, fs *flag.FlagSet, values leaseCreateFlag
 	if flagWasSet(fs, "idle-timeout") {
 		cfg.IdleTimeout = *values.Idle
 	}
-	applyBlacksmithFlagOverrides(cfg, fs, values.Blacksmith)
+	if err := applyProviderFlags(cfg, fs, values.ProviderFlags); err != nil {
+		return err
+	}
 	if err := validateProviderTarget(*cfg); err != nil {
 		return err
 	}
@@ -141,6 +143,6 @@ func (a App) claimAndTouchLeaseTarget(ctx context.Context, cfg Config, server Se
 	if err := claimLeaseForRepoConfig(leaseID, serverSlug(server), cfg, repo.Root, cfg.IdleTimeout, reclaim); err != nil {
 		return err
 	}
-	a.touchActiveLeaseBestEffort(ctx, cfg, server, leaseID)
+	a.touchLeaseTargetBestEffort(ctx, cfg, LeaseTarget{Server: server, LeaseID: leaseID}, "")
 	return nil
 }

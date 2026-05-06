@@ -1,0 +1,357 @@
+package cli
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"io"
+	"strings"
+	"time"
+)
+
+func RegisterBlacksmithProviderFlags(fs *flag.FlagSet, defaults Config) any {
+	return registerBlacksmithFlags(fs, defaults)
+}
+
+func ApplyBlacksmithProviderFlags(cfg *Config, fs *flag.FlagSet, values any) error {
+	if v, ok := values.(blacksmithFlagValues); ok {
+		applyBlacksmithFlagOverrides(cfg, fs, v)
+	}
+	return nil
+}
+
+func NewBlacksmithBackend(spec ProviderSpec, cfg Config, rt Runtime) Backend {
+	cfg.Provider = blacksmithTestboxProvider
+	return &blacksmithBackend{spec: spec, cfg: cfg, rt: rt}
+}
+
+type blacksmithBackend struct {
+	spec ProviderSpec
+	cfg  Config
+	rt   Runtime
+}
+
+func (b *blacksmithBackend) Spec() ProviderSpec { return b.spec }
+
+func (b *blacksmithBackend) Warmup(ctx context.Context, req WarmupRequest) error {
+	if req.ActionsRunner {
+		return exit(2, "--actions-runner is not supported for provider=%s; Blacksmith owns runner hydration", b.cfg.Provider)
+	}
+	started := b.rt.Clock.Now()
+	leaseID, slug, err := b.warmupLease(ctx, req.Repo, req.Reclaim)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(b.rt.Stdout, "leased %s slug=%s provider=%s idle_timeout=%s\n", leaseID, slug, blacksmithTestboxProvider, blacksmithIdleTimeout(b.cfg))
+	if !req.Keep {
+		fmt.Fprintf(b.rt.Stderr, "warning: blacksmith warmup keeps the testbox until idle timeout or explicit stop\n")
+	}
+	fmt.Fprintf(b.rt.Stdout, "warmup complete total=%s\n", b.rt.Clock.Now().Sub(started).Round(time.Millisecond))
+	if req.TimingJSON {
+		total := b.rt.Clock.Now().Sub(started)
+		if err := writeTimingJSON(b.rt.Stderr, timingReport{
+			Provider: blacksmithTestboxProvider,
+			LeaseID:  leaseID,
+			Slug:     slug,
+			TotalMs:  total.Milliseconds(),
+			ExitCode: 0,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (b *blacksmithBackend) Run(ctx context.Context, req RunRequest) (RunResult, error) {
+	if err := rejectDelegatedSyncOptions(blacksmithTestboxProvider, req); err != nil {
+		return RunResult{}, err
+	}
+	started := b.rt.Clock.Now()
+	leaseID := req.ID
+	acquired := false
+	var err error
+	if leaseID == "" {
+		leaseID, _, err = b.warmupLease(ctx, req.Repo, req.Reclaim)
+		if err != nil {
+			return RunResult{}, err
+		}
+		acquired = true
+	} else {
+		leaseID, err = resolveBlacksmithLeaseID(leaseID, req.Repo.Root, req.Reclaim)
+		if err != nil {
+			return RunResult{}, err
+		}
+		slug, err := blacksmithClaimSlug(req.ID, leaseID)
+		if err != nil {
+			return RunResult{}, err
+		}
+		if err := claimLeaseForRepoProvider(leaseID, slug, blacksmithTestboxProvider, req.Repo.Root, blacksmithIdleTimeout(b.cfg), req.Reclaim); err != nil {
+			return RunResult{}, err
+		}
+	}
+	if acquired && !req.Keep {
+		defer func() {
+			if err := b.Stop(context.Background(), StopRequest{ID: leaseID}); err != nil {
+				fmt.Fprintf(b.rt.Stderr, "warning: blacksmith stop failed for %s: %v\n", leaseID, err)
+				return
+			}
+			removeLeaseClaim(leaseID)
+			removeStoredTestboxKey(leaseID)
+		}()
+	}
+	fmt.Fprintf(b.rt.Stderr, "provider=blacksmith-testbox id=%s sync=delegated auth=blacksmith\n", leaseID)
+	commandStart := b.rt.Clock.Now()
+	code := b.runTestbox(ctx, leaseID, req.Command, req.DebugSync, req.ShellMode)
+	commandDuration := b.rt.Clock.Now().Sub(commandStart)
+	total := b.rt.Clock.Now().Sub(started)
+	fmt.Fprintf(b.rt.Stderr, "blacksmith run summary sync=delegated command=%s total=%s exit=%d\n", commandDuration.Round(time.Millisecond), total.Round(time.Millisecond), code)
+	if req.TimingJSON {
+		if err := writeTimingJSON(b.rt.Stderr, timingReport{
+			Provider:      blacksmithTestboxProvider,
+			LeaseID:       leaseID,
+			SyncPhases:    []timingPhase{{Name: "delegated", Skipped: true, Reason: "blacksmith-testbox owns sync"}},
+			SyncDelegated: true,
+			CommandMs:     commandDuration.Milliseconds(),
+			TotalMs:       total.Milliseconds(),
+			ExitCode:      code,
+		}); err != nil {
+			return RunResult{}, err
+		}
+	}
+	result := RunResult{ExitCode: code, Command: commandDuration, Total: total, SyncDelegated: true}
+	if code != 0 {
+		return result, ExitError{Code: code, Message: fmt.Sprintf("blacksmith testbox run exited %d", code)}
+	}
+	return result, nil
+}
+
+func (b *blacksmithBackend) List(ctx context.Context, req ListRequest) ([]Server, error) {
+	_ = req
+	out, err := b.commandOutput(ctx, blacksmithListArgs(b.cfg))
+	if err != nil {
+		return nil, err
+	}
+	items := parseBlacksmithList(out)
+	servers := make([]Server, 0, len(items))
+	for _, item := range items {
+		servers = append(servers, blacksmithItemToServer(item))
+	}
+	return servers, nil
+}
+
+func (b *blacksmithBackend) ListJSON(ctx context.Context, req ListRequest) (any, error) {
+	_ = req
+	out, err := b.commandOutput(ctx, blacksmithListArgs(b.cfg))
+	if err != nil {
+		return nil, err
+	}
+	return parseBlacksmithList(out), nil
+}
+
+func (b *blacksmithBackend) Status(ctx context.Context, req StatusRequest) (statusView, error) {
+	leaseID, err := resolveBlacksmithLeaseID(req.ID, "", false)
+	if err != nil {
+		return statusView{}, err
+	}
+	deadline := b.rt.Clock.Now().Add(req.WaitTimeout)
+	for {
+		state, err := b.blacksmithStatusView(ctx, leaseID)
+		if err != nil {
+			return statusView{}, err
+		}
+		if !req.Wait || state.Ready {
+			return state, nil
+		}
+		if b.rt.Clock.Now().After(deadline) {
+			return statusView{}, exit(5, "timed out waiting for %s to become ready", req.ID)
+		}
+		time.Sleep(5 * time.Second)
+	}
+}
+
+func (b *blacksmithBackend) Stop(ctx context.Context, req StopRequest) error {
+	leaseID, err := resolveBlacksmithLeaseID(req.ID, "", false)
+	if err != nil {
+		return err
+	}
+	if _, err := b.runCommand(ctx, blacksmithStopArgs(b.cfg, leaseID), b.rt.Stdout, b.rt.Stderr); err != nil {
+		return err
+	}
+	removeLeaseClaim(leaseID)
+	removeStoredTestboxKey(leaseID)
+	return nil
+}
+
+func (b *blacksmithBackend) warmupLease(ctx context.Context, repo Repo, reclaim bool) (string, string, error) {
+	pendingID := "tbx_pending_" + strings.TrimPrefix(newLeaseID(), "cbx_")
+	cleanupKeyID := pendingID
+	defer func() {
+		if cleanupKeyID != "" {
+			removeStoredTestboxKey(cleanupKeyID)
+		}
+	}()
+	_, publicKey, err := ensureTestboxKey(pendingID)
+	if err != nil {
+		return "", "", err
+	}
+	args, err := blacksmithWarmupArgs(b.cfg, publicKey)
+	if err != nil {
+		return "", "", err
+	}
+	beforeWarmup := b.listIDsBestEffort(ctx)
+	result, err := b.runCommand(ctx, args, b.rt.Stdout, b.rt.Stderr)
+	output := result.Stdout + result.Stderr
+	if err != nil {
+		b.cleanupFailedWarmup(ctx, beforeWarmup, output)
+		return "", "", exit(result.ExitCode, "blacksmith testbox warmup failed: %v", err)
+	}
+	leaseID := parseBlacksmithID(output)
+	if leaseID == "" {
+		return "", "", exit(5, "blacksmith testbox warmup did not print a tbx_ id")
+	}
+	if err := moveStoredTestboxKey(pendingID, leaseID); err != nil {
+		_ = b.Stop(ctx, StopRequest{ID: leaseID})
+		return "", "", exit(2, "store blacksmith key for %s: %v", leaseID, err)
+	}
+	cleanupKeyID = leaseID
+	slug := newLeaseSlug(leaseID)
+	if err := claimLeaseForRepoProvider(leaseID, slug, blacksmithTestboxProvider, repo.Root, blacksmithIdleTimeout(b.cfg), reclaim); err != nil {
+		_ = b.Stop(ctx, StopRequest{ID: leaseID})
+		return "", "", err
+	}
+	cleanupKeyID = ""
+	return leaseID, slug, nil
+}
+
+func (b *blacksmithBackend) runTestbox(ctx context.Context, leaseID string, command []string, debug, shellMode bool) int {
+	keyPath, err := testboxKeyPath(leaseID)
+	if err != nil {
+		fmt.Fprintf(b.rt.Stderr, "blacksmith key path failed: %v\n", err)
+		return 2
+	}
+	args := blacksmithRunArgs(b.cfg, leaseID, keyPath, command, debug || b.cfg.Blacksmith.Debug, shellMode)
+	result, err := b.runCommand(ctx, args, b.rt.Stdout, b.rt.Stderr)
+	if err != nil {
+		return result.ExitCode
+	}
+	return 0
+}
+
+func (b *blacksmithBackend) commandOutput(ctx context.Context, args []string) (string, error) {
+	result, err := b.runCommand(ctx, args, nil, nil)
+	if err != nil {
+		return "", ExitError{Code: result.ExitCode, Message: fmt.Sprintf("blacksmith failed: %v: %s", err, strings.TrimSpace(result.Stdout+result.Stderr))}
+	}
+	return result.Stdout + result.Stderr, nil
+}
+
+func (b *blacksmithBackend) runCommand(ctx context.Context, args []string, stdout, stderr io.Writer) (LocalCommandResult, error) {
+	result, err := b.rt.Exec.Run(ctx, LocalCommandRequest{Name: "blacksmith", Args: args, Stdout: stdout, Stderr: stderr})
+	if err != nil {
+		return result, ExitError{Code: result.ExitCode, Message: fmt.Sprintf("blacksmith failed: %v", err)}
+	}
+	return result, nil
+}
+
+func (b *blacksmithBackend) listIDsBestEffort(ctx context.Context) map[string]bool {
+	out, err := b.commandOutput(ctx, blacksmithListAllArgs(b.cfg))
+	if err != nil {
+		return map[string]bool{}
+	}
+	ids := map[string]bool{}
+	for _, item := range parseBlacksmithList(out) {
+		ids[item.ID] = true
+	}
+	return ids
+}
+
+func (b *blacksmithBackend) cleanupFailedWarmup(ctx context.Context, before map[string]bool, output string) {
+	if leaseID := parseBlacksmithID(output); leaseID != "" {
+		if err := b.Stop(ctx, StopRequest{ID: leaseID}); err == nil {
+			before[leaseID] = true
+		}
+	}
+	stoppedAny := false
+	quietAttempts := 0
+	for attempt := 0; attempt < blacksmithCleanupAttempts; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(blacksmithCleanupDelay):
+			}
+		}
+		list, err := b.commandOutput(ctx, blacksmithListAllArgs(b.cfg))
+		if err != nil {
+			return
+		}
+		stopped := false
+		for _, item := range parseBlacksmithList(list) {
+			if before[item.ID] || !blacksmithMatchesConfig(item, b.cfg) {
+				continue
+			}
+			_ = b.Stop(ctx, StopRequest{ID: item.ID})
+			before[item.ID] = true
+			stopped = true
+		}
+		if stopped {
+			stoppedAny = true
+			quietAttempts = 0
+			continue
+		}
+		if stoppedAny {
+			quietAttempts++
+			if quietAttempts >= blacksmithCleanupQuiet {
+				return
+			}
+		}
+	}
+}
+
+func (b *blacksmithBackend) blacksmithStatusView(ctx context.Context, leaseID string) (statusView, error) {
+	out, err := b.commandOutput(ctx, blacksmithListAllArgs(b.cfg))
+	if err != nil {
+		return statusView{}, err
+	}
+	for _, item := range parseBlacksmithList(out) {
+		if item.ID != leaseID {
+			continue
+		}
+		server := blacksmithItemToServer(item)
+		return statusView{
+			ID:          item.ID,
+			Provider:    blacksmithTestboxProvider,
+			TargetOS:    targetLinux,
+			State:       item.Status,
+			ServerID:    item.ID,
+			ServerType:  "testbox",
+			Labels:      server.Labels,
+			HasHost:     false,
+			Ready:       strings.EqualFold(item.Status, "ready") || strings.EqualFold(item.Status, "running"),
+			IdleTimeout: blacksmithIdleTimeout(b.cfg).String(),
+		}, nil
+	}
+	return statusView{}, exit(4, "blacksmith testbox not found: %s", leaseID)
+}
+
+func blacksmithItemToServer(item blacksmithListItem) Server {
+	labels := map[string]string{
+		"lease":    item.ID,
+		"provider": blacksmithTestboxProvider,
+		"state":    item.Status,
+		"repo":     item.Repo,
+		"workflow": item.Workflow,
+		"job":      item.Job,
+		"ref":      item.Ref,
+		"created":  item.Created,
+	}
+	server := Server{
+		CloudID:  item.ID,
+		Provider: blacksmithTestboxProvider,
+		Name:     item.ID,
+		Status:   item.Status,
+		Labels:   labels,
+	}
+	server.ServerType.Name = "testbox"
+	return server
+}

@@ -10,7 +10,12 @@ crabbox status --id blue-lobster --json
 crabbox status --provider ssh --target macos --static-host mac-studio.local
 ```
 
-`--id` accepts the canonical `cbx_...` ID or active slug. In `blacksmith-testbox` mode it accepts a `tbx_...` ID or local slug and forwards to `blacksmith testbox status`. In `provider=ssh` mode `--id` is optional and resolves the configured static target or local claim. Plain status is read-only; `--wait` touches the lease while waiting for Crabbox brokered leases.
+`--id` accepts the canonical `cbx_...` ID or active slug. In
+`blacksmith-testbox` mode it accepts a `tbx_...` ID or local slug and derives a
+normalized Crabbox status view from `blacksmith testbox list --all`. In
+`provider=ssh` mode `--id` is optional and resolves the configured static target
+or local claim. Plain status is read-only; `--wait` touches the lease while
+waiting for Crabbox brokered leases.
 
 Flags:
 

@@ -11,6 +11,7 @@
 - Added per-lease portal detail pages with bridge status, pasteable commands, recent run links, and a stop action.
 - Added `.crabboxignore` for repo-local sync-only exclude patterns shared by `run` and `sync-plan`.
 - Documented the prebaked runner image boundary: provider-owned AMIs/snapshots hold machine capabilities while repo/runtime caches stay in QA workflows or warm leases.
+- Added a provider backend registry and authoring guide so delegated and SSH-backed providers can live in provider-owned packages while core keeps command parsing, rendering, and capability validation.
 
 ### Fixed
 
@@ -33,6 +34,7 @@
 - Fixed remote git seeding so an unfetchable local commit cannot leave an empty `.git` worktree that makes sync sanity report every tracked file as deleted.
 - Skipped remote git seeding for local commits that are not present in any remote-tracking ref, avoiding slow doomed clone/fetch attempts before rsync.
 - Fixed Windows archive sync from macOS so Apple extended attributes do not spam remote tar warnings.
+- Fixed provider-owned flags and target/capability validation to run through registered provider specs while preserving script-facing list JSON compatibility for coordinator and Blacksmith backends.
 
 ## 0.5.0 - 2026-05-04
 

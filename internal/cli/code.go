@@ -113,7 +113,7 @@ func (a App) webCode(ctx context.Context, args []string) error {
 	if err := claimLeaseForRepoConfig(leaseID, serverSlug(server), cfg, repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
 		return err
 	}
-	a.touchActiveLeaseBestEffort(ctx, cfg, server, leaseID)
+	a.touchLeaseTargetBestEffort(ctx, cfg, LeaseTarget{Server: server, SSH: target, LeaseID: leaseID}, "")
 	workspace, folder, hydratedByActions := codeWorkspace(ctx, target, cfg, leaseID, repo)
 	if hydratedByActions {
 		fmt.Fprintf(a.Stderr, "using GitHub Actions workspace %s\n", workspace)

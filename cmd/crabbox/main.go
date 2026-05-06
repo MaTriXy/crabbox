@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/openclaw/crabbox/internal/cli"
+	_ "github.com/openclaw/crabbox/internal/providers/all"
 )
 
 func main() {
