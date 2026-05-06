@@ -68,6 +68,28 @@ test("crabbox_run executes the CLI without shell wrapping", async () => {
   assert.equal(JSON.parse(result.details.stdout).env.CRABBOX_TEST_VALUE, "present");
 });
 
+test("crabbox_run passes selected provider", async () => {
+  const fake = createFakeCrabbox();
+  const tools = registerWithConfig({ binary: fake.file });
+  const result = await getTool(tools, "crabbox_run").execute("call-1", {
+    id: "blue-lobster",
+    provider: "islo",
+    command: ["go", "test", "./..."],
+  });
+  assert.equal(result.details.code, 0);
+  assert.deepEqual(JSON.parse(result.details.stdout).argv, [
+    "run",
+    "--id",
+    "blue-lobster",
+    "--provider",
+    "islo",
+    "--",
+    "go",
+    "test",
+    "./...",
+  ]);
+});
+
 test("crabbox_status includes optional flags", async () => {
   const fake = createFakeCrabbox();
   const tools = registerWithConfig({ binary: fake.file });

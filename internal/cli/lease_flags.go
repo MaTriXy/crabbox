@@ -25,7 +25,7 @@ type leaseCreateFlagValues struct {
 
 func registerLeaseCreateFlags(fs *flag.FlagSet, defaults Config) leaseCreateFlagValues {
 	return leaseCreateFlagValues{
-		Provider:      fs.String("provider", defaults.Provider, "provider: hetzner, aws, ssh, or blacksmith-testbox"),
+		Provider:      fs.String("provider", defaults.Provider, providerHelpAll()),
 		Profile:       fs.String("profile", defaults.Profile, "profile"),
 		Class:         fs.String("class", defaults.Class, "machine class"),
 		ServerType:    fs.String("type", getenv("CRABBOX_SERVER_TYPE", ""), "provider server/instance type"),

@@ -33,8 +33,8 @@ crabbox init [--force]
 crabbox config show [--json]
 crabbox config path
 crabbox config set-broker --url <url> --token-stdin [--provider hetzner|aws]
-crabbox warmup [--provider hetzner|aws|ssh|blacksmith-testbox] [--target linux|macos|windows] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--profile <name>] [--idle-timeout <duration>] [--timing-json]
-crabbox run [--id <lease-id-or-slug>] [--provider hetzner|aws|ssh|blacksmith-testbox] [--target linux|macos|windows] [--windows-mode normal|wsl2] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--shell] [--checksum] [--debug] [--force-sync-large] [--timing-json] [--blacksmith-workflow <workflow>] -- <command...>
+crabbox warmup [--provider hetzner|aws|ssh|blacksmith-testbox|daytona|islo] [--target linux|macos|windows] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--profile <name>] [--idle-timeout <duration>] [--timing-json]
+crabbox run [--id <lease-id-or-slug>] [--provider hetzner|aws|ssh|blacksmith-testbox|daytona|islo] [--target linux|macos|windows] [--windows-mode normal|wsl2] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--shell] [--checksum] [--debug] [--force-sync-large] [--timing-json] [--blacksmith-workflow <workflow>] -- <command...>
 crabbox desktop launch --id <lease-id-or-slug> [--browser] [--url <url>] [--webvnc] [--open] [-- <command...>]
 crabbox code --id <lease-id-or-slug> [--open]
 crabbox media preview --input <video> --output <preview.gif> [--trimmed-video-output <change.mp4>]
@@ -247,7 +247,7 @@ Flags:
 
 ```text
 --id <lease-id-or-slug>  reuse an existing lease
---provider <name>        hetzner, aws, ssh, or blacksmith-testbox
+--provider <name>        hetzner, aws, ssh, blacksmith-testbox, daytona, or islo
 --target <name>          linux, macos, or windows
 --windows-mode <mode>    normal or wsl2
 --static-host <host>     existing SSH host for provider=ssh
@@ -289,6 +289,14 @@ Secrets must not be accepted as flag values. Env forwarding is name-based only.
 Crabbox stores local lease claims under its state directory. `warmup` and first reuse claim the lease for the current repo; later `run`, `ssh`, `cache`, and `actions hydrate/register` refuse a conflicting repo claim unless `--reclaim` is set.
 
 With `provider: blacksmith-testbox`, Crabbox delegates machine setup, sync, and command transport to the Blacksmith CLI. `--sync-only` is unsupported, sync timing is reported as `sync=delegated`, and Blacksmith auth is handled by `blacksmith auth login`, not `crabbox login`.
+
+With `provider: daytona`, Crabbox creates Daytona sandboxes from
+`daytona.snapshot`, uploads workspaces through Daytona toolbox file APIs, and
+runs commands through Daytona toolbox process APIs. `crabbox ssh` mints
+short-lived Daytona SSH tokens and redacts those tokens from output. With
+`provider: islo`, Crabbox delegates sandbox setup and command execution to the
+Islo Go SDK; sync is delegated and `--sync-only`, `--checksum`, and
+`--force-sync-large` are unsupported.
 
 ## Exit Codes
 

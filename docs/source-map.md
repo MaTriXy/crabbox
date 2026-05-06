@@ -37,20 +37,24 @@ This page maps user-facing behavior back to implementation files. Keep docs desc
 - Direct AWS provider: `internal/cli/aws.go`
 - Static SSH macOS/Windows provider: `internal/cli/static.go`
 - Blacksmith Testbox argument/parsing helpers: `internal/cli/blacksmith.go`
+- Daytona provider backend and SDK/toolbox wrapper: `internal/cli/provider_daytona.go`, `internal/cli/provider_daytona_delegated.go`, `internal/providers/daytona`
+- Islo delegated backend and SDK wrapper: `internal/cli/provider_islo.go`, `internal/providers/islo`
 - Provider backend interfaces, registry, and request/result types:
   `internal/cli/provider_backend.go`
 - Built-in provider registration packages:
   `internal/providers/hetzner`, `internal/providers/aws`,
   `internal/providers/ssh`, `internal/providers/blacksmith`,
+  `internal/providers/daytona`, `internal/providers/islo`,
   `internal/providers/all`
 - Built-in provider backend implementations:
   `internal/cli/providers_common.go`, `internal/cli/provider_aws.go`,
   `internal/cli/provider_hetzner.go`, `internal/cli/provider_static.go`,
-  `internal/cli/provider_coordinator.go`, `internal/cli/provider_blacksmith.go`
+  `internal/cli/provider_coordinator.go`, `internal/cli/provider_blacksmith.go`,
+  `internal/cli/provider_daytona.go`, `internal/cli/provider_islo.go`
 - Worker Hetzner provider: `worker/src/hetzner.ts`
 - Worker AWS EC2 provider: `worker/src/aws.ts`
 - Worker AWS AMI create/read/promote routes: `worker/src/fleet.ts`, `worker/src/aws.ts`
-- Provider feature docs: `docs/features/aws.md`, `docs/features/hetzner.md`, `docs/features/blacksmith-testbox.md`
+- Provider feature docs: `docs/features/aws.md`, `docs/features/hetzner.md`, `docs/features/blacksmith-testbox.md`, `docs/features/daytona.md`, `docs/features/islo.md`
 - Provider/backend authoring guide: `docs/provider-backends.md`
 - CLI cloud-init bootstrap: `internal/cli/bootstrap.go`
 - Worker cloud-init bootstrap: `worker/src/bootstrap.ts`

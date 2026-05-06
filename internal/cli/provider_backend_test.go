@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"io"
+	"strings"
 	"testing"
 )
 
@@ -22,7 +23,7 @@ func testRuntimeWithRunner(r CommandRunner) Runtime {
 }
 
 func TestProviderRegistryCanonicalAndAliases(t *testing.T) {
-	for _, name := range []string{"hetzner", "aws", "ssh", "static", "static-ssh", "blacksmith", "blacksmith-testbox"} {
+	for _, name := range []string{"hetzner", "aws", "ssh", "static", "static-ssh", "blacksmith", "blacksmith-testbox", "daytona", "islo"} {
 		if _, err := ProviderFor(name); err != nil {
 			t.Fatalf("ProviderFor(%q): %v", name, err)
 		}
@@ -138,6 +139,126 @@ func TestBlacksmithBackendUsesInjectedCommandRunnerForListAndStatus(t *testing.T
 		if call.Name != "blacksmith" {
 			t.Fatalf("command name=%q", call.Name)
 		}
+	}
+}
+
+func TestProviderFlagsApplyDaytonaAndIsloWithoutCoreEdits(t *testing.T) {
+	defaults := baseConfig()
+	fs := newFlagSet("test", io.Discard)
+	provider := fs.String("provider", defaults.Provider, "")
+	values := registerProviderFlags(fs, defaults)
+	if err := parseFlags(fs, []string{
+		"--provider", "daytona",
+		"--daytona-snapshot", "snap-crabbox",
+		"--daytona-target", "us",
+		"--daytona-work-root", "/home/daytona/work",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := defaults
+	cfg.Provider = *provider
+	if err := applyProviderFlags(&cfg, fs, values); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Daytona.Snapshot != "snap-crabbox" || cfg.Daytona.Target != "us" || cfg.Daytona.WorkRoot != "/home/daytona/work" {
+		t.Fatalf("daytona flags not applied: %#v", cfg.Daytona)
+	}
+
+	fs = newFlagSet("test", io.Discard)
+	provider = fs.String("provider", defaults.Provider, "")
+	values = registerProviderFlags(fs, defaults)
+	if err := parseFlags(fs, []string{
+		"--provider", "islo",
+		"--islo-image", "ubuntu:24.04",
+		"--islo-vcpus", "4",
+		"--islo-memory-mb", "8192",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cfg = defaults
+	cfg.Provider = *provider
+	if err := applyProviderFlags(&cfg, fs, values); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Islo.Image != "ubuntu:24.04" || cfg.Islo.VCPUs != 4 || cfg.Islo.MemoryMB != 8192 {
+		t.Fatalf("islo flags not applied: %#v", cfg.Islo)
+	}
+}
+
+func TestDaytonaAuthRequiresOrganizationForJWT(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Provider = daytonaProvider
+	cfg.Daytona.APIKey = ""
+	cfg.Daytona.JWTToken = "jwt"
+	cfg.Daytona.OrganizationID = ""
+	_, err := newDaytonaClient(cfg, Runtime{})
+	if err == nil || !strings.Contains(err.Error(), "DAYTONA_ORGANIZATION_ID") {
+		t.Fatalf("err=%v, want organization requirement", err)
+	}
+}
+
+func TestDaytonaSSHTargetUsesReturnedSSHCommand(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Daytona.SSHGatewayHost = "fallback.example"
+	target, err := daytonaSSHTargetFromAccess(cfg, daytonaSSHAccess{
+		Token:   "tok_live_secret",
+		Command: "ssh -p 2222 tok_live_secret@region-ssh.example.com",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target.User != "tok_live_secret" || target.Host != "region-ssh.example.com" || target.Port != "2222" {
+		t.Fatalf("target=%#v", target)
+	}
+	if target.Key != "" || !target.AuthSecret || target.NetworkKind != NetworkPublic {
+		t.Fatalf("target auth/network=%#v", target)
+	}
+}
+
+func TestDaytonaSSHTargetFallsBackWhenCommandMissing(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Daytona.SSHGatewayHost = "fallback.example"
+	target, err := daytonaSSHTargetFromAccess(cfg, daytonaSSHAccess{Token: "tok_live_secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target.User != "tok_live_secret" || target.Host != "fallback.example" || target.Port != "22" {
+		t.Fatalf("target=%#v", target)
+	}
+}
+
+func TestDaytonaBackendIsHybridSDKRunAndSSHAccess(t *testing.T) {
+	backend := NewDaytonaLeaseBackend(ProviderSpec{Name: daytonaProvider}, baseConfig(), Runtime{})
+	if _, ok := backend.(DelegatedRunBackend); !ok {
+		t.Fatal("daytona should use delegated SDK run path")
+	}
+	if _, ok := backend.(SSHLeaseBackend); !ok {
+		t.Fatal("daytona should still expose explicit SSH access")
+	}
+}
+
+func TestDaytonaCommandString(t *testing.T) {
+	if got := daytonaCommandString([]string{"go", "test", "./..."}, false); got != "'go' 'test' './...'" {
+		t.Fatalf("command=%q", got)
+	}
+	if got := daytonaCommandString([]string{"FOO=bar", "go", "test"}, false); !strings.Contains(got, "FOO=") || !strings.Contains(got, "go") {
+		t.Fatalf("shell command=%q", got)
+	}
+	if got := daytonaCommandString([]string{"echo hello && pwd"}, true); got != "echo hello && pwd" {
+		t.Fatalf("shell mode=%q", got)
+	}
+}
+
+func TestRedactedSSHUserOnlyForDaytona(t *testing.T) {
+	target := SSHTarget{User: "tok_live_secret"}
+	if got := redactedSSHUser(Config{Provider: "hetzner"}, Server{Provider: "hetzner"}, target); got != target.User {
+		t.Fatalf("redactedSSHUser hetzner=%q", got)
+	}
+	if got := redactedSSHUser(Config{Provider: "hetzner"}, Server{Provider: "hetzner"}, SSHTarget{User: "secret", AuthSecret: true}); got != daytonaTokenRedacted {
+		t.Fatalf("redactedSSHUser auth secret=%q", got)
+	}
+	if got := redactedSSHUser(Config{Provider: daytonaProvider}, Server{}, target); got != daytonaTokenRedacted {
+		t.Fatalf("redactedSSHUser daytona=%q", got)
 	}
 }
 

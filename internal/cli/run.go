@@ -103,17 +103,14 @@ func (a App) warmup(ctx context.Context, args []string) error {
 			fmt.Fprintf(a.Stderr, "network fallback %s\n", resolved.FallbackReason)
 		}
 	}
-	network := NetworkPublic
-	if target.Host != server.PublicNet.IPv4.IP && target.Host != "" {
-		network = NetworkTailscale
-	}
+	network := readyNetworkDisplay(cfg, server, target)
 	meta := serverTailscaleMetadata(server)
 	tailscaleSummary := ""
 	if meta.Enabled {
 		tailscaleSummary = " tailscale=" + blank(tailscaleTargetHost(meta), blank(meta.State, "requested"))
 	}
 	fmt.Fprintf(a.Stdout, "leased %s slug=%s provider=%s server=%s type=%s ip=%s%s idle_timeout=%s expires=%s\n", leaseID, blank(serverSlug(server), "-"), cfg.Provider, server.DisplayID(), server.ServerType.Name, server.PublicNet.IPv4.IP, tailscaleSummary, cfg.IdleTimeout, blank(leaseLabelTimeDisplay(server.Labels["expires_at"]), server.Labels["expires_at"]))
-	fmt.Fprintf(a.Stdout, "ready ssh=%s@%s:%s network=%s workroot=%s\n", target.User, target.Host, target.Port, network, cfg.WorkRoot)
+	fmt.Fprintf(a.Stdout, "ready ssh=%s@%s:%s network=%s workroot=%s\n", redactedSSHUser(cfg, server, target), target.Host, target.Port, network, cfg.WorkRoot)
 	if *actionsRunner {
 		ghRepo, err := resolveGitHubRepo(repo, cfg.Actions.Repo)
 		if err != nil {
@@ -710,6 +707,22 @@ func applyResolvedServerConfig(cfg *Config, server Server) {
 	if server.ServerType.Name != "" {
 		cfg.ServerType = server.ServerType.Name
 	}
+	if root := server.Labels["work_root"]; root != "" {
+		cfg.WorkRoot = root
+	}
+}
+
+func readyNetworkDisplay(cfg Config, server Server, target SSHTarget) NetworkMode {
+	if target.NetworkKind != "" {
+		return target.NetworkKind
+	}
+	if cfg.Provider == "daytona" || server.Provider == "daytona" {
+		return NetworkPublic
+	}
+	if target.Host != server.PublicNet.IPv4.IP && target.Host != "" {
+		return NetworkTailscale
+	}
+	return NetworkPublic
 }
 
 func coordinatorFallbackSummary(lease CoordinatorLease) string {
@@ -927,7 +940,7 @@ func findServerByAlias(servers []Server, id string) (Server, string, error) {
 func (a App) stop(ctx context.Context, args []string) error {
 	defaults := defaultConfig()
 	fs := newFlagSet("stop", a.Stderr)
-	provider := fs.String("provider", defaults.Provider, "provider: hetzner, aws, ssh, or blacksmith-testbox")
+	provider := fs.String("provider", defaults.Provider, providerHelpAll())
 	providerFlags := registerProviderFlags(fs, defaults)
 	targetFlags := registerTargetFlags(fs, defaults)
 	if err := parseFlags(fs, args); err != nil {

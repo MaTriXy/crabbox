@@ -10,7 +10,7 @@ import (
 func (a App) status(ctx context.Context, args []string) error {
 	defaults := defaultConfig()
 	fs := newFlagSet("status", a.Stderr)
-	provider := fs.String("provider", defaults.Provider, "provider: hetzner, aws, ssh, or blacksmith-testbox")
+	provider := fs.String("provider", defaults.Provider, providerHelpAll())
 	id := fs.String("id", "", "lease id or slug")
 	wait := fs.Bool("wait", false, "wait until ready")
 	waitTimeout := fs.Duration("wait-timeout", 5*time.Minute, "maximum wait duration")
@@ -96,6 +96,12 @@ func statusViewFromLeaseTarget(ctx context.Context, cfg Config, lease LeaseTarge
 	server := lease.Server
 	target := lease.SSH
 	hasHost := server.PublicNet.IPv4.IP != ""
+	if target.NetworkKind == NetworkPublic && target.Host != "" {
+		hasHost = true
+	}
+	if (cfg.Provider == "daytona" || server.Provider == "daytona") && target.Host != "" {
+		hasHost = true
+	}
 	resolved, err := resolveNetworkTarget(ctx, cfg, server, target)
 	if err != nil {
 		return statusView{}, err
@@ -121,7 +127,7 @@ func statusViewFromLeaseTarget(ctx context.Context, cfg Config, lease LeaseTarge
 		Network:          resolved.Network,
 		Tailscale:        tailscale,
 		SSHHost:          target.Host,
-		SSHUser:          target.User,
+		SSHUser:          redactedSSHUser(cfg, server, target),
 		SSHPort:          target.Port,
 		SSHFallbackPorts: target.FallbackPorts,
 		SSHKey:           target.Key,

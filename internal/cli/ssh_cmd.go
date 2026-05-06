@@ -3,14 +3,16 @@ package cli
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 func (a App) ssh(ctx context.Context, args []string) error {
 	defaults := defaultConfig()
 	fs := newFlagSet("ssh", a.Stderr)
-	provider := fs.String("provider", defaults.Provider, "provider: hetzner, aws, or ssh")
+	provider := fs.String("provider", defaults.Provider, providerHelpSSH())
 	id := fs.String("id", "", "lease id or slug")
 	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
+	showSecret := fs.Bool("show-secret", false, "print secret auth material for token-based SSH providers")
 	targetFlags := registerTargetFlags(fs, defaults)
 	networkFlags := registerNetworkModeFlag(fs, defaults)
 	if err := parseFlags(fs, args); err != nil {
@@ -31,6 +33,19 @@ func (a App) ssh(ctx context.Context, args []string) error {
 	if err := a.claimAndTouchLeaseTarget(ctx, cfg, server, leaseID, *reclaim); err != nil {
 		return err
 	}
-	fmt.Fprintf(a.Stdout, "ssh -i %s -p %s %s@%s\n", target.Key, target.Port, target.User, target.Host)
+	if target.AuthSecret && !*showSecret {
+		fmt.Fprintf(a.Stderr, "warning: ssh auth user is secret; rerun with --show-secret to print a pasteable command\n")
+	}
+	fmt.Fprintln(a.Stdout, sshCommandLine(target, target.AuthSecret && !*showSecret))
 	return nil
+}
+
+func sshCommandLine(target SSHTarget, redactSecret bool) string {
+	renderTarget := target
+	if redactSecret {
+		renderTarget.User = daytonaTokenRedacted
+	}
+	args := append([]string{"ssh"}, sshBaseArgs(renderTarget)...)
+	args = append(args, renderTarget.User+"@"+renderTarget.Host)
+	return strings.Join(shellWords(args), " ")
 }

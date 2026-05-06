@@ -26,6 +26,33 @@ func clearConfigEnv(t *testing.T) {
 		"CF_ACCESS_CLIENT_ID",
 		"CF_ACCESS_CLIENT_SECRET",
 		"CF_ACCESS_TOKEN",
+		"CRABBOX_DAYTONA_API_KEY",
+		"DAYTONA_API_KEY",
+		"CRABBOX_DAYTONA_JWT_TOKEN",
+		"DAYTONA_JWT_TOKEN",
+		"CRABBOX_DAYTONA_ORGANIZATION_ID",
+		"DAYTONA_ORGANIZATION_ID",
+		"CRABBOX_DAYTONA_API_URL",
+		"DAYTONA_API_URL",
+		"CRABBOX_DAYTONA_SNAPSHOT",
+		"DAYTONA_SNAPSHOT",
+		"CRABBOX_DAYTONA_TARGET",
+		"DAYTONA_TARGET",
+		"CRABBOX_DAYTONA_USER",
+		"CRABBOX_DAYTONA_WORK_ROOT",
+		"CRABBOX_DAYTONA_SSH_GATEWAY_HOST",
+		"CRABBOX_DAYTONA_SSH_ACCESS_MINUTES",
+		"CRABBOX_ISLO_API_KEY",
+		"ISLO_API_KEY",
+		"CRABBOX_ISLO_BASE_URL",
+		"ISLO_BASE_URL",
+		"CRABBOX_ISLO_IMAGE",
+		"CRABBOX_ISLO_WORKDIR",
+		"CRABBOX_ISLO_GATEWAY_PROFILE",
+		"CRABBOX_ISLO_SNAPSHOT_NAME",
+		"CRABBOX_ISLO_VCPUS",
+		"CRABBOX_ISLO_MEMORY_MB",
+		"CRABBOX_ISLO_DISK_GB",
 	} {
 		t.Setenv(key, "")
 	}
@@ -108,6 +135,23 @@ blacksmith:
   ref: main
   idleTimeout: 90m
   debug: true
+daytona:
+  apiUrl: https://daytona.example.test/api
+  snapshot: crabbox-ready
+  target: us
+  user: daytona
+  workRoot: /home/daytona/crabbox
+  sshGatewayHost: ssh.daytona.example.test
+  sshAccessMinutes: 12
+islo:
+  baseUrl: https://islo.example.test
+  image: docker.io/library/ubuntu:24.04
+  workdir: crabbox
+  gatewayProfile: default
+  snapshotName: snap-ready
+  vcpus: 4
+  memoryMB: 8192
+  diskGB: 40
 static:
   id: win-dev
   name: windows-dev
@@ -198,6 +242,12 @@ ssh:
 	if cfg.Blacksmith.Org != "openclaw" || cfg.Blacksmith.Workflow != ".github/workflows/blacksmith-testbox.yml" || cfg.Blacksmith.Job != "hydrate" || cfg.Blacksmith.Ref != "main" || cfg.Blacksmith.IdleTimeout != 90*time.Minute || !cfg.Blacksmith.Debug {
 		t.Fatalf("blacksmith config not loaded: %#v", cfg.Blacksmith)
 	}
+	if cfg.Daytona.APIURL != "https://daytona.example.test/api" || cfg.Daytona.Snapshot != "crabbox-ready" || cfg.Daytona.Target != "us" || cfg.Daytona.User != "daytona" || cfg.Daytona.WorkRoot != "/home/daytona/crabbox" || cfg.Daytona.SSHGatewayHost != "ssh.daytona.example.test" || cfg.Daytona.SSHAccessMinutes != 12 {
+		t.Fatalf("daytona config not loaded: %#v", cfg.Daytona)
+	}
+	if cfg.Islo.BaseURL != "https://islo.example.test" || cfg.Islo.Image != "docker.io/library/ubuntu:24.04" || cfg.Islo.Workdir != "crabbox" || cfg.Islo.GatewayProfile != "default" || cfg.Islo.SnapshotName != "snap-ready" || cfg.Islo.VCPUs != 4 || cfg.Islo.MemoryMB != 8192 || cfg.Islo.DiskGB != 40 {
+		t.Fatalf("islo config not loaded: %#v", cfg.Islo)
+	}
 	if cfg.Static.Host != "win-dev.local" || cfg.Static.User != "peter" || cfg.Static.Port != "22" || cfg.WorkRoot != "/home/peter/crabbox" {
 		t.Fatalf("static config not loaded: static=%#v workRoot=%s", cfg.Static, cfg.WorkRoot)
 	}
@@ -267,6 +317,29 @@ func TestEnvOverridesConfig(t *testing.T) {
 	t.Setenv("CRABBOX_TAILSCALE_AUTH_KEY", "tskey-secret")
 	t.Setenv("CRABBOX_TARGET", "macos")
 	t.Setenv("CRABBOX_STATIC_HOST", "mac.local")
+	t.Setenv("DAYTONA_API_KEY", "daytona-api-file")
+	t.Setenv("CRABBOX_DAYTONA_API_KEY", "daytona-api-env")
+	t.Setenv("DAYTONA_API_URL", "https://daytona-file.example/api")
+	t.Setenv("CRABBOX_DAYTONA_API_URL", "https://daytona-env.example/api")
+	t.Setenv("DAYTONA_SNAPSHOT", "snapshot-file")
+	t.Setenv("CRABBOX_DAYTONA_SNAPSHOT", "snapshot-env")
+	t.Setenv("DAYTONA_TARGET", "target-file")
+	t.Setenv("CRABBOX_DAYTONA_TARGET", "target-env")
+	t.Setenv("CRABBOX_DAYTONA_USER", "daytona-env-user")
+	t.Setenv("CRABBOX_DAYTONA_WORK_ROOT", "/home/daytona/env")
+	t.Setenv("CRABBOX_DAYTONA_SSH_GATEWAY_HOST", "ssh.env.example")
+	t.Setenv("CRABBOX_DAYTONA_SSH_ACCESS_MINUTES", "44")
+	t.Setenv("ISLO_API_KEY", "islo-api-file")
+	t.Setenv("CRABBOX_ISLO_API_KEY", "islo-api-env")
+	t.Setenv("ISLO_BASE_URL", "https://islo-file.example")
+	t.Setenv("CRABBOX_ISLO_BASE_URL", "https://islo-env.example")
+	t.Setenv("CRABBOX_ISLO_IMAGE", "ubuntu:env")
+	t.Setenv("CRABBOX_ISLO_WORKDIR", "env-workdir")
+	t.Setenv("CRABBOX_ISLO_GATEWAY_PROFILE", "env-gateway")
+	t.Setenv("CRABBOX_ISLO_SNAPSHOT_NAME", "env-snapshot")
+	t.Setenv("CRABBOX_ISLO_VCPUS", "8")
+	t.Setenv("CRABBOX_ISLO_MEMORY_MB", "16384")
+	t.Setenv("CRABBOX_ISLO_DISK_GB", "80")
 	path := userConfigPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
@@ -302,6 +375,12 @@ func TestEnvOverridesConfig(t *testing.T) {
 	}
 	if len(cfg.Tailscale.Tags) != 2 || cfg.Tailscale.Tags[1] != "tag:ci" {
 		t.Fatalf("unexpected tailscale tags: %#v", cfg.Tailscale.Tags)
+	}
+	if cfg.Daytona.APIKey != "daytona-api-env" || cfg.Daytona.APIURL != "https://daytona-env.example/api" || cfg.Daytona.Snapshot != "snapshot-env" || cfg.Daytona.Target != "target-env" || cfg.Daytona.User != "daytona-env-user" || cfg.Daytona.WorkRoot != "/home/daytona/env" || cfg.Daytona.SSHGatewayHost != "ssh.env.example" || cfg.Daytona.SSHAccessMinutes != 44 {
+		t.Fatalf("unexpected daytona env: %#v", cfg.Daytona)
+	}
+	if cfg.Islo.APIKey != "islo-api-env" || cfg.Islo.BaseURL != "https://islo-env.example" || cfg.Islo.Image != "ubuntu:env" || cfg.Islo.Workdir != "env-workdir" || cfg.Islo.GatewayProfile != "env-gateway" || cfg.Islo.SnapshotName != "env-snapshot" || cfg.Islo.VCPUs != 8 || cfg.Islo.MemoryMB != 16384 || cfg.Islo.DiskGB != 80 {
+		t.Fatalf("unexpected islo env: %#v", cfg.Islo)
 	}
 }
 
