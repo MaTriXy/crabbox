@@ -2685,7 +2685,7 @@ function mergeRunTelemetry(
   incoming: RunTelemetrySummary,
 ): RunTelemetrySummary {
   const telemetry: RunTelemetrySummary = {
-    ...(existing ?? {}),
+    ...existing,
     ...incoming,
   };
   telemetry.samples = boundedTelemetrySamples(
@@ -2705,7 +2705,7 @@ function appendRunTelemetrySample(
   telemetry: RunTelemetrySummary | undefined,
   sample: LeaseTelemetry,
 ): RunTelemetrySummary {
-  const next: RunTelemetrySummary = { ...(telemetry ?? {}) };
+  const next: RunTelemetrySummary = { ...telemetry };
   next.samples = boundedTelemetrySamples([...(next.samples ?? []), sample], maxRunTelemetrySamples);
   if (!next.start) {
     next.start = sample;
