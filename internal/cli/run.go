@@ -88,6 +88,7 @@ func (a App) warmup(ctx context.Context, args []string) error {
 		return err
 	}
 	if serverTailscaleMetadata(server).Enabled {
+		target = bootstrapNetworkTarget(cfg, server, target)
 		if err := waitForSSHReady(ctx, &target, a.Stderr, "tailscale metadata", 2*time.Minute); err == nil {
 			a.refreshTailscaleMetadata(ctx, cfg, lease.Coordinator, lease.Coordinator != nil, &server, target, leaseID)
 		} else {
@@ -307,6 +308,7 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 		cfg.Sync.BaseRef = repo.BaseRef
 	}
 	timings := runTimings{started: time.Now()}
+	exitNodeEgressChecked := false
 	workdir := remoteJoin(cfg, leaseID, repo.Name)
 	actionsEnvFile := ""
 	actionsURL := ""
@@ -329,6 +331,7 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 		fmt.Fprintf(a.Stderr, "syncing %s -> %s:%s\n", repo.Root, target.Host, workdir)
 		stepStart := time.Now()
 		recorder.Event("bootstrap.waiting", "bootstrap", "waiting for SSH before sync")
+		target = bootstrapNetworkTarget(cfg, server, target)
 		if err := waitForSSHReady(ctx, &target, a.Stderr, "before sync", 2*time.Minute); err != nil {
 			return recordFailure(err)
 		}
@@ -340,6 +343,12 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 			if resolved.FallbackReason != "" {
 				fmt.Fprintf(a.Stderr, "network fallback %s\n", resolved.FallbackReason)
 			}
+		}
+		if !exitNodeEgressChecked {
+			if err := validateTailscaleExitNodeEgress(ctx, server, target); err != nil {
+				return recordFailure(err)
+			}
+			exitNodeEgressChecked = true
 		}
 		recorder.CaptureTelemetryStart(ctx, target)
 		recorder.StartTelemetrySampler(ctx, target)
@@ -473,6 +482,7 @@ afterSync:
 
 	commandStart := time.Now()
 	recorder.Event("bootstrap.waiting", "bootstrap", "waiting for SSH before command")
+	target = bootstrapNetworkTarget(cfg, server, target)
 	if err := waitForSSHReady(ctx, &target, a.Stderr, "before command", 2*time.Minute); err != nil {
 		return recordFailure(err)
 	}
@@ -484,6 +494,12 @@ afterSync:
 		if resolved.FallbackReason != "" {
 			fmt.Fprintf(a.Stderr, "network fallback %s\n", resolved.FallbackReason)
 		}
+	}
+	if !exitNodeEgressChecked {
+		if err := validateTailscaleExitNodeEgress(ctx, server, target); err != nil {
+			return recordFailure(err)
+		}
+		exitNodeEgressChecked = true
 	}
 	recorder.CaptureTelemetryStart(ctx, target)
 	recorder.StartTelemetrySampler(ctx, target)

@@ -251,6 +251,31 @@ func resolveNetworkTarget(ctx context.Context, cfg Config, server Server, target
 	}
 }
 
+func bootstrapNetworkTarget(cfg Config, server Server, target SSHTarget) SSHTarget {
+	if !preferTailscaleBootstrap(cfg, server) {
+		return target
+	}
+	host := tailscaleTargetHost(serverTailscaleMetadata(server))
+	if host == "" {
+		return target
+	}
+	next := target
+	next.Host = host
+	next.NetworkKind = NetworkTailscale
+	return next
+}
+
+func preferTailscaleBootstrap(cfg Config, server Server) bool {
+	if cfg.Network == NetworkPublic {
+		return false
+	}
+	if cfg.Network == NetworkTailscale {
+		return true
+	}
+	meta := serverTailscaleMetadata(server)
+	return meta.Enabled && meta.ExitNode != ""
+}
+
 func tailscaleTargetHost(meta TailscaleMetadata) string {
 	return firstNonEmpty(meta.FQDN, meta.IPv4, meta.Hostname)
 }
@@ -369,4 +394,35 @@ if [ -f /var/lib/crabbox/tailscale-exit-node-allow-lan-access ]; then cat /var/l
 		return TailscaleMetadata{}, fmt.Errorf("remote tailscale metadata missing ipv4")
 	}
 	return meta, nil
+}
+
+func validateTailscaleExitNodeEgress(ctx context.Context, server Server, target SSHTarget) error {
+	meta := serverTailscaleMetadata(server)
+	if strings.TrimSpace(meta.ExitNode) == "" {
+		return nil
+	}
+	command := `set -eu
+prefs="$(tailscale debug prefs 2>/dev/null || true)"
+case "$prefs" in
+  *'"ExitNodeID": ""'*|*'"ExitNodeID":""'*)
+    printf '%s\n' "exit node is not selected in tailscale prefs" >&2
+    exit 86
+    ;;
+esac
+if command -v curl >/dev/null 2>&1; then
+  timeout 12 sh -c 'curl -4fsS --connect-timeout 5 https://ifconfig.me/ip || curl -4fsS --connect-timeout 5 https://icanhazip.com' >/tmp/crabbox-exit-node-ip
+else
+  printf '%s\n' "curl is not installed for exit-node egress check" >&2
+  exit 87
+fi
+test -s /tmp/crabbox-exit-node-ip
+`
+	if out, err := runSSHCombinedOutput(ctx, target, command); err != nil {
+		detail := strings.TrimSpace(out)
+		if detail == "" {
+			detail = err.Error()
+		}
+		return exit(5, "tailscale exit node %s joined but remote internet egress failed; verify the exit node is approved and forwarding internet traffic: %s", meta.ExitNode, detail)
+	}
+	return nil
 }

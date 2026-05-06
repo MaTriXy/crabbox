@@ -104,6 +104,22 @@ repository-owned setup, usually through Actions hydration or repo scripts.
 - Plugin metadata and config schema: `package.json`, `openclaw.plugin.json`
 - Tool registration and CLI wrapper behavior: `index.js`
 - Plugin tests: `index.test.js`
+- Plugin feature doc: `docs/features/openclaw-plugin.md`
+
+## Cross-cutting Feature Docs
+
+- Configuration precedence and YAML schema: `docs/features/configuration.md` (config code in `internal/cli/config.go`, `internal/cli/config_cmd.go`)
+- Identifiers (lease IDs, slugs, claims, run IDs): `docs/features/identifiers.md` (code in `internal/cli/lease.go`, `internal/cli/slug.go`, `internal/cli/claim.go`)
+- Doctor checks: `docs/features/doctor.md` (code in `internal/cli/doctor.go`)
+- Network and reachability: `docs/features/network.md` (code in `internal/cli/network.go`)
+- Lease capabilities: `docs/features/capabilities.md` (code in `internal/cli/capabilities.go`)
+- Environment forwarding: `docs/features/env-forwarding.md` (forwarding logic in `internal/cli/run.go`)
+- Capacity and fallback: `docs/features/capacity-fallback.md` (code in `internal/cli/aws.go`, `worker/src/aws.ts`, class maps in `internal/cli/config.go`)
+- Telemetry: `docs/features/telemetry.md` (code in `internal/cli/telemetry.go`)
+- Browser portal: `docs/features/portal.md` (code in `worker/src/portal.ts`)
+- Provider authoring guide: `docs/features/provider-authoring.md` (cross-references `internal/cli/provider_backend.go` and `internal/providers/*`)
+- Concepts/glossary: `docs/concepts.md`
+- Getting started walkthrough: `docs/getting-started.md`
 
 ## Build, CI, Docs, And Release
 

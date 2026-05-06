@@ -32,6 +32,39 @@ func TestNetworkTailscaleRequiresMetadata(t *testing.T) {
 	}
 }
 
+func TestBootstrapNetworkPrefersTailscaleForExitNode(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Network = NetworkAuto
+	server := Server{
+		Labels: map[string]string{
+			"tailscale":           "true",
+			"tailscale_hostname":  "crabbox-blue-lobster",
+			"tailscale_exit_node": "100.123.224.76",
+		},
+	}
+	server.PublicNet.IPv4.IP = "203.0.113.10"
+	target := SSHTarget{Host: "203.0.113.10", Port: "2222"}
+	got := bootstrapNetworkTarget(cfg, server, target)
+	if got.Host != "crabbox-blue-lobster" || got.NetworkKind != NetworkTailscale {
+		t.Fatalf("bootstrap target = host=%s network=%s", got.Host, got.NetworkKind)
+	}
+}
+
+func TestBootstrapNetworkHonorsExplicitPublic(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Network = NetworkPublic
+	server := Server{Labels: map[string]string{
+		"tailscale":           "true",
+		"tailscale_hostname":  "crabbox-blue-lobster",
+		"tailscale_exit_node": "100.123.224.76",
+	}}
+	target := SSHTarget{Host: "203.0.113.10", Port: "2222"}
+	got := bootstrapNetworkTarget(cfg, server, target)
+	if got.Host != "203.0.113.10" || got.NetworkKind != "" {
+		t.Fatalf("bootstrap target = host=%s network=%s", got.Host, got.NetworkKind)
+	}
+}
+
 func TestRenderTailscaleHostname(t *testing.T) {
 	got := renderTailscaleHostname("CBX-{slug}-{provider}-{id}", "cbx_abcdef123456", "Blue Lobster", "aws")
 	if got != "cbx-blue-lobster-aws-cbx-abcdef123456" {
