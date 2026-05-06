@@ -12,8 +12,10 @@ Core features:
 
 - [Coordinator](coordinator.md): brokered leases through Cloudflare Workers and Durable Objects.
 - [Broker auth and routing](broker-auth-routing.md): GitHub login, shared bearer tokens, optional Cloudflare Access, and Worker routes.
+- [Browser portal](portal.md): authenticated lease/run UI, detail pages, bridge routes, and runner visibility.
 - [Providers](providers.md): provider overview, target matrix, classes, and fallback.
 - [Provider backends](../provider-backends.md): implementation guide for adding a new provider/backend/plugin.
+- [Provider authoring](provider-authoring.md): step-by-step guide for adding a provider package.
 - [AWS](aws.md): EC2 Linux, Windows, WSL2, EC2 Mac, capacity, AMIs, and security groups.
 - [Hetzner](hetzner.md): Linux-only managed Hetzner behavior, classes, and cleanup.
 - [Blacksmith Testbox](blacksmith-testbox.md): delegated Testbox backend behavior.
@@ -30,6 +32,7 @@ Core features:
 - [SSH keys](ssh-keys.md): per-lease keys, provider key cleanup, and local storage.
 - [Cost and usage](cost-usage.md): guardrails, provider-backed pricing, and reporting.
 - [History and logs](history-logs.md): coordinator run records, events, and retained remote output.
+- [Telemetry](telemetry.md): lightweight Linux load, memory, disk, uptime, and run resource samples.
 - [Test results](test-results.md): JUnit summaries attached to recorded runs.
 - [Cache controls](cache.md): inspect, purge, and warm remote package/build caches.
 - [Auth and admin](auth-admin.md): login/logout/whoami and trusted operator controls.
