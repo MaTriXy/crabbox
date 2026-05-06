@@ -72,7 +72,7 @@ POST /v1/admin/leases/{id-or-slug}/delete
 
 Admin endpoints and `GET /v1/pool` require the separate admin token. GitHub browser-login tokens are user tokens for normal lease operations and are minted only after allowed GitHub org membership is verified. User-token list, exact-ID lookup, slug lookup, heartbeat, release, run history, logs, and usage are scoped to the token owner/org.
 
-Heartbeat bodies may include a `telemetry` object. The coordinator stores the latest sanitized snapshot on the lease record and retains a bounded `telemetryHistory` ring of the latest 60 samples for portal trend charts. Current CLI snapshots include Linux load average, memory use, root-disk use, uptime, source, and capture timestamp. Completed run records may also store sanitized start/end telemetry snapshots so history can show resource deltas without keeping an unbounded time series.
+Heartbeat bodies may include a `telemetry` object. The coordinator stores the latest sanitized snapshot on the lease record and retains a bounded `telemetryHistory` ring of the latest 60 samples for portal trend charts. Current CLI snapshots include Linux load average, memory use, root-disk use, uptime, source, and capture timestamp. Runs also accept `POST /v1/runs/{run-id}/telemetry` samples while they are active, and completed run records keep bounded start/mid/end Linux telemetry so history can show resource deltas and short trends without keeping an unbounded time series.
 
 ## Durable Object State
 

@@ -74,8 +74,9 @@ session cookie, so users can inspect logs and events without copying a bearer
 token into the browser. The run detail page at `/portal/runs/{run-id}` renders
 the command, owner, lease, provider metadata, exit status, JUnit summary when
 present, a searchable/paginated event table with event-type filters, and a
-copyable retained log tail; `/logs` and `/events` remain raw/plain resources for
-copying and automation.
+copyable retained log tail. Longer Linux runs include bounded load, memory, and
+disk trend lines collected from run telemetry samples; `/logs` and `/events`
+remain raw/plain resources for copying and automation.
 
 GitHub browser-login tokens are owner/org scoped for lease, run, log, and usage routes. Shared-token admin auth is required for `GET /v1/pool`, admin lease routes, and fleet-wide usage/listing.
 

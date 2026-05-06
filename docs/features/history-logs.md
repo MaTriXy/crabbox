@@ -19,7 +19,7 @@ CLI finishes that run with:
 - total duration;
 - owner and org;
 - provider, class, and server type;
-- optional start/end Linux telemetry snapshots for load, memory, disk, and uptime;
+- optional Linux telemetry snapshots for load, memory, disk, and uptime, including bounded mid-run samples for longer runs;
 - retained remote output.
 
 Use:
@@ -34,7 +34,8 @@ crabbox logs run_...
 
 In the authenticated browser portal, `/portal/runs/<run-id>` renders the same
 run as a human page with command metadata, result summary, searchable/paginated
-recent events, a compact resource summary, and a copyable retained log tail.
+recent events, compact resource deltas, short telemetry trend lines, and a
+copyable retained log tail.
 `/portal/runs/<run-id>/logs` stays a plain-text log endpoint, and
 `/portal/runs/<run-id>/events` stays JSON for copying or browser-side
 inspection.
