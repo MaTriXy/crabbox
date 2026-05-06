@@ -986,6 +986,11 @@ describe("fleet lease identity and idle", () => {
     );
     expect(runBody).toContain('data-filter-tags="command failed"');
     expect(runBody).toContain('class="run-telemetry-grid"');
+    expect(runBody).toContain(".run-artifact-card .button { width:100%; }");
+    expect(runBody).toContain("@media (max-width: 980px)");
+    expect(runBody).toContain(
+      ".run-telemetry-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }",
+    );
     expect(runBody).toContain("<span>load</span>");
     expect(runBody).toContain("<strong>0.42 / 0.24 / 0.12</strong>");
     expect(runBody).toContain("<strong>1.5 KiB / 2.0 KiB (75%)</strong>");
