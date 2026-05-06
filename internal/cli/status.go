@@ -92,7 +92,8 @@ func statusViewFromLeaseTarget(ctx context.Context, cfg Config, lease LeaseTarge
 		return statusView{}, err
 	}
 	target = resolved.Target
-	ready := hasHost && blank(server.Labels["state"], server.Status) != "provisioning" && probeSSHReady(ctx, &target, 4*time.Second)
+	state := blank(server.Labels["state"], server.Status)
+	ready := hasHost && leaseStatusStateCanBeReady(lease, state) && probeSSHReady(ctx, &target, 4*time.Second)
 	meta := serverTailscaleMetadata(server)
 	var tailscale *TailscaleMetadata
 	if meta.Enabled {
@@ -104,7 +105,7 @@ func statusViewFromLeaseTarget(ctx context.Context, cfg Config, lease LeaseTarge
 		Provider:         blank(server.Provider, cfg.Provider),
 		TargetOS:         blank(server.Labels["target"], cfg.TargetOS),
 		WindowsMode:      blank(server.Labels["windows_mode"], cfg.WindowsMode),
-		State:            blank(server.Labels["state"], server.Status),
+		State:            state,
 		ServerID:         server.DisplayID(),
 		ServerType:       server.ServerType.Name,
 		Host:             server.PublicNet.IPv4.IP,
@@ -123,6 +124,13 @@ func statusViewFromLeaseTarget(ctx context.Context, cfg Config, lease LeaseTarge
 		HasHost:          hasHost,
 		Ready:            ready,
 	}, nil
+}
+
+func leaseStatusStateCanBeReady(lease LeaseTarget, state string) bool {
+	if lease.Coordinator != nil {
+		return state == "active"
+	}
+	return state != "provisioning"
 }
 
 type statusView struct {
