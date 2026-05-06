@@ -648,6 +648,7 @@ describe("fleet lease identity and idle", () => {
     const body = await response.text();
     expect(body).toContain('class="portal-shell"');
     expect(body).toContain("<h1>🦀 crabbox</h1>");
+    expect(body).toContain('class="portal-actions"');
     expect(body).toContain("table-scroll");
     expect(body).toContain(".lease-table th:nth-child(1)");
     expect(body).toContain(
@@ -913,6 +914,8 @@ describe("fleet lease identity and idle", () => {
     expect(body).toContain("data-copy-command");
     expect(body).toContain('querySelector("code")');
     expect(body).toContain('class="portal-shell lease-shell"');
+    expect(body).toContain("<h1>🦀 crabbox</h1>");
+    expect(body).toContain("blue-lobster · hetzner linux lease");
     expect(body).toContain('data-search-placeholder="search runs"');
     expect(body).toContain(
       'data-filter-buttons="succeeded:succeeded,failed:failed,running:running,all:all"',
@@ -950,6 +953,7 @@ describe("fleet lease identity and idle", () => {
     expect(runPage.headers.get("content-type")).toBe("text/html; charset=utf-8");
     const runBody = await runPage.text();
     expect(runBody).toContain('class="portal-shell run-shell"');
+    expect(runBody).toContain("<h1>🦀 crabbox</h1>");
     expect(runBody).toContain("run_000000000001");
     expect(runBody).toContain("go test ./...");
     expect(runBody).toContain("data-copy-command");
@@ -1024,6 +1028,8 @@ describe("fleet lease identity and idle", () => {
     const pageBody = await page.text();
     expect(pageBody).toContain("crabbox code --id blue-lobster --open");
     expect(pageBody).toContain('class="vnc-page code-wait-page"');
+    expect(pageBody).toContain("<h1>🦀 crabbox</h1>");
+    expect(pageBody).toContain("code blue-lobster");
     expect(pageBody).toContain('id="code-status"');
     expect(pageBody).toContain('id="code-copy"');
     expect(pageBody).toContain("/portal/leases/cbx_000000000001/code/health");
@@ -1134,6 +1140,8 @@ describe("fleet lease identity and idle", () => {
       "crabbox webvnc --provider hetzner --target linux --id blue-lobster --open",
     );
     expect(pageBody).toContain("/portal/assets/novnc/rfb.js");
+    expect(pageBody).toContain("<h1>🦀 crabbox</h1>");
+    expect(pageBody).toContain("WebVNC blue-lobster");
     expect(pageBody).toContain("function scheduleRetry");
     expect(pageBody).toContain("/portal/leases/cbx_000000000001/vnc/status");
     expect(pageBody).toContain("vnc-copy");

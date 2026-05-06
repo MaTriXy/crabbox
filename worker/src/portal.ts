@@ -5,6 +5,13 @@ const copyIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" st
 const serverIcon = `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h4"/></svg>`;
 const vncIcon = `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>`;
 const codeIcon = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 8-4 4 4 4"/><path d="m15 8 4 4-4 4"/><path d="m13 5-2 14"/></svg>`;
+const portalBrand = "🦀 crabbox";
+
+interface PortalHeaderOptions {
+  variant?: "top" | "bar";
+  meta: string;
+  actions?: string;
+}
 
 export interface PortalLeaseBridgeStatus {
   webVNCBridgeConnected: boolean;
@@ -43,13 +50,10 @@ export function portalHome(leases: LeaseRecord[], request: Request): Response {
   return html(
     "Crabbox Portal",
     `<main class="portal-shell">
-      <header class="top">
-        <div>
-          <h1>🦀 crabbox</h1>
-          <p>${escapeHTML(new URL(request.url).host)}</p>
-        </div>
-        <a class="button secondary" href="/portal/logout">log out</a>
-      </header>
+      ${portalHeader({
+        meta: escapeHTML(new URL(request.url).host),
+        actions: `<a class="button secondary" href="/portal/logout">log out</a>`,
+      })}
       <section class="panel table-panel">
         <div class="section-head">
           <h2>leases</h2>
@@ -81,6 +85,7 @@ export function portalLeaseDetail(
   bridgeStatus: PortalLeaseBridgeStatus,
 ): Response {
   const slug = lease.slug || lease.id;
+  const target = lease.target || "linux";
   const active = lease.state === "active";
   const runRows = runs.length
     ? runs.map((run) => runRow(run)).join("")
@@ -106,16 +111,13 @@ export function portalLeaseDetail(
   return html(
     `${slug} lease`,
     `<main class="portal-shell lease-shell">
-      <header class="top">
-        <div>
-          <h1>${escapeHTML(slug)}</h1>
-          <p>${escapeHTML(lease.provider)} ${escapeHTML(lease.target)} lease <span class="mono">${escapeHTML(lease.id)}</span></p>
-        </div>
-        <div class="vnc-actions">
+      ${portalHeader({
+        meta: `${escapeHTML(slug)} · ${escapeHTML(lease.provider)} ${escapeHTML(target)} lease <span class="mono">${escapeHTML(lease.id)}</span>`,
+        actions: `
           <a class="button secondary" href="/portal">leases</a>
           <a class="button secondary" href="/portal/logout">log out</a>
-        </div>
-      </header>
+        `,
+      })}
       <section class="detail-grid">
         <div class="panel detail-card">
           <div class="section-head">
@@ -124,7 +126,7 @@ export function portalLeaseDetail(
           </div>
           <dl class="meta-grid">
             ${metaHTMLRow("provider", providerBadge(lease.provider))}
-            ${metaHTMLRow("target", targetBadge(lease.target, lease.windowsMode))}
+            ${metaHTMLRow("target", targetBadge(target, lease.windowsMode))}
             ${metaRow("class", lease.class)}
             ${metaRow("host", lease.host || "pending")}
             ${metaRow("ssh", lease.sshPort ? `${lease.sshUser || "crabbox"}@${lease.host || "host"}:${lease.sshPort}` : "pending")}
@@ -203,17 +205,14 @@ export function portalRunDetail(
   return html(
     `${run.id} run`,
     `<main class="portal-shell run-shell">
-      <header class="top">
-        <div>
-          <h1>${escapeHTML(run.id)}</h1>
-          <p>${escapeHTML(run.slug || run.leaseID)} <span class="mono">${escapeHTML(run.command.join(" "))}</span></p>
-        </div>
-        <div class="vnc-actions">
+      ${portalHeader({
+        meta: `${escapeHTML(run.id)} · ${escapeHTML(run.slug || run.leaseID)} <span class="mono">${escapeHTML(run.command.join(" "))}</span>`,
+        actions: `
           <a class="button secondary" href="/portal/leases/${encodeURIComponent(run.leaseID)}">lease</a>
           <a class="button secondary" href="/portal">leases</a>
           <a class="button secondary" href="/portal/logout">log out</a>
-        </div>
-      </header>
+        `,
+      })}
       <section class="detail-grid">
         <div class="panel detail-card">
           <div class="section-head">
@@ -303,6 +302,7 @@ export function portalRunDetail(
 export function portalVNC(lease: LeaseRecord): Response {
   const nonce = scriptNonce();
   const slug = lease.slug || lease.id;
+  const target = lease.target || "linux";
   const title = `WebVNC ${slug}`;
   const wsPath = `/portal/leases/${encodeURIComponent(lease.id)}/vnc/viewer`;
   const statusPath = `/portal/leases/${encodeURIComponent(lease.id)}/vnc/status`;
@@ -312,19 +312,17 @@ export function portalVNC(lease: LeaseRecord): Response {
   return html(
     title,
     `<main class="vnc-page">
-      <header class="vnc-bar">
-        <div class="vnc-meta">
-          <h1>${escapeHTML(slug)}</h1>
-          <p>${providerBadge(lease.provider)}<span class="vnc-dot"></span>${targetBadge(lease.target, lease.windowsMode)}<span class="vnc-dot"></span><span class="vnc-id">${escapeHTML(lease.id)}</span></p>
-        </div>
-        <div class="vnc-actions">
+      ${portalHeader({
+        variant: "bar",
+        meta: `<span>WebVNC ${escapeHTML(slug)}</span><span class="vnc-dot"></span>${providerBadge(lease.provider)}<span class="vnc-dot"></span>${targetBadge(target, lease.windowsMode)}<span class="vnc-dot"></span><span class="vnc-id">${escapeHTML(lease.id)}</span>`,
+        actions: `
           <span id="status" class="status-pill">waiting for bridge</span>
           <button id="vnc-reconnect" class="icon-btn" type="button" title="reconnect" aria-label="reconnect">${reconnectIcon}</button>
           <button id="vnc-fullscreen" class="icon-btn" type="button" title="fullscreen" aria-label="toggle fullscreen">${fullscreenIcon}</button>
           <a class="button secondary" href="/portal">leases</a>
           <a class="button secondary" href="/portal/logout">log out</a>
-        </div>
-      </header>
+        `,
+      })}
       <section id="screen" class="screen" aria-label="WebVNC display"></section>
       <footer class="vnc-bridge">
         <span class="vnc-bridge-label">bridge</span>
@@ -487,24 +485,23 @@ export function portalError(title: string, message: string, status = 400): Respo
 export function portalCode(lease: LeaseRecord): Response {
   const nonce = scriptNonce();
   const slug = lease.slug || lease.id;
+  const target = lease.target || "linux";
   const bridgeCmd = codeBridgeCommand(lease);
   const statusPath = `/portal/leases/${encodeURIComponent(lease.id)}/code/health`;
   const reloadIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>`;
   return html(
     `Code ${slug}`,
     `<main class="vnc-page code-wait-page">
-      <header class="vnc-bar">
-        <div class="vnc-meta">
-          <h1>${escapeHTML(slug)}</h1>
-          <p>${providerBadge(lease.provider)}<span class="vnc-dot"></span><span>code workspace</span><span class="vnc-dot"></span><span class="vnc-id">${escapeHTML(lease.id)}</span></p>
-        </div>
-        <div class="vnc-actions">
+      ${portalHeader({
+        variant: "bar",
+        meta: `<span>code ${escapeHTML(slug)}</span><span class="vnc-dot"></span>${providerBadge(lease.provider)}<span class="vnc-dot"></span>${targetBadge(target, lease.windowsMode)}<span class="vnc-dot"></span><span>code workspace</span><span class="vnc-dot"></span><span class="vnc-id">${escapeHTML(lease.id)}</span>`,
+        actions: `
           <span id="code-status" class="status-pill">checking bridge</span>
           <button id="code-reload" class="icon-btn" type="button" title="reload" aria-label="reload">${reloadIcon}</button>
           <a class="button secondary" href="/portal">leases</a>
           <a class="button secondary" href="/portal/logout">log out</a>
-        </div>
-      </header>
+        `,
+      })}
       <section class="screen code-wait-screen" aria-label="Code bridge waiting state">
         <div class="code-wait-card">
           <span class="code-wait-kicker">code bridge</span>
@@ -635,6 +632,22 @@ function leaseRow(
     ${timeCell(timeLabel)}
     <td></td>
   </tr>`;
+}
+
+function portalHeader(options: PortalHeaderOptions): string {
+  const variant = options.variant || "top";
+  const headerClass = variant === "bar" ? "vnc-bar" : "top";
+  const metaClass = variant === "bar" ? "vnc-meta portal-header-meta" : "portal-header-meta";
+  const actions = options.actions?.trim()
+    ? `<div class="portal-actions">${options.actions.trim()}</div>`
+    : "";
+  return `<header class="${headerClass}">
+    <div class="${metaClass}">
+      <h1>${portalBrand}</h1>
+      <p>${options.meta}</p>
+    </div>
+    ${actions}
+  </header>`;
 }
 
 function leaseOwnership(lease: LeaseRecord, owner: string, org: string): "mine" | "system" {
@@ -1052,7 +1065,9 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     td { font-size:13px; }
     td small { display:block; color:var(--muted); margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .top { position:sticky; top:0; z-index:20; display:flex; justify-content:space-between; gap:12px; align-items:center; min-height:38px; margin:0; padding:4px 0; background:linear-gradient(180deg, var(--bg) 72%, color-mix(in srgb, var(--bg) 0%, transparent)); backdrop-filter:blur(10px); }
-    .top p { font-size:12px; }
+    .portal-header-meta { min-width:0; }
+    .portal-header-meta h1 { white-space:nowrap; }
+    .portal-header-meta p { font-size:12px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .top p,.muted,.empty { color:var(--muted); }
     .panel { border:1px solid var(--line); border-radius:8px; background:var(--panel); overflow:hidden; }
     .section-head { display:flex; justify-content:space-between; align-items:center; min-height:34px; padding:7px 10px; border-bottom:1px solid var(--line); }
@@ -1153,7 +1168,7 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .vnc-meta p { display:inline-flex; align-items:center; gap:8px; color:var(--muted); font-size:12px; min-width:0; overflow:hidden; }
     .vnc-meta .vnc-id { font-family:var(--mono); font-size:11px; opacity:0.85; }
     .vnc-meta .vnc-dot { width:3px; height:3px; border-radius:50%; background:#3a4046; flex-shrink:0; }
-    .vnc-actions { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+    .portal-actions { display:flex; align-items:center; gap:6px; flex-shrink:0; }
     .status-pill { display:inline-flex; align-items:center; gap:8px; height:32px; padding:0 12px 0 11px; border-radius:8px; background:var(--panel-2); border:1px solid var(--line); font-size:12px; color:var(--muted); white-space:nowrap; transition:color 0.2s, border-color 0.2s; }
     .status-pill::before { content:""; width:8px; height:8px; border-radius:50%; background:currentColor; box-shadow:0 0 0 3px color-mix(in srgb, currentColor 18%, transparent); flex-shrink:0; }
     .status-pill[data-tone="ok"] { color:var(--ok); border-color:color-mix(in srgb, var(--ok) 35%, var(--line)); }
@@ -1197,8 +1212,8 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
       .vnc-bar { flex-wrap:wrap; gap:8px; min-height:0; padding:6px 10px; margin:0 -12px; }
       .vnc-meta { flex-wrap:wrap; gap:4px 10px; }
       .vnc-meta p .vnc-id { display:none; }
-      .vnc-actions { gap:6px; }
-      .vnc-actions .button { min-height:30px; padding:0 10px; }
+      .portal-actions { gap:6px; }
+      .portal-actions .button { min-height:30px; padding:0 10px; }
       .vnc-bridge-label { display:none; }
     }
   </style>
