@@ -72,7 +72,7 @@ func (a App) syncExternalRunnersBestEffort(ctx context.Context, cfg Config, back
 	if !ok {
 		return
 	}
-	view, err := jsonBackend.ListJSON(ctx, ListRequest{Options: leaseOptionsFromConfig(cfg)})
+	view, err := jsonBackend.ListJSON(ctx, ListRequest{Options: leaseOptionsFromConfig(cfg), All: true})
 	if err != nil {
 		fmt.Fprintf(a.Stderr, "warning: external runner portal sync skipped: %v\n", err)
 		return

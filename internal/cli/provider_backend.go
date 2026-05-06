@@ -204,6 +204,7 @@ type TouchRequest struct {
 
 type ListRequest struct {
 	Options LeaseOptions
+	All     bool
 }
 
 type RunRequest struct {

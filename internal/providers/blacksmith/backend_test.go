@@ -335,6 +335,29 @@ func TestBlacksmithBackendListJSONKeepsParsedTableShape(t *testing.T) {
 	}
 }
 
+func TestBlacksmithBackendListJSONCanIncludeAllStates(t *testing.T) {
+	runner := &blacksmithFuncRunner{fn: func(LocalCommandRequest) (LocalCommandResult, error) {
+		return LocalCommandResult{
+			Stdout: "tbx_123 hydrating openclaw .github/workflows/testbox.yml test main 2026-05-06T00:00:00Z\n",
+		}, nil
+	}}
+	backend := newTestBlacksmithBackend(baseConfig(), runner)
+	view, err := backend.ListJSON(context.Background(), ListRequest{All: true})
+	if err != nil {
+		t.Fatalf("list json: %v", err)
+	}
+	items, ok := view.([]blacksmithListItem)
+	if !ok {
+		t.Fatalf("view=%T, want []blacksmithListItem", view)
+	}
+	if len(items) != 1 || items[0].Status != "hydrating" {
+		t.Fatalf("items=%#v", items)
+	}
+	if len(runner.calls) != 1 || !containsString(runner.calls[0], "--all") {
+		t.Fatalf("calls=%#v, want --all", runner.calls)
+	}
+}
+
 func TestApplyBlacksmithFlagOverrides(t *testing.T) {
 	defaults := baseConfig()
 	defaults.Blacksmith = BlacksmithConfig{

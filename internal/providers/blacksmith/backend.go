@@ -152,8 +152,7 @@ func (b *blacksmithBackend) Run(ctx context.Context, req RunRequest) (RunResult,
 }
 
 func (b *blacksmithBackend) List(ctx context.Context, req ListRequest) ([]Server, error) {
-	_ = req
-	out, err := b.commandOutput(ctx, blacksmithListArgs(b.cfg))
+	out, err := b.commandOutput(ctx, b.listArgs(req))
 	if err != nil {
 		return nil, err
 	}
@@ -166,12 +165,18 @@ func (b *blacksmithBackend) List(ctx context.Context, req ListRequest) ([]Server
 }
 
 func (b *blacksmithBackend) ListJSON(ctx context.Context, req ListRequest) (any, error) {
-	_ = req
-	out, err := b.commandOutput(ctx, blacksmithListArgs(b.cfg))
+	out, err := b.commandOutput(ctx, b.listArgs(req))
 	if err != nil {
 		return nil, err
 	}
 	return parseBlacksmithList(out), nil
+}
+
+func (b *blacksmithBackend) listArgs(req ListRequest) []string {
+	if req.All {
+		return blacksmithListAllArgs(b.cfg)
+	}
+	return blacksmithListArgs(b.cfg)
 }
 
 func (b *blacksmithBackend) Status(ctx context.Context, req StatusRequest) (statusView, error) {

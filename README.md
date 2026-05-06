@@ -158,7 +158,8 @@ blacksmith:
 ```
 
 `crabbox list --provider blacksmith-testbox` also refreshes the portal's
-external runner table when coordinator auth is configured. Those rows are
+external runner table from the current all-status Testbox list when coordinator
+auth is configured. Those rows are
 visibility-only records for Blacksmith-owned Testboxes, not Crabbox leases.
 
 Optional Daytona sandbox:
