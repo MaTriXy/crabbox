@@ -231,10 +231,10 @@ export function portalVNC(lease: LeaseRecord): Response {
             return;
           }
           if (state?.viewerConnected) {
-            setStatus("another viewer is connected; close stale tabs if this resets", "warn");
-          } else {
-            setStatus(retryAttempt ? "bridge connected; opening viewer" : "connecting");
+            scheduleRetry("another viewer is connected; close stale WebVNC tabs");
+            return;
           }
+          setStatus(retryAttempt ? "bridge connected; opening viewer" : "connecting");
           rfb = new RFB(screen, wsURL.toString(), options);
           rfb.scaleViewport = true;
           rfb.resizeSession = false;

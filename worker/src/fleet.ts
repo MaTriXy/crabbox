@@ -1226,14 +1226,12 @@ export class FleetDurableObject implements DurableObject {
       );
     }
     const existingViewer = this.webVNCViewers.get(lease.id);
-    if (existingViewer) {
-      closeSocket(existingViewer, 1012, "replaced by a newer WebVNC viewer");
-      this.clearWebVNCViewer(lease.id, existingViewer);
+    if (existingViewer?.readyState === WebSocket.OPEN) {
       const command = webVNCBridgeCommand(lease);
       return json(
         {
-          error: "webvnc_bridge_reset",
-          message: `another viewer was active; restart or wait for the bridge to reconnect with: ${command}`,
+          error: "webvnc_viewer_active",
+          message: `another viewer is active; close stale WebVNC tabs or wait before reconnecting with: ${command}`,
           command,
         },
         { status: 409 },

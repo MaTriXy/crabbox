@@ -745,6 +745,7 @@ describe("fleet lease identity and idle", () => {
     expect(pageBody).toContain("/portal/leases/cbx_000000000001/vnc/status");
     expect(pageBody).toContain("vnc-copy");
     expect(pageBody).toContain("no bridge connected; run the bridge command below");
+    expect(pageBody).toContain("another viewer is connected; close stale WebVNC tabs");
     expect(pageBody).toContain('fragment.get("username")');
     expect(pageBody).toContain('types.includes("username")');
     expect(pageBody).not.toContain("cdn.jsdelivr.net");

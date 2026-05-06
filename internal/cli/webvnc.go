@@ -194,7 +194,7 @@ func (a App) startWebVNCDaemon(args []string, leaseID string) error {
 		return exit(5, "release WebVNC daemon process: %v", err)
 	}
 	fmt.Fprintf(a.Stdout, "webvnc daemon: pid=%d log=%s\n", pid, logPath)
-	fmt.Fprintf(a.Stdout, "webvnc daemon: stop with kill $(cat %s)\n", pidPath)
+	fmt.Fprintln(a.Stdout, "webvnc daemon: stop with crabbox webvnc --id <lease-id-or-slug> --stop")
 	return nil
 }
 
@@ -277,7 +277,7 @@ func (a App) stopWebVNCDaemon(leaseID string) error {
 	if err != nil {
 		return exit(5, "find WebVNC daemon pid %d: %v", pid, err)
 	}
-	if err := process.Kill(); err != nil {
+	if err := stopDaemonProcess(process); err != nil {
 		return exit(5, "stop WebVNC daemon pid %d: %v", pid, err)
 	}
 	_ = os.Remove(pidPath)
