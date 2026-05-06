@@ -163,11 +163,9 @@ export function portalLeaseDetail(
             <tr>
               <th>run</th>
               <th>state</th>
-              <th>phase</th>
               <th>started</th>
               <th>duration</th>
               <th>box</th>
-              <th>log</th>
               <th></th>
             </tr>
           </thead>
@@ -645,15 +643,12 @@ function leaseOwnership(lease: LeaseRecord, owner: string, org: string): "mine" 
 
 function runRow(run: RunRecord): string {
   const stateTone = run.state === "succeeded" ? "ok" : run.state === "failed" ? "bad" : "warn";
-  const logLabel = run.logBytes > 0 ? formatBytes(run.logBytes) : "empty";
   return `<tr data-filter-tags="${escapeHTML([run.state, run.provider, run.target || "linux"].filter(Boolean).join(" "))}">
     <td><a class="lease-link" href="/portal/runs/${encodeURIComponent(run.id)}"><strong>${escapeHTML(run.id)}</strong><small>${escapeHTML(run.command.join(" "))}</small></a></td>
     <td><span class="pill" data-tone="${stateTone}">${escapeHTML(run.state)}</span></td>
-    <td>${escapeHTML(run.phase || "-")}</td>
-    ${timeCell(run.startedAt)}
+    ${elapsedTimeCell(run.startedAt)}
     <td>${escapeHTML(formatDuration(run.durationMs))}</td>
     <td>${escapeHTML(runTelemetryCell(run.telemetry))}</td>
-    <td>${escapeHTML(logLabel)}</td>
     <td><div class="actions-cell"><a class="button secondary" href="/portal/runs/${encodeURIComponent(run.id)}/logs">logs</a><a class="button secondary" href="/portal/runs/${encodeURIComponent(run.id)}/events">events</a></div></td>
   </tr>`;
 }
@@ -693,6 +688,15 @@ function timeCell(value: string | undefined): string {
   const time = valid ? date.getTime() : 0;
   const iso = valid ? date.toISOString().replace(".000Z", "Z") : value || "-";
   return `<td data-sort="${time}" title="${escapeHTML(iso)}"><time datetime="${escapeHTML(iso)}">${escapeHTML(relativeTime(value))}</time></td>`;
+}
+
+function elapsedTimeCell(value: string | undefined): string {
+  const date = value ? new Date(value) : undefined;
+  const valid = !!date && !Number.isNaN(date.getTime());
+  const time = valid ? date.getTime() : 0;
+  const iso = valid ? date.toISOString().replace(".000Z", "Z") : value || "-";
+  const label = valid ? formatDuration(Date.now() - time) : "-";
+  return `<td data-sort="${time}" title="${escapeHTML(iso)}"><time datetime="${escapeHTML(iso)}">${escapeHTML(label)}</time></td>`;
 }
 
 function metaRow(label: string, value: string | undefined): string {
@@ -1133,11 +1137,11 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .lease-table th:nth-child(6) { width:118px; }
     .lease-table th:nth-child(7) { width:148px; }
     .lease-table th:nth-child(8) { width:24px; }
-    .run-table th:nth-child(2),.run-table th:nth-child(3),.run-table th:nth-child(4) { width:104px; }
-    .run-table th:nth-child(5) { width:92px; }
-    .run-table th:nth-child(6) { width:190px; }
-    .run-table th:nth-child(7) { width:72px; }
-    .run-table th:nth-child(8) { width:154px; }
+    .run-table th:nth-child(2) { width:104px; }
+    .run-table th:nth-child(3) { width:112px; }
+    .run-table th:nth-child(4) { width:92px; }
+    .run-table th:nth-child(5) { width:190px; }
+    .run-table th:nth-child(6) { width:154px; }
     .event-table th:nth-child(1) { width:58px; }
     .event-table th:nth-child(2) { width:24%; }
     .event-table th:nth-child(3) { width:96px; }

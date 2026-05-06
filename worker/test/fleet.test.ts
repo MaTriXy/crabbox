@@ -916,6 +916,9 @@ describe("fleet lease identity and idle", () => {
     expect(body).toContain(
       'data-filter-buttons="succeeded:succeeded,failed:failed,running:running,all:all"',
     );
+    expect(body).not.toContain("<th>phase</th>");
+    expect(body).not.toContain("<th>log</th>");
+    expect(body).toContain('title="2026-05-01T00:00:00Z"');
     expect(body).toContain('data-provider="hetzner"');
     expect(body).toContain('data-target="linux"');
     expect(body).toContain("<dt>load</dt><dd>0.42 / 0.24 / 0.12</dd>");
