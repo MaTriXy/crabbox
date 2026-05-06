@@ -30,11 +30,13 @@ islo       Islo sandboxes with delegated command execution
 
 ## Provider Pages
 
-- [AWS](aws.md): EC2 Linux, Windows, WSL2, EC2 Mac, capacity, AMIs, and security groups.
-- [Hetzner](hetzner.md): Linux-only managed provider behavior, classes, and cleanup.
-- [Blacksmith Testbox](blacksmith-testbox.md): delegated Testbox backend behavior.
-- [Daytona](daytona.md): Daytona SDK/toolbox sandbox leases.
-- [Islo](islo.md): delegated Islo sandbox execution.
+- [Provider reference](../providers/README.md): one page per built-in backend.
+- [AWS](../providers/aws.md): EC2 Linux, Windows, WSL2, EC2 Mac, capacity, AMIs, and security groups.
+- [Hetzner](../providers/hetzner.md): Linux-only managed provider behavior, classes, and cleanup.
+- [Static SSH](../providers/ssh.md): existing Linux, macOS, and Windows SSH hosts.
+- [Blacksmith Testbox](../providers/blacksmith-testbox.md): delegated Testbox backend behavior.
+- [Daytona](../providers/daytona.md): Daytona SDK/toolbox sandbox leases.
+- [Islo](../providers/islo.md): delegated Islo sandbox execution.
 - [Provider backends](../provider-backends.md): implementation guide for adding a new provider/backend/plugin.
 
 ## Hetzner Summary
@@ -172,11 +174,12 @@ contract and needs `git`, `rsync`, `tar`, and SSH.
 Related docs:
 
 - [Infrastructure](../infrastructure.md)
-- [AWS](aws.md)
-- [Hetzner](hetzner.md)
+- [Provider reference](../providers/README.md)
+- [AWS](../providers/aws.md)
+- [Hetzner](../providers/hetzner.md)
 - [Tailscale](tailscale.md)
-- [Blacksmith Testbox](blacksmith-testbox.md)
-- [Daytona](daytona.md)
-- [Islo](islo.md)
+- [Blacksmith Testbox](../providers/blacksmith-testbox.md)
+- [Daytona](../providers/daytona.md)
+- [Islo](../providers/islo.md)
 - [Runner bootstrap](runner-bootstrap.md)
 - [Cost and usage](cost-usage.md)

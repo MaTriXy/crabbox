@@ -55,6 +55,7 @@ This page maps user-facing behavior back to implementation files. Keep docs desc
 - Worker AWS EC2 provider: `worker/src/aws.ts`
 - Worker AWS AMI create/read/promote routes: `worker/src/fleet.ts`, `worker/src/aws.ts`
 - Provider feature docs: `docs/features/aws.md`, `docs/features/hetzner.md`, `docs/features/blacksmith-testbox.md`, `docs/features/daytona.md`, `docs/features/islo.md`
+- Provider reference docs: `docs/providers/README.md`, `docs/providers/aws.md`, `docs/providers/hetzner.md`, `docs/providers/ssh.md`, `docs/providers/blacksmith-testbox.md`, `docs/providers/daytona.md`, `docs/providers/islo.md`
 - Provider/backend authoring guide: `docs/provider-backends.md`
 - CLI cloud-init bootstrap: `internal/cli/bootstrap.go`
 - Worker cloud-init bootstrap: `worker/src/bootstrap.ts`

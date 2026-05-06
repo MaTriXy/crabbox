@@ -78,7 +78,7 @@ Pick whichever matches your intent:
 
 - **Get the mental model:** [How Crabbox Works](how-it-works.md), [Architecture](architecture.md), [Orchestrator](orchestrator.md).
 - **Use the CLI:** [CLI](cli.md), [Commands](commands/README.md), [Features](features/README.md), [Actions hydration](features/actions-hydration.md).
-- **Pick or add a target:** [Providers](features/providers.md), [Provider backends](provider-backends.md), [AWS](features/aws.md), [Hetzner](features/hetzner.md), [Blacksmith Testbox](features/blacksmith-testbox.md), [Daytona](features/daytona.md), [Islo](features/islo.md), [Interactive desktop and VNC](features/interactive-desktop-vnc.md).
+- **Pick or add a target:** [Provider reference](providers/README.md), [Providers feature overview](features/providers.md), [Provider backends](provider-backends.md), [AWS](providers/aws.md), [Hetzner](providers/hetzner.md), [Static SSH](providers/ssh.md), [Blacksmith Testbox](providers/blacksmith-testbox.md), [Daytona](providers/daytona.md), [Islo](providers/islo.md), [Interactive desktop and VNC](features/interactive-desktop-vnc.md).
 - **Operate it:** [Operations](operations.md), [Observability](observability.md), [Troubleshooting](troubleshooting.md), [Performance](performance.md).
 - **Set it up or audit it:** [Infrastructure](infrastructure.md), [Security](security.md), [Source Map](source-map.md), [MVP Plan](mvp-plan.md).
 

@@ -1,0 +1,96 @@
+# Islo Provider
+
+Read when:
+
+- choosing `provider: islo`;
+- configuring Islo sandbox image, size, snapshot, or gateway profile;
+- changing `internal/providers/islo`.
+
+Islo is a delegated run provider. Crabbox uses the Islo SDK for sandbox
+lifecycle and a streaming exec endpoint for command output. Islo owns sandbox
+state and workspace setup; Crabbox owns local config, repo claims, slugs,
+timing summaries, and normalized list/status rendering.
+
+## When To Use
+
+Use Islo when the remote sandbox should be owned by Islo and command execution
+should happen through Islo's API. Use AWS, Hetzner, Static SSH, or Daytona when
+you need Crabbox SSH access.
+
+## Commands
+
+```sh
+crabbox warmup --provider islo --islo-image docker.io/library/ubuntu:24.04
+crabbox run --provider islo -- pnpm test
+crabbox run --provider islo --id blue-lobster --shell 'pnpm install && pnpm test'
+crabbox status --provider islo --id blue-lobster
+crabbox stop --provider islo blue-lobster
+```
+
+## Auth
+
+```sh
+export ISLO_API_KEY=ak_...
+```
+
+`ISLO_BASE_URL` or `islo.baseUrl` can override the default
+`https://api.islo.dev`.
+
+## Config
+
+```yaml
+provider: islo
+target: linux
+islo:
+  baseUrl: https://api.islo.dev
+  image: docker.io/library/ubuntu:24.04
+  workdir: crabbox
+  gatewayProfile: ""
+  snapshotName: ""
+  vcpus: 2
+  memoryMB: 4096
+  diskGB: 20
+```
+
+Provider flags:
+
+```text
+--islo-base-url
+--islo-image
+--islo-workdir
+--islo-gateway-profile
+--islo-snapshot-name
+--islo-vcpus
+--islo-memory-mb
+--islo-disk-gb
+```
+
+## Lifecycle
+
+1. Create or resolve a Crabbox-owned Islo sandbox.
+2. Store a local lease ID with the `isb_` prefix and a friendly slug.
+3. Execute commands through Islo's streaming exec endpoint.
+4. Require an exit event before treating a stream as successful.
+5. Delete the sandbox on release unless kept.
+
+## Capabilities
+
+- SSH: no.
+- Crabbox sync: no.
+- Provider sync: yes, Islo-owned.
+- Desktop/browser/code: no Crabbox VNC/code surface.
+- Actions hydration: no.
+- Coordinator: no.
+
+## Gotchas
+
+- `--sync-only`, `--checksum`, and `--force-sync-large` are rejected because
+  Crabbox cannot apply local rsync semantics.
+- `--shell` passes the raw shell string to the remote shell path.
+- IDs can be Crabbox slugs, `isb_...` lease IDs, or Crabbox-created sandbox
+  names. Non-Crabbox Islo sandboxes are rejected.
+
+Related docs:
+
+- [Feature: Islo](../features/islo.md)
+- [Provider backends](../provider-backends.md)
