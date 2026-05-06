@@ -985,9 +985,11 @@ describe("fleet lease identity and idle", () => {
       'data-filter-buttons="run:run,command:command,sync:sync,stdout:stdout,stderr:stderr,all:all"',
     );
     expect(runBody).toContain('data-filter-tags="command failed"');
-    expect(runBody).toContain("<dt>box load</dt><dd>0.42 / 0.24 / 0.12</dd>");
-    expect(runBody).toContain("<dt>box memory</dt><dd>1.5 KiB / 2.0 KiB (75%)</dd>");
-    expect(runBody).toContain("<dt>memory delta</dt><dd>+512 B</dd>");
+    expect(runBody).toContain('class="run-telemetry-grid"');
+    expect(runBody).toContain("<span>load</span>");
+    expect(runBody).toContain("<strong>0.42 / 0.24 / 0.12</strong>");
+    expect(runBody).toContain("<strong>1.5 KiB / 2.0 KiB (75%)</strong>");
+    expect(runBody).toContain("<small>delta +512 B</small>");
     expect(runBody).toContain("table-search");
     expect(runBody).toContain("renders detail");
     expect(runBody).toContain("/portal/leases/cbx_000000000001");

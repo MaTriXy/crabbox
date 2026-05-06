@@ -230,8 +230,8 @@ export function portalRunDetail(
             ${metaRow("started", shortTime(run.startedAt))}
             ${metaRow("duration", formatDuration(run.durationMs))}
             ${metaRow("log", run.logBytes > 0 ? formatBytes(run.logBytes) : "empty")}
-            ${runTelemetryRows(run.telemetry)}
           </dl>
+          ${runTelemetryPanel(run.telemetry)}
         </div>
         <div class="panel detail-card run-artifact-card">
           <div class="section-head">
@@ -882,34 +882,43 @@ function formatTelemetryValue(value: number, unit: string): string {
   return value.toFixed(2);
 }
 
-function runTelemetryRows(telemetry: RunRecord["telemetry"]): string {
+function runTelemetryPanel(telemetry: RunRecord["telemetry"]): string {
   if (!telemetry) {
-    return "";
+    return `<div class="run-telemetry-grid"><div class="run-metric" data-muted="true"><span>telemetry</span><strong>not sampled</strong><small>no box metrics</small></div></div>`;
   }
   const current = telemetry.end || telemetry.start;
   if (!current) {
-    return "";
+    return `<div class="run-telemetry-grid"><div class="run-metric" data-muted="true"><span>telemetry</span><strong>not sampled</strong><small>no box metrics</small></div></div>`;
   }
-  return [
-    metaRow("box load", telemetryLoad(current)),
-    metaRow(
-      "box memory",
-      telemetryStorage(current.memoryUsedBytes, current.memoryTotalBytes, current.memoryPercent),
-    ),
-    metaRow(
-      "box disk",
-      telemetryStorage(current.diskUsedBytes, current.diskTotalBytes, current.diskPercent),
-    ),
-    metaRow(
-      "memory delta",
-      telemetryDelta(telemetry.start?.memoryUsedBytes, telemetry.end?.memoryUsedBytes),
-    ),
-    metaRow(
-      "disk delta",
-      telemetryDelta(telemetry.start?.diskUsedBytes, telemetry.end?.diskUsedBytes),
-    ),
-    metaRow("sampled", current.capturedAt ? relativeTime(current.capturedAt) : undefined),
-  ].join("");
+  const memory = telemetryStorage(
+    current.memoryUsedBytes,
+    current.memoryTotalBytes,
+    current.memoryPercent,
+  );
+  const disk = telemetryStorage(current.diskUsedBytes, current.diskTotalBytes, current.diskPercent);
+  return `<div class="run-telemetry-grid">
+    ${runMetric("load", telemetryLoad(current), "1 / 5 / 15")}
+    ${runMetric("memory", memory, telemetryDeltaLabel("delta", telemetry.start?.memoryUsedBytes, telemetry.end?.memoryUsedBytes))}
+    ${runMetric("disk", disk, telemetryDeltaLabel("delta", telemetry.start?.diskUsedBytes, telemetry.end?.diskUsedBytes))}
+    ${runMetric("sampled", current.capturedAt ? relativeTime(current.capturedAt) : undefined, current.capturedAt || "no timestamp")}
+  </div>`;
+}
+
+function runMetric(label: string, value: string | undefined, detail: string | undefined): string {
+  return `<div class="run-metric">
+    <span>${escapeHTML(label)}</span>
+    <strong>${escapeHTML(value || "-")}</strong>
+    <small>${escapeHTML(detail || "")}</small>
+  </div>`;
+}
+
+function telemetryDeltaLabel(
+  label: string,
+  start: number | undefined,
+  end: number | undefined,
+): string | undefined {
+  const delta = telemetryDelta(start, end);
+  return delta ? `${label} ${delta}` : undefined;
 }
 
 function runTelemetryCell(telemetry: RunRecord["telemetry"]): string {
@@ -1106,6 +1115,13 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .run-shell .meta-grid dt { margin-bottom:2px; font-size:10px; }
     .run-shell .meta-grid dd { font-size:13px; }
     .run-artifact-card .run-artifacts { gap:6px; padding:8px; }
+    .run-telemetry-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); border-top:1px solid var(--line-soft); background:var(--panel-2); }
+    .run-metric { min-width:0; padding:7px 10px; border-right:1px solid var(--line-soft); }
+    .run-metric:last-child { border-right:0; }
+    .run-metric span { display:block; color:var(--muted); font-size:10px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; }
+    .run-metric strong { display:block; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }
+    .run-metric small { display:block; margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); font-size:11px; }
+    .run-metric[data-muted="true"] { grid-column:1 / -1; }
     .result-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0; margin:4px -14px -14px; border-top:1px solid var(--line-soft); }
     .result-grid div { padding:8px 10px; border-bottom:1px solid var(--line-soft); }
     .result-grid dt { color:var(--muted); font-size:11px; text-transform:uppercase; margin-bottom:3px; }
