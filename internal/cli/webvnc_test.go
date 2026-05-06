@@ -139,12 +139,12 @@ func TestRetryableWebVNCBridgeErrors(t *testing.T) {
 		{
 			name:      "normal close",
 			err:       errors.New(`received close frame: status = StatusNormalClosure and reason = "test done"`),
-			retryable: false,
+			retryable: true,
 		},
 		{
 			name:      "nil",
 			err:       nil,
-			retryable: false,
+			retryable: true,
 		},
 	}
 	for _, tc := range cases {
