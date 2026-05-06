@@ -71,6 +71,8 @@ CRABBOX_AWS_SSH_CIDRS
 CRABBOX_AWS_MAC_HOST_ID
 CRABBOX_CAPACITY_REGIONS
 CRABBOX_CAPACITY_AVAILABILITY_ZONES
+CRABBOX_CAPACITY_HINTS
+CRABBOX_CAPACITY_LARGE_CLASSES
 ```
 
 Brokered AWS credentials belong in the Worker, not on developer machines.
@@ -111,6 +113,8 @@ provider labels and `crabbox cleanup`.
 
 - Spot capacity and quota errors are normal. Prefer classes over exact `--type`
   when you want fallback.
+- Brokered leases include `capacityHints` unless disabled with
+  `capacity.hints: false` or `CRABBOX_CAPACITY_HINTS=0`.
 - During capacity pressure, prefer `standard` or `fast` plus multiple
   `CRABBOX_CAPACITY_REGIONS`; `beast` starts at 48xlarge candidates and can
   consume 192 vCPUs per request.

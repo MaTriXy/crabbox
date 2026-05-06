@@ -112,6 +112,7 @@ Fixes:
 - set `CRABBOX_CAPACITY_REGIONS` so brokered and direct AWS launches can try multiple regions;
 - set `CRABBOX_CAPACITY_AVAILABILITY_ZONES` only when you intentionally want a specific zone in those regions;
 - set `CRABBOX_CAPACITY_STRATEGY=most-available`;
+- keep capacity hints enabled, or set `CRABBOX_CAPACITY_LARGE_CLASSES` when your installation wants warnings for classes beyond `beast`;
 - raise the AWS `Running On-Demand Standard (A, C, D, H, I, M, R, T, Z) instances` quota for C/M/R/T/Z families, or the matching Spot quota when using Spot;
 - raise Hetzner dedicated-core quota when dedicated classes are required;
 - temporarily use AWS fallback capacity.
@@ -119,6 +120,9 @@ Fixes:
 Brokered AWS launch fallback records provisioning attempts. Quota preflight
 uses AWS Service Quotas when available and reports the quota code, applied vCPU
 limit, requested type, and required vCPUs before trying the next candidate.
+Brokered responses also include `capacityHints` so callers can surface the
+selected region/market and next operator action instead of parsing provider
+errors.
 
 ## Provider Machine Looks Orphaned
 

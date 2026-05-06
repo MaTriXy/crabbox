@@ -24,10 +24,12 @@
 - Added best-effort GitHub Actions run and workflow links for external Blacksmith Testbox rows in the portal.
 - Added GitHub Actions status badges, stuck filters, and copyable local stop commands for external Blacksmith Testbox rows in the portal.
 - Added external runner detail pages in the portal with owner, Actions, lifecycle timestamps, boundary notes, and copyable stop commands.
+- Added broker capacity hints for AWS leases, including selected market, attempted regions, quota/capacity advice, and configurable high-pressure class warnings.
 
 ### Changed
 
 - Changed AWS capacity fallback to route configured `CRABBOX_CAPACITY_REGIONS` across both brokered and direct AWS launches, with the deployed coordinator defaulting to a wider multi-region pool for better headroom.
+- Changed coordinator-backed CLI lease output to print broker capacity hints when AWS routing, quota, Spot fallback, or configured high-pressure classes are involved.
 - Changed the portal lease table to merge external Blacksmith Testbox runners into the main grid as muted, disabled rows instead of rendering a separate external-runners table.
 - Refactored built-in provider backend implementations into `internal/providers/<name>` packages while keeping command orchestration and rendering core-owned.
 

@@ -130,6 +130,7 @@ capacity:
   market: spot
   strategy: most-available
   fallback: on-demand-after-120s
+  hints: true
 aws:
   region: eu-west-1
   rootGB: 400

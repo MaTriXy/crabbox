@@ -47,6 +47,13 @@ CRABBOX_CAPACITY_REGIONS=eu-west-1,eu-west-2,eu-central-1,us-east-1,us-west-2
 Prefer `standard` or `fast` during capacity incidents. `beast` starts at
 48xlarge candidates and can consume 192 vCPUs per request before fallback.
 
+Brokered AWS leases return capacity hints in the lease payload and CLI output.
+Hints include the selected region/market, failed attempt regions, quota
+pressure, Spot-to-On-Demand fallback, and high-pressure class warnings. Set
+`capacity.hints: false` or `CRABBOX_CAPACITY_HINTS=0` to suppress them. Set
+`CRABBOX_CAPACITY_LARGE_CLASSES=beast,large` when an installation wants warning
+hints for a different set of classes.
+
 Crabbox tries ordered instance candidates for the requested class. Explicit
 `--type` is exact: if EC2 rejects it, Crabbox fails clearly instead of silently
 choosing another type.
@@ -104,6 +111,8 @@ CRABBOX_AWS_SSH_CIDRS
 CRABBOX_AWS_MAC_HOST_ID
 CRABBOX_CAPACITY_REGIONS
 CRABBOX_CAPACITY_AVAILABILITY_ZONES
+CRABBOX_CAPACITY_HINTS
+CRABBOX_CAPACITY_LARGE_CLASSES
 ```
 
 ## Security And Networking
