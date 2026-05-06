@@ -45,7 +45,7 @@ export function portalHome(leases: LeaseRecord[], request: Request): Response {
     `<main class="portal-shell">
       <header class="top">
         <div>
-          <h1>Crabbox</h1>
+          <h1>🦀 crabbox</h1>
           <p>${escapeHTML(new URL(request.url).host)}</p>
         </div>
         <a class="button secondary" href="/portal/logout">log out</a>

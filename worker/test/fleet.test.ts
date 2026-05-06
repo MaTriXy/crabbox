@@ -647,6 +647,7 @@ describe("fleet lease identity and idle", () => {
     expect(response.status).toBe(200);
     const body = await response.text();
     expect(body).toContain('class="portal-shell"');
+    expect(body).toContain("<h1>🦀 crabbox</h1>");
     expect(body).toContain("table-scroll");
     expect(body).toContain(".lease-table th:nth-child(1)");
     expect(body).toContain(
