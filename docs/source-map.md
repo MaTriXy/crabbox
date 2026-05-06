@@ -77,6 +77,7 @@ repository-owned setup, usually through Actions hydration or repo scripts.
 
 - Worker auth and top-level routing: `worker/src/index.ts`, `worker/src/http.ts`
 - Fleet Durable Object routes and lease/run storage: `worker/src/fleet.ts`
+- Browser portal lease detail, bridge status, and run log/event pages: `worker/src/portal.ts`, `worker/src/fleet.ts`
 - Lease config coercion: `worker/src/config.ts`
 - Usage, pricing fallback, owner/org limits, cost guardrails: `worker/src/usage.ts`
 - Worker package scripts and dependencies: `worker/package.json`

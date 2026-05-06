@@ -41,6 +41,26 @@ POST /v1/admin/leases/{id-or-slug}/release
 POST /v1/admin/leases/{id-or-slug}/delete
 ```
 
+Browser portal surface:
+
+```text
+GET  /portal
+GET  /portal/leases/{id-or-slug}
+POST /portal/leases/{id-or-slug}/release
+GET  /portal/leases/{id-or-slug}/vnc
+GET  /portal/leases/{id-or-slug}/code/
+GET  /portal/runs/{run-id}
+GET  /portal/runs/{run-id}/logs
+GET  /portal/runs/{run-id}/events
+```
+
+`/portal/leases/{id-or-slug}` is the authenticated lease detail page. It shows
+the lease state, bridge status, pasteable `ssh`, `run`, WebVNC, and code
+commands, recent run links, and a stop action for the owner-scoped lease.
+Portal run links mirror the `/v1/runs/...` resources but use the browser
+session cookie, so users can inspect logs and events without copying a bearer
+token into the browser.
+
 GitHub browser-login tokens are owner/org scoped for lease, run, log, and usage routes. Shared-token admin auth is required for `GET /v1/pool`, admin lease routes, and fleet-wide usage/listing.
 
 Lease responses include the canonical `cbx_...` ID, friendly slug when present, provider metadata, owner/org, `createdAt`, `lastTouchedAt`, `idleTimeoutSeconds`, `ttlSeconds`, and computed `expiresAt`. Heartbeat is a touch and can update idle timeout only when the request explicitly sends `idleTimeoutSeconds`.
