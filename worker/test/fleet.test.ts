@@ -843,6 +843,11 @@ describe("fleet lease identity and idle", () => {
     expect(page.status).toBe(200);
     const pageBody = await page.text();
     expect(pageBody).toContain("crabbox code --id blue-lobster --open");
+    expect(pageBody).toContain('class="vnc-page code-wait-page"');
+    expect(pageBody).toContain('id="code-status"');
+    expect(pageBody).toContain('id="code-copy"');
+    expect(pageBody).toContain("/portal/leases/cbx_000000000001/code/health");
+    expect(pageBody).toContain("window.location.reload()");
 
     const health = await fleet.fetch(
       request("GET", "/portal/leases/blue-lobster/code/health", { headers }),

@@ -489,27 +489,96 @@ export function portalError(title: string, message: string, status = 400): Respo
 }
 
 export function portalCode(lease: LeaseRecord): Response {
+  const nonce = scriptNonce();
   const slug = lease.slug || lease.id;
   const bridgeCmd = codeBridgeCommand(lease);
+  const statusPath = `/portal/leases/${encodeURIComponent(lease.id)}/code/health`;
+  const reloadIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>`;
   return html(
     `Code ${slug}`,
-    `<main>
-      <header class="top">
-        <div>
+    `<main class="vnc-page code-wait-page">
+      <header class="vnc-bar">
+        <div class="vnc-meta">
           <h1>${escapeHTML(slug)}</h1>
-          <p>${escapeHTML(lease.provider)} code workspace</p>
+          <p>${providerBadge(lease.provider)}<span class="vnc-dot"></span><span>code workspace</span><span class="vnc-dot"></span><span class="vnc-id">${escapeHTML(lease.id)}</span></p>
         </div>
         <div class="vnc-actions">
+          <span id="code-status" class="status-pill">checking bridge</span>
+          <button id="code-reload" class="icon-btn" type="button" title="reload" aria-label="reload">${reloadIcon}</button>
           <a class="button secondary" href="/portal">leases</a>
           <a class="button secondary" href="/portal/logout">log out</a>
         </div>
       </header>
-      <section class="panel error">
-        <h2>code bridge</h2>
-        <p class="muted">start the local bridge, then reload this page.</p>
-        <code>${escapeHTML(bridgeCmd)}</code>
+      <section class="screen code-wait-screen" aria-label="Code bridge waiting state">
+        <div class="code-wait-card">
+          <span class="code-wait-kicker">code bridge</span>
+          <h2>waiting for local bridge</h2>
+          <p id="code-hint">Run the command below. This page will open VS Code when the bridge connects.</p>
+        </div>
       </section>
+      <footer class="vnc-bridge">
+        <span class="vnc-bridge-label">bridge</span>
+        <code id="code-bridge-cmd" class="vnc-bridge-cmd">${escapeHTML(bridgeCmd)}</code>
+        <button id="code-copy" class="icon-btn" type="button" title="copy command" aria-label="copy bridge command">${copyIcon}</button>
+      </footer>
+      <script nonce="${nonce}">
+        const status = document.getElementById("code-status");
+        const hint = document.getElementById("code-hint");
+        const statusURL = new URL(${JSON.stringify(statusPath)}, window.location.href);
+        let pollTimer;
+        function setStatus(value, tone = "") {
+          status.textContent = value;
+          status.dataset.tone = tone;
+        }
+        async function pollBridge() {
+          window.clearTimeout(pollTimer);
+          try {
+            const response = await fetch(statusURL, { cache: "no-store" });
+            if (!response.ok) throw new Error("status " + response.status);
+            const state = await response.json();
+            if (state?.code?.agentConnected) {
+              setStatus("bridge connected; opening", "ok");
+              hint.textContent = "Bridge connected. Opening workspace...";
+              window.setTimeout(() => window.location.reload(), 250);
+              return;
+            }
+            setStatus("waiting for bridge", "warn");
+            hint.textContent = "Start the local bridge below. This page checks again automatically.";
+          } catch (error) {
+            setStatus("status unavailable", "bad");
+            hint.textContent = "Could not read bridge status. Reload or use the command below.";
+          }
+          pollTimer = window.setTimeout(pollBridge, 2000);
+        }
+        document.getElementById("code-reload")?.addEventListener("click", () => {
+          window.location.reload();
+        });
+        const copyBtn = document.getElementById("code-copy");
+        const cmdEl = document.getElementById("code-bridge-cmd");
+        let copyResetTimer;
+        copyBtn?.addEventListener("click", async () => {
+          const text = cmdEl?.textContent || "";
+          try {
+            await navigator.clipboard.writeText(text);
+          } catch (_) {
+            const range = document.createRange();
+            if (cmdEl) {
+              range.selectNodeContents(cmdEl);
+              const sel = window.getSelection();
+              sel?.removeAllRanges();
+              sel?.addRange(range);
+            }
+          }
+          copyBtn.dataset.state = "ok";
+          window.clearTimeout(copyResetTimer);
+          copyResetTimer = window.setTimeout(() => { delete copyBtn.dataset.state; }, 1200);
+        });
+        pollBridge();
+        window.addEventListener("beforeunload", () => window.clearTimeout(pollTimer));
+      </script>
     </main>`,
+    200,
+    nonce,
   );
 }
 
@@ -852,6 +921,11 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .icon-btn[data-state="ok"] { color:var(--ok); border-color:color-mix(in srgb, var(--ok) 45%, var(--line)); }
     .screen { min-height:0; border:1px solid var(--line); border-radius:8px; background:var(--bg); overflow:hidden; box-shadow:inset 0 0 0 1px rgba(255,255,255,0.02); }
     .screen div { margin:0 auto; }
+    .code-wait-screen { display:grid; place-items:center; padding:clamp(18px,5vw,64px); }
+    .code-wait-card { width:min(720px,100%); display:grid; gap:9px; }
+    .code-wait-kicker { color:var(--muted); font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; }
+    .code-wait-card h2 { margin:0; font-size:22px; letter-spacing:0; }
+    .code-wait-card p { max-width:62ch; color:var(--muted); font-size:14px; line-height:1.55; }
     .vnc-bridge { display:flex; align-items:center; gap:10px; padding:6px 10px; border:1px solid var(--line); border-radius:8px; background:var(--panel); }
     .vnc-bridge-label { font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); flex-shrink:0; padding-left:4px; }
     .vnc-bridge-cmd { display:block; flex:1; min-width:0; padding:6px 10px; border:none; border-radius:5px; background:transparent; color:#d1fae5; font-family:var(--mono); font-size:13px; overflow-x:auto; white-space:nowrap; }

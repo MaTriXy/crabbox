@@ -25,6 +25,7 @@
 - Fixed brokered cloud server names so friendly-slug collisions with stale provider VMs do not block new leases.
 - Fixed human WebVNC desktop launches to keep browser windows windowed by default and reserve fullscreen for explicit capture/video workflows.
 - Fixed WebVNC portal status text and bridge commands so waiting/reset states explain the exact local bridge command to run.
+- Fixed the Code portal waiting state so it shows bridge status, copy/reload controls, and automatically opens the workspace once the local bridge connects.
 - Fixed `crabbox webvnc --stop` so daemon shutdown terminates the active child bridge, not only the supervisor.
 - Fixed portal command rows so their copy affordance copies the matching local command instead of only labelling the section.
 - Fixed portal Windows target badges to show compact `win` and `win (wsl2)` labels instead of `windows / normal`.
