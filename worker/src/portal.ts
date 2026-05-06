@@ -129,6 +129,7 @@ export function portalLeaseDetail(
             ${metaRow("host", lease.host || "pending")}
             ${metaRow("ssh", lease.sshPort ? `${lease.sshUser || "crabbox"}@${lease.host || "host"}:${lease.sshPort}` : "pending")}
             ${metaRow("work root", lease.workRoot || "pending")}
+            ${leaseTelemetryRows(lease.telemetry)}
             ${metaRow("expires", shortTime(lease.expiresAt))}
           </dl>
           ${
@@ -720,6 +721,53 @@ function targetBadge(target: string | undefined, windowsMode?: string): string {
   return `<span class="icon-label" data-target="${escapeHTML(value)}">${targetIcon(value)}<span>${escapeHTML(label)}</span></span>`;
 }
 
+function leaseTelemetryRows(telemetry: LeaseRecord["telemetry"]): string {
+  if (!telemetry) {
+    return "";
+  }
+  return [
+    metaRow("load", telemetryLoad(telemetry)),
+    metaRow(
+      "memory",
+      telemetryStorage(
+        telemetry.memoryUsedBytes,
+        telemetry.memoryTotalBytes,
+        telemetry.memoryPercent,
+      ),
+    ),
+    metaRow(
+      "disk",
+      telemetryStorage(telemetry.diskUsedBytes, telemetry.diskTotalBytes, telemetry.diskPercent),
+    ),
+    metaRow(
+      "uptime",
+      telemetry.uptimeSeconds !== undefined ? formatSeconds(telemetry.uptimeSeconds) : undefined,
+    ),
+    metaRow("seen", telemetry.capturedAt ? relativeTime(telemetry.capturedAt) : undefined),
+  ].join("");
+}
+
+function telemetryLoad(telemetry: LeaseRecord["telemetry"]): string | undefined {
+  if (!telemetry || telemetry.load1 === undefined) {
+    return undefined;
+  }
+  const load5 = telemetry.load5 === undefined ? "" : ` / ${telemetry.load5.toFixed(2)}`;
+  const load15 = telemetry.load15 === undefined ? "" : ` / ${telemetry.load15.toFixed(2)}`;
+  return `${telemetry.load1.toFixed(2)}${load5}${load15}`;
+}
+
+function telemetryStorage(
+  used: number | undefined,
+  total: number | undefined,
+  percent: number | undefined,
+): string | undefined {
+  if (used !== undefined && total !== undefined) {
+    const percentLabel = percent === undefined ? "" : ` (${Math.round(percent)}%)`;
+    return `${formatBytes(used)} / ${formatBytes(total)}${percentLabel}`;
+  }
+  return percent === undefined ? undefined : `${Math.round(percent)}%`;
+}
+
 function providerIcon(provider: string): string {
   if (provider === "aws") {
     return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15.5c3.8 2.2 9.1 2.5 14.8.9"/><path d="M17.5 13.2 20 16l-3.7.7"/><path d="M7 8.5h10l1.8 4H5.2z"/></svg>`;
@@ -1231,6 +1279,22 @@ function formatDuration(value: number | undefined): string {
   return `${minutes}m ${rest}s`;
 }
 
+function formatSeconds(value: number): string {
+  const seconds = Math.max(0, Math.round(value));
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes}m`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) {
+    return `${hours}h`;
+  }
+  return `${Math.floor(hours / 24)}d`;
+}
+
 function formatExitCode(value: number | undefined): string {
   return Number.isFinite(value) ? String(value) : "-";
 }
@@ -1242,7 +1306,10 @@ function formatBytes(value: number): string {
   if (value < 1024 * 1024) {
     return `${(value / 1024).toFixed(1)} KiB`;
   }
-  return `${(value / 1024 / 1024).toFixed(1)} MiB`;
+  if (value < 1024 * 1024 * 1024) {
+    return `${(value / 1024 / 1024).toFixed(1)} MiB`;
+  }
+  return `${(value / 1024 / 1024 / 1024).toFixed(1)} GiB`;
 }
 
 function truncate(value: string, maxLength: number): string {

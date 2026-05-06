@@ -299,7 +299,7 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 				return recordFailure(err)
 			}
 		}
-		stopHeartbeat := startCoordinatorHeartbeat(ctx, coord, leaseID, cfg.IdleTimeout, heartbeatIdleTimeout, a.Stderr)
+		stopHeartbeat := startCoordinatorHeartbeat(ctx, coord, leaseID, cfg.IdleTimeout, heartbeatIdleTimeout, leaseTelemetryCollectorForTarget(target), a.Stderr)
 		defer stopHeartbeat()
 	}
 
@@ -710,7 +710,7 @@ func (a App) acquireCoordinator(ctx context.Context, cfg Config, coord *Coordina
 	}
 	waitCtx, cancelWait := context.WithCancelCause(ctx)
 	defer cancelWait(nil)
-	stopHeartbeat := startCoordinatorHeartbeat(waitCtx, coord, leaseID, cfg.IdleTimeout, nil, a.Stderr)
+	stopHeartbeat := startCoordinatorHeartbeat(waitCtx, coord, leaseID, cfg.IdleTimeout, nil, leaseTelemetryCollectorForTarget(target), a.Stderr)
 	defer stopHeartbeat()
 	stopLeaseWatch := startCoordinatorLeaseWatch(waitCtx, coord, leaseID, cancelWait, a.Stderr)
 	defer stopLeaseWatch()
@@ -845,7 +845,7 @@ func (a App) releaseAcquiredLeaseBestEffort(ctx context.Context, cfg Config, coo
 	removeLeaseClaim(leaseID)
 }
 
-func startCoordinatorHeartbeat(ctx context.Context, coord *CoordinatorClient, leaseID string, idleTimeout time.Duration, updateIdleTimeout *time.Duration, stderr io.Writer) func() {
+func startCoordinatorHeartbeat(ctx context.Context, coord *CoordinatorClient, leaseID string, idleTimeout time.Duration, updateIdleTimeout *time.Duration, telemetryCollector leaseTelemetryCollector, stderr io.Writer) func() {
 	rootCtx, cancel := context.WithCancel(ctx)
 	interval := heartbeatInterval(idleTimeout)
 	done := make(chan struct{})
@@ -854,12 +854,13 @@ func startCoordinatorHeartbeat(ctx context.Context, coord *CoordinatorClient, le
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
+			telemetry := collectLeaseTelemetryBestEffort(rootCtx, telemetryCollector)
 			callCtx, heartbeatCancel := context.WithTimeout(rootCtx, 20*time.Second)
 			var err error
 			if updateIdleTimeout != nil {
-				_, err = coord.UpdateLeaseIdleTimeout(callCtx, leaseID, *updateIdleTimeout)
+				_, err = coord.UpdateLeaseIdleTimeoutWithTelemetry(callCtx, leaseID, *updateIdleTimeout, telemetry)
 			} else {
-				_, err = coord.TouchLease(callCtx, leaseID)
+				_, err = coord.TouchLeaseWithTelemetry(callCtx, leaseID, telemetry)
 			}
 			heartbeatCancel()
 			if err != nil && rootCtx.Err() == nil {

@@ -43,6 +43,8 @@ The Worker stores coordinator leases as `active`, `released`, `expired`, or `fai
 
 `crabbox warmup --idle-timeout 30m` and `crabbox run --idle-timeout 30m` set inactivity expiry. `--ttl` is a separate maximum wall-clock lifetime. The CLI sends coordinator heartbeats while a lease is in use; each heartbeat updates `lastTouchedAt` and recomputes `expiresAt = min(createdAt + ttl, lastTouchedAt + idleTimeout)`.
 
+For Linux leases, heartbeats also attach a best-effort latest telemetry snapshot when SSH is reachable. The Durable Object keeps only the latest sanitized load, memory, disk, uptime, source, and capture timestamp on the lease record; it is not a time-series store.
+
 Direct-provider mode does not have a central heartbeat or alarm. It labels machines with `created_at`, `last_touched_at`, `idle_timeout_secs`, `expires_at`, `state`, `lease`, and `slug`; `crabbox cleanup` uses those labels conservatively.
 
 ## Cleanup

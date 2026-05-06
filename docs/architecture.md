@@ -42,7 +42,7 @@ leased machine
 8. CLI seeds remote Git when possible, compares sync fingerprints, and syncs changed files with `rsync --delete`.
 9. CLI runs sync sanity and configured base-ref hydration.
 10. CLI runs the command over SSH and streams stdout/stderr.
-11. CLI heartbeats while the command runs; heartbeats touch `lastTouchedAt` and recompute idle expiry up to the TTL cap.
+11. CLI heartbeats while the command runs; heartbeats touch `lastTouchedAt`, recompute idle expiry up to the TTL cap, and attach a best-effort latest Linux telemetry snapshot when SSH is reachable.
 12. CLI releases the lease when done.
 13. Durable Object alarm cleans up stale leases and expired machines.
 
@@ -71,6 +71,8 @@ POST /v1/admin/leases/{id-or-slug}/delete
 ```
 
 Admin endpoints and `GET /v1/pool` require the separate admin token. GitHub browser-login tokens are user tokens for normal lease operations and are minted only after allowed GitHub org membership is verified. User-token list, exact-ID lookup, slug lookup, heartbeat, release, run history, logs, and usage are scoped to the token owner/org.
+
+Heartbeat bodies may include a `telemetry` object. The coordinator stores only the latest sanitized snapshot on the lease record. Current CLI snapshots include Linux load average, memory use, root-disk use, uptime, source, and capture timestamp.
 
 ## Durable Object State
 

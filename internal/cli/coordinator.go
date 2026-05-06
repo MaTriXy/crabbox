@@ -57,6 +57,7 @@ type CoordinatorLease struct {
 	UpdatedAt            string                `json:"updatedAt,omitempty"`
 	LastTouchedAt        string                `json:"lastTouchedAt,omitempty"`
 	ExpiresAt            string                `json:"expiresAt"`
+	Telemetry            *LeaseTelemetry       `json:"telemetry,omitempty"`
 }
 
 type ProvisioningAttempt struct {
@@ -378,25 +379,36 @@ func (c *CoordinatorClient) ReleaseLease(ctx context.Context, id string, deleteS
 }
 
 func (c *CoordinatorClient) TouchLease(ctx context.Context, id string) (CoordinatorLease, error) {
-	return c.heartbeatLease(ctx, id, nil)
+	return c.heartbeatLease(ctx, id, nil, nil)
+}
+
+func (c *CoordinatorClient) TouchLeaseWithTelemetry(ctx context.Context, id string, telemetry *LeaseTelemetry) (CoordinatorLease, error) {
+	return c.heartbeatLease(ctx, id, nil, telemetry)
 }
 
 func (c *CoordinatorClient) UpdateLeaseIdleTimeout(ctx context.Context, id string, idleTimeout time.Duration) (CoordinatorLease, error) {
-	return c.heartbeatLease(ctx, id, &idleTimeout)
+	return c.heartbeatLease(ctx, id, &idleTimeout, nil)
 }
 
-func (c *CoordinatorClient) heartbeatLease(ctx context.Context, id string, idleTimeout *time.Duration) (CoordinatorLease, error) {
+func (c *CoordinatorClient) UpdateLeaseIdleTimeoutWithTelemetry(ctx context.Context, id string, idleTimeout time.Duration, telemetry *LeaseTelemetry) (CoordinatorLease, error) {
+	return c.heartbeatLease(ctx, id, &idleTimeout, telemetry)
+}
+
+func (c *CoordinatorClient) heartbeatLease(ctx context.Context, id string, idleTimeout *time.Duration, telemetry *LeaseTelemetry) (CoordinatorLease, error) {
 	var res struct {
 		Lease CoordinatorLease `json:"lease"`
 	}
-	err := c.do(ctx, http.MethodPost, "/v1/leases/"+url.PathEscape(id)+"/heartbeat", heartbeatRequestBody(idleTimeout), &res)
+	err := c.do(ctx, http.MethodPost, "/v1/leases/"+url.PathEscape(id)+"/heartbeat", heartbeatRequestBody(idleTimeout, telemetry), &res)
 	return res.Lease, err
 }
 
-func heartbeatRequestBody(idleTimeout *time.Duration) map[string]any {
+func heartbeatRequestBody(idleTimeout *time.Duration, telemetry *LeaseTelemetry) map[string]any {
 	body := map[string]any{}
 	if idleTimeout != nil && *idleTimeout > 0 {
 		body["idleTimeoutSeconds"] = int(idleTimeout.Seconds())
+	}
+	if telemetry != nil {
+		body["telemetry"] = telemetry
 	}
 	return body
 }

@@ -49,7 +49,11 @@ func (a App) status(ctx context.Context, args []string) error {
 			if state.Tailscale != nil && state.Tailscale.Enabled {
 				tailscale = fmt.Sprintf(" tailscale=%s", blank(tailscaleTargetHost(*state.Tailscale), blank(state.Tailscale.State, "requested")))
 			}
-			fmt.Fprintf(a.Stdout, "%s slug=%s provider=%s target=%s windows_mode=%s state=%s type=%s host=%s network=%s%s ready=%t has_host=%t idle_for=%s idle_timeout=%s expires=%s\n", state.ID, blank(state.Slug, "-"), state.Provider, state.TargetOS, blank(state.WindowsMode, "-"), state.State, state.ServerType, state.Host, state.Network, tailscale, state.Ready, state.HasHost, blank(state.IdleFor, "-"), blank(state.IdleTimeout, "-"), blank(state.ExpiresAt, "-"))
+			telemetry := leaseTelemetryStatusSummary(state.Telemetry)
+			if telemetry != "" {
+				telemetry = " " + telemetry
+			}
+			fmt.Fprintf(a.Stdout, "%s slug=%s provider=%s target=%s windows_mode=%s state=%s type=%s host=%s network=%s%s ready=%t has_host=%t idle_for=%s idle_timeout=%s expires=%s%s\n", state.ID, blank(state.Slug, "-"), state.Provider, state.TargetOS, blank(state.WindowsMode, "-"), state.State, state.ServerType, state.Host, state.Network, tailscale, state.Ready, state.HasHost, blank(state.IdleFor, "-"), blank(state.IdleTimeout, "-"), blank(state.ExpiresAt, "-"), telemetry)
 		}
 		if !*wait || state.Ready {
 			return nil
@@ -85,6 +89,7 @@ type statusView struct {
 	Labels           map[string]string  `json:"labels,omitempty"`
 	HasHost          bool               `json:"hasHost"`
 	Ready            bool               `json:"ready"`
+	Telemetry        *LeaseTelemetry    `json:"telemetry,omitempty"`
 }
 
 func (a App) leaseStatus(ctx context.Context, cfg Config, id string) (statusView, error) {
@@ -127,6 +132,7 @@ func (a App) leaseStatus(ctx context.Context, cfg Config, id string) (statusView
 			Labels:           map[string]string{"keep": fmt.Sprint(lease.Keep)},
 			HasHost:          hasHost,
 			Ready:            ready,
+			Telemetry:        lease.Telemetry,
 		}, nil
 	}
 	server, target, leaseID, err := a.findLease(ctx, cfg, id)

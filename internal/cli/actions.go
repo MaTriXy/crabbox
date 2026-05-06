@@ -81,7 +81,7 @@ func (a App) actionsHydrate(ctx context.Context, args []string) error {
 	if coord, ok, err := newTargetCoordinatorClient(cfg); err != nil {
 		return err
 	} else if ok {
-		stopHeartbeat := startCoordinatorHeartbeat(ctx, coord, leaseID, cfg.IdleTimeout, nil, a.Stderr)
+		stopHeartbeat := startCoordinatorHeartbeat(ctx, coord, leaseID, cfg.IdleTimeout, nil, leaseTelemetryCollectorForTarget(target), a.Stderr)
 		defer stopHeartbeat()
 	} else {
 		a.touchActiveLeaseBestEffort(ctx, cfg, server, leaseID)

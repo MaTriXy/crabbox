@@ -90,6 +90,21 @@ export type Provider = "hetzner" | "aws";
 export type TargetOS = "linux" | "macos" | "windows";
 export type WindowsMode = "normal" | "wsl2";
 
+export interface LeaseTelemetry {
+  capturedAt: string;
+  source?: string;
+  load1?: number;
+  load5?: number;
+  load15?: number;
+  memoryUsedBytes?: number;
+  memoryTotalBytes?: number;
+  memoryPercent?: number;
+  diskUsedBytes?: number;
+  diskTotalBytes?: number;
+  diskPercent?: number;
+  uptimeSeconds?: number;
+}
+
 export interface LeaseRecord {
   id: string;
   slug?: string;
@@ -127,6 +142,7 @@ export interface LeaseRecord {
   updatedAt: string;
   lastTouchedAt?: string;
   expiresAt: string;
+  telemetry?: LeaseTelemetry;
   releasedAt?: string;
   endedAt?: string;
 }

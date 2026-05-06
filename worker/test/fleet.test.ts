@@ -409,7 +409,17 @@ describe("fleet lease identity and idle", () => {
           "x-crabbox-owner": "peter@example.com",
           "x-crabbox-org": "openclaw",
         },
-        body: { idleTimeoutSeconds: 2400 },
+        body: {
+          idleTimeoutSeconds: 2400,
+          telemetry: {
+            capturedAt: "2026-05-05T01:02:03Z",
+            source: "ssh-linux",
+            load1: 0.42,
+            memoryUsedBytes: 1024,
+            memoryTotalBytes: 2048,
+            memoryPercent: 50,
+          },
+        },
       }),
     );
     expect(heartbeat.status).toBe(200);
@@ -417,6 +427,14 @@ describe("fleet lease identity and idle", () => {
     expect(lease.id).toBe("cbx_000000000001");
     expect(lease.slug).toBe("blue-lobster");
     expect(lease.idleTimeoutSeconds).toBe(2400);
+    expect(lease.telemetry).toMatchObject({
+      capturedAt: "2026-05-05T01:02:03.000Z",
+      source: "ssh-linux",
+      load1: 0.42,
+      memoryUsedBytes: 1024,
+      memoryTotalBytes: 2048,
+      memoryPercent: 50,
+    });
     expect(Date.parse(lease.expiresAt)).toBeGreaterThan(expiresAt.getTime());
   });
 
@@ -476,6 +494,20 @@ describe("fleet lease identity and idle", () => {
         org: "openclaw",
         desktop: true,
         code: true,
+        telemetry: {
+          capturedAt: new Date(Date.now() - 15_000).toISOString(),
+          source: "ssh-linux",
+          load1: 0.42,
+          load5: 0.24,
+          load15: 0.12,
+          memoryUsedBytes: 1024,
+          memoryTotalBytes: 2048,
+          memoryPercent: 50,
+          diskUsedBytes: 1024 * 1024 * 1024,
+          diskTotalBytes: 4 * 1024 * 1024 * 1024,
+          diskPercent: 25,
+          uptimeSeconds: 3600,
+        },
         expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       }),
     );
@@ -682,6 +714,20 @@ describe("fleet lease identity and idle", () => {
         org: "openclaw",
         desktop: true,
         code: true,
+        telemetry: {
+          capturedAt: new Date(Date.now() - 15_000).toISOString(),
+          source: "ssh-linux",
+          load1: 0.42,
+          load5: 0.24,
+          load15: 0.12,
+          memoryUsedBytes: 1024,
+          memoryTotalBytes: 2048,
+          memoryPercent: 50,
+          diskUsedBytes: 1024 * 1024 * 1024,
+          diskTotalBytes: 4 * 1024 * 1024 * 1024,
+          diskPercent: 25,
+          uptimeSeconds: 3600,
+        },
         expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       }),
     );
@@ -754,6 +800,10 @@ describe("fleet lease identity and idle", () => {
     );
     expect(body).toContain('data-provider="hetzner"');
     expect(body).toContain('data-target="linux"');
+    expect(body).toContain("<dt>load</dt><dd>0.42 / 0.24 / 0.12</dd>");
+    expect(body).toContain("<dt>memory</dt><dd>1.0 KiB / 2.0 KiB (50%)</dd>");
+    expect(body).toContain("<dt>disk</dt><dd>1.0 GiB / 4.0 GiB (25%)</dd>");
+    expect(body).toContain("<dt>uptime</dt><dd>1h</dd>");
     expect(body).toContain("table-search");
     expect(body).toContain("/portal/runs/run_000000000001");
     expect(body).toContain("/portal/runs/run_000000000001/logs");

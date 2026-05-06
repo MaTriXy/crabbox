@@ -25,6 +25,7 @@ import type {
   Env,
   LeaseRecord,
   LeaseRequest,
+  LeaseTelemetry,
   Provider,
   ProviderImage,
   ProviderMachine,
@@ -533,7 +534,10 @@ export class FleetDurableObject implements DurableObject {
       if (!lease) {
         return notFound();
       }
-      const body = await optionalJson<{ idleTimeoutSeconds?: number }>(request);
+      const body = await optionalJson<{
+        idleTimeoutSeconds?: number;
+        telemetry?: Partial<LeaseTelemetry>;
+      }>(request);
       const now = new Date();
       const requestedIdleTimeoutSeconds = body.idleTimeoutSeconds;
       if (
@@ -542,6 +546,10 @@ export class FleetDurableObject implements DurableObject {
         requestedIdleTimeoutSeconds > 0
       ) {
         lease.idleTimeoutSeconds = clampLeaseSeconds(requestedIdleTimeoutSeconds, 86_400);
+      }
+      const telemetry = sanitizeLeaseTelemetry(body.telemetry, now);
+      if (telemetry) {
+        lease.telemetry = telemetry;
       }
       lease.updatedAt = now.toISOString();
       lease.lastTouchedAt = now.toISOString();
@@ -2554,6 +2562,65 @@ function clampLeaseSeconds(value: number | undefined, max: number): number {
     return max;
   }
   return Math.min(Math.trunc(value), max);
+}
+
+function sanitizeLeaseTelemetry(
+  input: Partial<LeaseTelemetry> | undefined,
+  now: Date,
+): LeaseTelemetry | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const telemetry: LeaseTelemetry = {
+    capturedAt: sanitizeTelemetryTimestamp(input.capturedAt, now),
+  };
+  const source = typeof input.source === "string" ? input.source.trim() : "";
+  if (source) {
+    telemetry.source = source.slice(0, 32);
+  }
+  let hasMetric = false;
+  for (const [key, max] of [
+    ["load1", 10_000],
+    ["load5", 10_000],
+    ["load15", 10_000],
+    ["memoryPercent", 100],
+    ["diskPercent", 100],
+  ] as const) {
+    const value = sanitizeTelemetryNumber(input[key], max);
+    if (value !== undefined) {
+      telemetry[key] = value;
+      hasMetric = true;
+    }
+  }
+  for (const key of [
+    "memoryUsedBytes",
+    "memoryTotalBytes",
+    "diskUsedBytes",
+    "diskTotalBytes",
+    "uptimeSeconds",
+  ] as const) {
+    const value = sanitizeTelemetryNumber(input[key], Number.MAX_SAFE_INTEGER);
+    if (value !== undefined) {
+      telemetry[key] = Math.trunc(value);
+      hasMetric = true;
+    }
+  }
+  return hasMetric ? telemetry : undefined;
+}
+
+function sanitizeTelemetryTimestamp(value: string | undefined, now: Date): string {
+  const parsed = Date.parse(value ?? "");
+  if (!Number.isFinite(parsed)) {
+    return now.toISOString();
+  }
+  return new Date(parsed).toISOString();
+}
+
+function sanitizeTelemetryNumber(value: unknown, max: number): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return undefined;
+  }
+  return Math.min(value, max);
 }
 
 function allocateLeaseSlug(
