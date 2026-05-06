@@ -64,9 +64,11 @@ normal users. It defaults to active leases when any are active, and falls back t
 all visible leases when the active list is empty.
 
 `/portal/leases/{id-or-slug}` is the authenticated lease detail page. It shows
-the lease state, bridge status, compact provider/target badges, pasteable
-`ssh`, `run`, WebVNC, and code commands, a viewport-fitted recent runs grid with
-state filters, and a stop action for the visible lease.
+the lease state, bridge status, compact provider/target badges, latest Linux
+telemetry, access-panel copy commands for `ssh`, `run`, WebVNC, and code, a
+viewport-fitted recent runs grid with state filters, and a stop action for the
+visible lease. When multiple telemetry samples are present, the detail page
+adds load, memory, and disk sparklines plus stale/high-resource status pills.
 Portal run links mirror the `/v1/runs/...` resources but use the browser
 session cookie, so users can inspect logs and events without copying a bearer
 token into the browser. The run detail page at `/portal/runs/{run-id}` renders

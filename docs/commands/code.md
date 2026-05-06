@@ -48,6 +48,11 @@ Keep the local `crabbox code` process running while using the editor. The
 coordinator authenticates the browser through portal auth and authenticates the
 local bridge with a one-use, short-lived ticket.
 
+If the browser opens before the local bridge connects, the Code portal renders a
+waiting state with the exact `crabbox code --id <lease> --open` command, copy
+and reload controls, and bridge status. Once the bridge is connected, the page
+automatically opens the mapped workspace.
+
 Managed code-server starts with `Default Dark Modern` as the default theme. The
 bridge also chunks large HTTP responses and websocket frames so VS Code assets
 and extension-host traffic stay below coordinator websocket frame limits.
@@ -84,8 +89,9 @@ crabbox warmup --code
 
 The portal shows a bridge command
 
-The browser can reach the coordinator, but no local bridge is registered. Start
-`crabbox code --id <lease>` locally and keep it running.
+The browser can reach the coordinator, but no local bridge is registered. Use
+the command shown by the portal, or start `crabbox code --id <lease> --open`
+locally and keep it running.
 
 Check bridge health with:
 

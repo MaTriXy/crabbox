@@ -8,7 +8,7 @@
 - Added `crabbox webvnc --daemon`/`--background` plus `--status`/`--stop` for background WebVNC bridges without tmux.
 - Added `crabbox media preview` for creating motion-trimmed GIF previews and optional trimmed MP4 clips from desktop recordings.
 - Added `crabbox code` and per-lease `/code/` portal URLs for authenticated code-server access on `--code` Linux leases.
-- Added per-lease portal detail pages with bridge status, pasteable commands, recent run links, and a stop action.
+- Added per-lease portal detail pages with bridge status, access-panel copy commands, recent run links, and a stop action.
 - Added portal run detail pages with command metadata, result summaries, dense viewport-fitted portal tables, provider/OS badges, active/ended/provider/target filters, sticky portal chrome, and copyable retained log previews.
 - Added admin portal visibility for non-owned runner leases, including `mine`/`system` filters and matching detail/code/VNC drilldowns for operator sessions.
 - Added latest lease telemetry snapshots for coordinator-backed Linux leases, including load, memory, disk, and uptime in `status --json` and the portal detail view.
@@ -33,6 +33,7 @@
 - Fixed portal command rows so their copy affordance copies the matching local command instead of only labelling the section.
 - Fixed portal Windows target badges to show compact `win` and `win (wsl2)` labels instead of `windows / normal`.
 - Fixed portal access and time columns to use compact capability icons, relative time labels, and sortable time metadata instead of wide action buttons and Zulu timestamps.
+- Fixed lease detail layout so local commands live inside the access panel instead of forcing a separate full-width commands section above recent runs.
 - Fixed Windows WebVNC credential handling so generated portal links preserve special characters and managed TightVNC sessions copy service passwords into the logged-in user's registry profile.
 - Fixed managed Linux browser setup so Chrome/Chromium launches skip first-run and default-browser prompts.
 - Fixed managed Linux browser cloud-init setup so Chrome/Chromium policy and wrapper generation cannot break YAML parsing.
