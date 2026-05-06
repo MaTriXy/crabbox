@@ -24,8 +24,9 @@ When coordinator auth is configured, the same list command also refreshes
 owner-scoped external runner rows in the portal lease table from the current
 all-status Blacksmith list. Crabbox also attempts to infer the matching GitHub
 Actions run/workflow from the row's repo, workflow, ref, and created time.
-Missing runners from later syncs are marked stale rather than treated as Crabbox
-leases.
+The portal shows that Actions status, tags long-queued or long-running workflow
+owners as `stuck`, and exposes a copyable local stop command. Missing runners
+from later syncs are marked stale rather than treated as Crabbox leases.
 
 In `daytona` and `islo` modes, rendering is core-owned: human output and `--json`
 use the normalized Crabbox lease view.

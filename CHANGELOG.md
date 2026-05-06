@@ -22,6 +22,7 @@
 - Added `provider: daytona` for Daytona sandbox leases using Daytona's SDK/toolbox for sync and command execution, with short-lived SSH access available through `crabbox ssh`.
 - Added `provider: islo` for delegated Islo sandbox runs using the Islo Go SDK.
 - Added best-effort GitHub Actions run and workflow links for external Blacksmith Testbox rows in the portal.
+- Added GitHub Actions status badges, stuck filters, and copyable local stop commands for external Blacksmith Testbox rows in the portal.
 
 ### Changed
 

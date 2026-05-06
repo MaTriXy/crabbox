@@ -160,8 +160,11 @@ blacksmith:
 `crabbox list --provider blacksmith-testbox` also refreshes muted external
 runner rows in the portal lease table from the current all-status Testbox list
 when coordinator auth is configured. When GitHub is reachable, Crabbox also
-links those rows back to the inferred Actions run and workflow. Those rows are
-visibility-only records for Blacksmith-owned Testboxes, not Crabbox leases.
+links those rows back to the inferred Actions run and workflow, surfaces the
+Actions status/conclusion, flags long-queued or long-running rows as `stuck`,
+and exposes a copyable local `crabbox stop --provider blacksmith-testbox ...`
+command. Those rows are visibility-only records for Blacksmith-owned Testboxes,
+not Crabbox leases.
 
 Optional Daytona sandbox:
 

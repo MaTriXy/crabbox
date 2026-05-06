@@ -80,6 +80,12 @@ blacksmith testbox stop ...
 Crabbox stores a per-Testbox SSH key locally, claims the Testbox for the current
 repo, maps IDs to friendly slugs, and prints a normal Crabbox timing summary.
 
+When coordinator auth is configured, `crabbox list --provider blacksmith-testbox`
+also syncs visibility-only Testbox rows into the portal lease table. If Crabbox
+can infer the owning GitHub Actions run, the portal links the row to the run and
+workflow, shows the Actions status/conclusion, flags long-queued or long-running
+rows as `stuck`, and exposes a copyable local stop command.
+
 ## Capabilities
 
 - SSH: no Crabbox SSH lease.

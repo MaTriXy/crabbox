@@ -66,8 +66,10 @@ normal users. It defaults to active leases when any are active, and falls back t
 all visible leases when the active list is empty. External runner rows, currently
 Blacksmith Testboxes synced from the CLI's current all-status list, render in the
 same grid as muted, disabled rows with search, pagination, status/provider
-filters, inferred GitHub Actions run/workflow links when available, and stale
-markers when the next sync no longer sees a previously visible runner.
+filters, inferred GitHub Actions run/workflow links and status badges when
+available, `stuck` markers for long-queued or long-running Actions owners, a
+copyable local stop command, and stale markers when the next sync no longer sees
+a previously visible runner.
 
 `/portal/leases/{id-or-slug}` is the authenticated lease detail page. It shows
 the lease state, bridge status, compact provider/target badges, latest Linux

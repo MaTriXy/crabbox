@@ -100,9 +100,12 @@ also performs a best-effort sync of the current all-status Blacksmith list into
 the portal lease table. Those muted rows are owner-scoped visibility records for
 Blacksmith-owned Testboxes. When the row includes enough context, Crabbox queries
 GitHub Actions and links the row to the closest workflow run plus the workflow
-definition. They are not Crabbox leases, do not expose box access actions, do
-not heartbeat, do not participate in Crabbox expiry or cost control, and become
-stale when a later sync does not see the runner.
+definition. The portal also renders the Actions status/conclusion, adds a
+`stuck` filter for long-queued or long-running workflow owners, and offers a
+copyable local `crabbox stop --provider blacksmith-testbox ...` command for
+operator cleanup. They are not Crabbox leases, do not expose box access actions,
+do not heartbeat, do not participate in Crabbox expiry or cost control, and
+become stale when a later sync does not see the runner.
 
 ## Auth
 
