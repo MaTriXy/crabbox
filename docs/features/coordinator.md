@@ -54,6 +54,10 @@ GET  /portal/runs/{run-id}/logs
 GET  /portal/runs/{run-id}/events
 ```
 
+`/portal` renders a searchable/paginated owner-scoped lease table with
+active/ended/all filters. It defaults to active leases when any are active, and
+falls back to all visible leases when the active list is empty.
+
 `/portal/leases/{id-or-slug}` is the authenticated lease detail page. It shows
 the lease state, bridge status, pasteable `ssh`, `run`, WebVNC, and code
 commands, searchable/paginated recent run links, and a stop action for the

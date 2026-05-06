@@ -489,6 +489,20 @@ describe("fleet lease identity and idle", () => {
         desktop: true,
       }),
     );
+    storage.seed(
+      "lease:cbx_000000000003",
+      testLease({
+        id: "cbx_000000000003",
+        slug: "old-clam",
+        owner: "peter@example.com",
+        org: "openclaw",
+        desktop: true,
+        code: true,
+        state: "released",
+        releasedAt: "2026-05-01T00:20:00.000Z",
+        endedAt: "2026-05-01T00:20:00.000Z",
+      }),
+    );
 
     const response = await fleet.fetch(
       request("GET", "/portal", {
@@ -500,11 +514,46 @@ describe("fleet lease identity and idle", () => {
     );
     expect(response.status).toBe(200);
     const body = await response.text();
+    expect(body).toContain('data-filter-buttons="active:active,ended:ended,all:all"');
+    expect(body).toContain('data-filter-default="active"');
     expect(body).toContain("blue-lobster");
+    expect(body).toContain("old-clam");
+    expect(body).toContain("released");
     expect(body).toContain("/portal/leases/cbx_000000000001");
     expect(body).toContain("/portal/leases/cbx_000000000001/vnc");
     expect(body).toContain("/portal/leases/cbx_000000000001/code/");
     expect(body).not.toContain("amber-krill");
+  });
+
+  it("defaults the portal lease table to all leases when none are active", async () => {
+    const storage = new MemoryStorage();
+    const fleet = testFleet(storage);
+    storage.seed(
+      "lease:cbx_000000000003",
+      testLease({
+        id: "cbx_000000000003",
+        slug: "old-clam",
+        owner: "peter@example.com",
+        org: "openclaw",
+        state: "expired",
+        endedAt: "2026-05-01T00:20:00.000Z",
+      }),
+    );
+
+    const response = await fleet.fetch(
+      request("GET", "/portal", {
+        headers: {
+          "x-crabbox-owner": "peter@example.com",
+          "x-crabbox-org": "openclaw",
+        },
+      }),
+    );
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain('data-filter-default="all"');
+    expect(body).toContain("old-clam");
+    expect(body).toContain("expired");
+    expect(body).not.toContain("no leases visible");
   });
 
   it("renders lease detail pages with run logs and stop controls", async () => {

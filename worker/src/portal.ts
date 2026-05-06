@@ -10,10 +10,13 @@ export interface PortalLeaseBridgeStatus {
 }
 
 export function portalHome(leases: LeaseRecord[], request: Request): Response {
-  const active = leases.filter((lease) => lease.state === "active");
-  const rows = active.length
-    ? active.map((lease) => leaseRow(lease)).join("")
-    : `<tr><td colspan="7" class="empty">no active leases</td></tr>`;
+  const sortedLeases = leases.toSorted((a, b) => leaseSortTime(b).localeCompare(leaseSortTime(a)));
+  const active = sortedLeases.filter((lease) => lease.state === "active");
+  const ended = sortedLeases.length - active.length;
+  const defaultFilter = active.length > 0 ? "active" : "all";
+  const rows = sortedLeases.length
+    ? sortedLeases.map((lease) => leaseRow(lease)).join("")
+    : `<tr><td colspan="8" class="empty">no leases visible</td></tr>`;
   return html(
     "Crabbox Portal",
     `<main>
@@ -27,17 +30,18 @@ export function portalHome(leases: LeaseRecord[], request: Request): Response {
       <section class="panel">
         <div class="section-head">
           <h2>leases</h2>
-          <span>${active.length} active</span>
+          <span>${active.length} active / ${ended} ended</span>
         </div>
-        <table data-portal-table data-page-size="12" data-search-placeholder="search leases">
+        <table data-portal-table data-page-size="12" data-search-placeholder="search leases" data-filter-buttons="active:active,ended:ended,all:all" data-filter-default="${defaultFilter}">
           <thead>
             <tr>
               <th>lease</th>
+              <th>state</th>
               <th>provider</th>
               <th>target</th>
               <th>class</th>
               <th>access</th>
-              <th>expires</th>
+              <th>time</th>
               <th></th>
             </tr>
           </thead>
@@ -54,23 +58,28 @@ export function portalLeaseDetail(
   bridgeStatus: PortalLeaseBridgeStatus,
 ): Response {
   const slug = lease.slug || lease.id;
+  const active = lease.state === "active";
   const runRows = runs.length
     ? runs.map((run) => runRow(run)).join("")
     : `<tr><td colspan="7" class="empty">no recorded runs for this lease</td></tr>`;
-  const vncAction = lease.desktop
-    ? `<a class="button" href="/portal/leases/${encodeURIComponent(lease.id)}/vnc">open VNC</a>`
-    : `<span class="muted">no desktop</span>`;
-  const codeAction = lease.code
-    ? `<a class="button" href="/portal/leases/${encodeURIComponent(lease.id)}/code/">open code</a>`
-    : `<span class="muted">no code</span>`;
-  const commands = [
-    commandBlock("shell", `crabbox ssh --id ${shellArg(slug)}`),
-    commandBlock("run", `crabbox run --id ${shellArg(slug)} -- <command>`),
-    lease.desktop ? commandBlock("WebVNC bridge", webVNCBridgeCommand(lease)) : "",
-    lease.code ? commandBlock("code bridge", codeBridgeCommand(lease)) : "",
-  ]
-    .filter(Boolean)
-    .join("");
+  const vncAction =
+    active && lease.desktop
+      ? `<a class="button" href="/portal/leases/${encodeURIComponent(lease.id)}/vnc">open VNC</a>`
+      : `<span class="muted">no desktop</span>`;
+  const codeAction =
+    active && lease.code
+      ? `<a class="button" href="/portal/leases/${encodeURIComponent(lease.id)}/code/">open code</a>`
+      : `<span class="muted">no code</span>`;
+  const commands = active
+    ? [
+        commandBlock("shell", `crabbox ssh --id ${shellArg(slug)}`),
+        commandBlock("run", `crabbox run --id ${shellArg(slug)} -- <command>`),
+        lease.desktop ? commandBlock("WebVNC bridge", webVNCBridgeCommand(lease)) : "",
+        lease.code ? commandBlock("code bridge", codeBridgeCommand(lease)) : "",
+      ]
+        .filter(Boolean)
+        .join("")
+    : `<p class="muted">lease ${escapeHTML(lease.state)} ${escapeHTML(shortTime(lease.endedAt || lease.releasedAt || lease.updatedAt))}</p>`;
   return html(
     `${slug} lease`,
     `<main>
@@ -99,18 +108,22 @@ export function portalLeaseDetail(
             ${metaRow("work root", lease.workRoot || "pending")}
             ${metaRow("expires", shortTime(lease.expiresAt))}
           </dl>
-          <form method="post" action="/portal/leases/${encodeURIComponent(lease.id)}/release" class="stop-form">
-            <button class="button danger" type="submit">stop lease</button>
-          </form>
+          ${
+            active
+              ? `<form method="post" action="/portal/leases/${encodeURIComponent(lease.id)}/release" class="stop-form">
+                  <button class="button danger" type="submit">stop lease</button>
+                </form>`
+              : ""
+          }
         </div>
         <div class="panel detail-card">
           <div class="section-head">
             <h2>access</h2>
-            <span>${lease.desktop || lease.code ? "bridges" : "ssh only"}</span>
+            <span>${active && (lease.desktop || lease.code) ? "bridges" : "ssh only"}</span>
           </div>
           <div class="bridge-grid">
-            ${bridgeRow("WebVNC", lease.desktop === true, bridgeStatus.webVNCBridgeConnected, bridgeStatus.webVNCViewerConnected, vncAction)}
-            ${bridgeRow("code", lease.code === true, bridgeStatus.codeBridgeConnected, false, codeAction)}
+            ${bridgeRow("WebVNC", active && lease.desktop === true, bridgeStatus.webVNCBridgeConnected, bridgeStatus.webVNCViewerConnected, vncAction)}
+            ${bridgeRow("code", active && lease.code === true, bridgeStatus.codeBridgeConnected, false, codeAction)}
           </div>
         </div>
       </section>
@@ -510,19 +523,25 @@ function shellArg(value: string): string {
 function leaseRow(lease: LeaseRecord): string {
   const label = lease.slug || lease.id;
   const detailPath = `/portal/leases/${encodeURIComponent(lease.id)}`;
-  const vnc = lease.desktop
-    ? `<a class="button" href="/portal/leases/${encodeURIComponent(lease.id)}/vnc">open</a>`
-    : `<span class="muted">no desktop</span>`;
-  const code = lease.code
-    ? `<a class="button secondary" href="/portal/leases/${encodeURIComponent(lease.id)}/code/">code</a>`
-    : `<span class="muted">no code</span>`;
-  return `<tr>
+  const active = lease.state === "active";
+  const filterValue = active ? "active" : "ended";
+  const vnc =
+    active && lease.desktop
+      ? `<a class="button" href="/portal/leases/${encodeURIComponent(lease.id)}/vnc">open</a>`
+      : `<span class="muted">no desktop</span>`;
+  const code =
+    active && lease.code
+      ? `<a class="button secondary" href="/portal/leases/${encodeURIComponent(lease.id)}/code/">code</a>`
+      : `<span class="muted">no code</span>`;
+  const timeLabel = active ? lease.expiresAt : lease.endedAt || lease.releasedAt || lease.updatedAt;
+  return `<tr data-filter-value="${filterValue}">
     <td><a class="lease-link" href="${detailPath}"><strong>${escapeHTML(label)}</strong><small>${escapeHTML(lease.id)}</small></a></td>
+    <td><span class="pill" data-state="${escapeHTML(lease.state)}">${escapeHTML(lease.state)}</span></td>
     <td>${escapeHTML(lease.provider)}</td>
     <td>${escapeHTML(lease.target)}</td>
     <td>${escapeHTML(lease.class)}</td>
     <td><div class="actions-cell">${vnc}${code}</div></td>
-    <td>${escapeHTML(shortTime(lease.expiresAt))}</td>
+    <td>${escapeHTML(shortTime(timeLabel))}</td>
     <td></td>
   </tr>`;
 }
@@ -665,6 +684,9 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .table-search { flex:1; min-width:180px; max-width:360px; height:32px; padding:0 10px; border:1px solid var(--line); border-radius:8px; background:#0c0e10; color:var(--fg); font:inherit; }
     .table-search::placeholder { color:#6b7280; }
     .table-search:focus { outline:2px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset:1px; border-color:color-mix(in srgb, var(--accent) 55%, var(--line)); }
+    .table-filters { display:inline-flex; align-items:center; gap:4px; padding:3px; border:1px solid var(--line); border-radius:8px; background:#0c0e10; }
+    .table-filter { min-height:24px; padding:0 8px; border:0; border-radius:6px; background:transparent; color:var(--muted); cursor:pointer; font:inherit; font-size:12px; }
+    .table-filter[aria-pressed="true"] { background:var(--panel); color:var(--fg); }
     .table-count { color:var(--muted); font-size:12px; white-space:nowrap; }
     .table-footer { display:flex; justify-content:flex-end; align-items:center; gap:8px; padding:10px 12px; background:var(--panel-2); }
     .table-page { min-width:64px; color:var(--muted); font-size:12px; text-align:center; }
@@ -705,6 +727,8 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
       .bridge-row { grid-template-columns:1fr; align-items:start; }
       .table-tools { align-items:stretch; flex-direction:column; }
       .table-search { max-width:none; width:100%; }
+      .table-filters { justify-content:stretch; }
+      .table-filter { flex:1; }
       .table-footer { justify-content:space-between; }
       .top{align-items:flex-start;}
       .vnc-bar { flex-wrap:wrap; gap:8px; min-height:0; padding:4px 0; }
@@ -787,6 +811,7 @@ function portalEnhancementsScript(): string {
     const pageSize = Math.max(1, Number.parseInt(table.dataset.pageSize || "10", 10) || 10);
     let query = "";
     let page = 1;
+    let selectedFilter = table.dataset.filterDefault || "all";
     const tools = document.createElement("div");
     tools.className = "table-tools";
     const input = document.createElement("input");
@@ -795,9 +820,33 @@ function portalEnhancementsScript(): string {
     input.placeholder = table.dataset.searchPlaceholder || "search table";
     input.setAttribute("aria-label", input.placeholder);
     input.disabled = dataRows.length === 0;
+    const filterButtons = (table.dataset.filterButtons || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((item) => {
+        const parts = item.split(":");
+        return { value: parts[0], label: parts[1] || parts[0] };
+      });
+    const filters = document.createElement("div");
+    filters.className = "table-filters";
+    filters.hidden = filterButtons.length === 0;
+    const filterControls = filterButtons.map((filter) => {
+      const button = document.createElement("button");
+      button.className = "table-filter";
+      button.type = "button";
+      button.textContent = filter.label;
+      button.addEventListener("click", () => {
+        selectedFilter = filter.value;
+        page = 1;
+        apply();
+      });
+      filters.append(button);
+      return { ...filter, button };
+    });
     const count = document.createElement("span");
     count.className = "table-count";
-    tools.append(input, count);
+    tools.append(input, filters, count);
     const footer = document.createElement("div");
     footer.className = "table-footer";
     const prev = document.createElement("button");
@@ -815,7 +864,11 @@ function portalEnhancementsScript(): string {
     table.after(footer);
     table.dataset.enhancedIndex = String(index);
     function apply() {
-      const filtered = dataRows.filter((row) => row.textContent.toLowerCase().includes(query));
+      const filtered = dataRows.filter(
+        (row) =>
+          (selectedFilter === "all" || row.dataset.filterValue === selectedFilter) &&
+          row.textContent.toLowerCase().includes(query),
+      );
       const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
       page = Math.min(page, pages);
       const start = (page - 1) * pageSize;
@@ -823,6 +876,9 @@ function portalEnhancementsScript(): string {
       dataRows.forEach((row) => { row.hidden = !visible.has(row); });
       generatedEmpty.hidden = dataRows.length === 0 || filtered.length > 0;
       if (originalEmpty) originalEmpty.hidden = dataRows.length > 0;
+      filterControls.forEach((filter) => {
+        filter.button.setAttribute("aria-pressed", String(filter.value === selectedFilter));
+      });
       count.textContent = dataRows.length ? filtered.length + " of " + dataRows.length : "0";
       pageLabel.textContent = page + " / " + pages;
       prev.disabled = page <= 1;
@@ -858,6 +914,10 @@ function shortTime(value: string): string {
     return value;
   }
   return date.toISOString().replace(".000Z", "Z");
+}
+
+function leaseSortTime(lease: LeaseRecord): string {
+  return lease.endedAt || lease.releasedAt || lease.updatedAt || lease.expiresAt || lease.createdAt;
 }
 
 function formatDuration(value: number | undefined): string {
