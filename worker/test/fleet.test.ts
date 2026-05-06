@@ -643,6 +643,8 @@ describe("fleet lease identity and idle", () => {
       "crabbox webvnc --provider hetzner --target linux --id blue-lobster --open",
     );
     expect(body).toContain("crabbox code --id blue-lobster --open");
+    expect(body).toContain("data-copy-command");
+    expect(body).toContain('querySelector("code")');
     expect(body).toContain('class="portal-shell lease-shell"');
     expect(body).toContain('data-search-placeholder="search runs"');
     expect(body).toContain(
@@ -671,6 +673,7 @@ describe("fleet lease identity and idle", () => {
     expect(runBody).toContain('class="portal-shell run-shell"');
     expect(runBody).toContain("run_000000000001");
     expect(runBody).toContain("go test ./...");
+    expect(runBody).toContain("data-copy-command");
     expect(runBody).toContain("portal log");
     expect(runBody).toContain('data-copy-target="#run-log-tail"');
     expect(runBody).toContain('data-search-placeholder="search events"');

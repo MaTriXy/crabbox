@@ -634,7 +634,7 @@ function bridgeRow(
 }
 
 function commandBlock(label: string, command: string): string {
-  return `<div class="command-row"><div><small>${escapeHTML(label)}</small><code>${escapeHTML(command)}</code></div></div>`;
+  return `<div class="command-row"><div><small>${escapeHTML(label)}</small><code>${escapeHTML(command)}</code></div><button class="icon-btn" type="button" title="copy command" aria-label="copy ${escapeHTML(label)} command" data-copy-command>${copyIcon}</button></div>`;
 }
 
 function resultsSummary(run: RunRecord): string {
@@ -786,7 +786,7 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .vnc-bridge-label { font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); flex-shrink:0; padding-left:4px; }
     .vnc-bridge-cmd { display:block; flex:1; min-width:0; padding:6px 10px; border:none; border-radius:5px; background:transparent; color:#d1fae5; font-family:var(--mono); font-size:13px; overflow-x:auto; white-space:nowrap; }
     .commands { padding:12px; display:grid; gap:8px; }
-    .command-row { display:grid; grid-template-columns:minmax(0,1fr); gap:8px; align-items:stretch; }
+    .command-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:end; }
     .command-row small { display:block; color:var(--muted); margin-bottom:4px; text-transform:uppercase; font-size:11px; }
     .command-row code { min-width:0; }
     .error { margin-top:20vh; padding:24px; display:grid; gap:12px; }
@@ -866,6 +866,12 @@ function portalEnhancementsScript(): string {
       const selector = button.getAttribute("data-copy-target");
       if (!selector) return;
       const target = document.querySelector(selector);
+      copyText(target?.textContent || "", button);
+    });
+  });
+  document.querySelectorAll("[data-copy-command]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = button.closest(".command-row")?.querySelector("code");
       copyText(target?.textContent || "", button);
     });
   });
