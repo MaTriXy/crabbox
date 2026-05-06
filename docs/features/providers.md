@@ -21,11 +21,20 @@ still exists for reusing existing macOS and Windows machines:
 ssh         Existing SSH host selected by static.host
 ```
 
+Direct provider backends can also run without the Crabbox coordinator:
+
+```text
+daytona    Daytona sandboxes with SDK/toolbox run and short-lived SSH access
+islo       Islo sandboxes with delegated command execution
+```
+
 ## Provider Pages
 
 - [AWS](aws.md): EC2 Linux, Windows, WSL2, EC2 Mac, capacity, AMIs, and security groups.
 - [Hetzner](hetzner.md): Linux-only managed provider behavior, classes, and cleanup.
 - [Blacksmith Testbox](blacksmith-testbox.md): delegated Testbox backend behavior.
+- [Daytona](daytona.md): Daytona SDK/toolbox sandbox leases.
+- [Islo](islo.md): delegated Islo sandbox execution.
 - [Provider backends](../provider-backends.md): implementation guide for adding a new provider/backend/plugin.
 
 ## Hetzner Summary
@@ -118,6 +127,15 @@ brokered Worker path.
 
 Crabbox can also wrap Blacksmith Testboxes with `provider: blacksmith-testbox`. That backend does not use the Crabbox broker or direct cloud credentials. It shells out to the authenticated Blacksmith CLI for `testbox warmup`, `run`, `status`, `list`, and `stop`, while Crabbox keeps local slugs, repo claims, config, and timing summaries. See [Blacksmith Testbox](blacksmith-testbox.md).
 
+Crabbox can use Daytona sandboxes with `provider: daytona`. Crabbox creates a
+sandbox from `daytona.snapshot`, syncs and executes `run` through Daytona's
+SDK/toolbox APIs, and mints short-lived SSH tokens only for explicit `ssh`
+access. See [Daytona](daytona.md).
+
+Crabbox can use Islo sandboxes with `provider: islo`. Islo is a delegated run
+backend: the Islo Go SDK owns sandbox lifecycle and Crabbox streams command
+output from Islo's exec SSE endpoint. See [Islo](islo.md).
+
 Static SSH targets:
 
 ```yaml
@@ -158,5 +176,7 @@ Related docs:
 - [Hetzner](hetzner.md)
 - [Tailscale](tailscale.md)
 - [Blacksmith Testbox](blacksmith-testbox.md)
+- [Daytona](daytona.md)
+- [Islo](islo.md)
 - [Runner bootstrap](runner-bootstrap.md)
 - [Cost and usage](cost-usage.md)

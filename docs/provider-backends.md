@@ -30,7 +30,6 @@ Examples:
 - Hetzner Cloud
 - AWS EC2
 - static SSH hosts
-- a future Daytona sandbox if it exposes stable SSH access
 
 Crabbox core owns the normal workflow after acquisition:
 
@@ -69,7 +68,9 @@ Crabbox-managed SSH.
 Examples:
 
 - Blacksmith Testbox
-- a future Islo backend if it owns workspace setup and command streaming
+- Islo sandboxes, where Islo owns workspace setup and command streaming
+- Daytona sandboxes for `run`, where Daytona toolbox owns file upload and
+  process execution while `crabbox ssh` still uses short-lived SSH tokens
 - a future external runner service that accepts a command and streams output
 
 The delegated backend owns warmup, command execution, output streaming, and
@@ -152,6 +153,8 @@ internal/providers/hetzner
 internal/providers/aws
 internal/providers/ssh
 internal/providers/blacksmith
+internal/providers/daytona
+internal/providers/islo
 ```
 
 Each provider package owns registration, provider name, aliases, spec,
@@ -176,6 +179,9 @@ internal/cli/provider_hetzner.go     # Hetzner SSH lease backend implementation
 internal/cli/provider_static.go      # static SSH lease backend implementation
 internal/cli/provider_coordinator.go # brokered coordinator lease backend
 internal/cli/provider_blacksmith.go  # existing delegated Blacksmith backend
+internal/cli/provider_daytona.go     # Daytona SSH access backend implementation
+internal/cli/provider_daytona_delegated.go # Daytona SDK/toolbox run backend
+internal/cli/provider_islo.go        # Islo delegated backend implementation
 ```
 
 This split is intentional. Existing built-ins still use a broad set of

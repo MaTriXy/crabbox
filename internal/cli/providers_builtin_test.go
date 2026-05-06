@@ -7,6 +7,8 @@ func init() {
 	RegisterProvider(testAWSProvider{})
 	RegisterProvider(testStaticSSHProvider{})
 	RegisterProvider(testBlacksmithProvider{})
+	RegisterProvider(testDaytonaProvider{})
+	RegisterProvider(testIsloProvider{})
 }
 
 type testHetznerProvider struct{}
@@ -107,4 +109,50 @@ func (testBlacksmithProvider) ApplyFlags(cfg *Config, fs *flag.FlagSet, values a
 }
 func (p testBlacksmithProvider) Configure(cfg Config, rt Runtime) (Backend, error) {
 	return NewBlacksmithBackend(p.Spec(), cfg, rt), nil
+}
+
+type testDaytonaProvider struct{}
+
+func (testDaytonaProvider) Name() string      { return "daytona" }
+func (testDaytonaProvider) Aliases() []string { return nil }
+func (testDaytonaProvider) Spec() ProviderSpec {
+	return ProviderSpec{
+		Name:        daytonaProvider,
+		Kind:        ProviderKindSSHLease,
+		Targets:     []TargetSpec{{OS: targetLinux}},
+		Features:    FeatureSet{FeatureSSH, FeatureCrabboxSync},
+		Coordinator: CoordinatorNever,
+	}
+}
+func (testDaytonaProvider) RegisterFlags(fs *flag.FlagSet, defaults Config) any {
+	return RegisterDaytonaProviderFlags(fs, defaults)
+}
+func (testDaytonaProvider) ApplyFlags(cfg *Config, fs *flag.FlagSet, values any) error {
+	return ApplyDaytonaProviderFlags(cfg, fs, values)
+}
+func (p testDaytonaProvider) Configure(cfg Config, rt Runtime) (Backend, error) {
+	return NewDaytonaLeaseBackend(p.Spec(), cfg, rt), nil
+}
+
+type testIsloProvider struct{}
+
+func (testIsloProvider) Name() string      { return isloProvider }
+func (testIsloProvider) Aliases() []string { return nil }
+func (testIsloProvider) Spec() ProviderSpec {
+	return ProviderSpec{
+		Name:        isloProvider,
+		Kind:        ProviderKindDelegatedRun,
+		Targets:     []TargetSpec{{OS: targetLinux}},
+		Features:    nil,
+		Coordinator: CoordinatorNever,
+	}
+}
+func (testIsloProvider) RegisterFlags(fs *flag.FlagSet, defaults Config) any {
+	return RegisterIsloProviderFlags(fs, defaults)
+}
+func (testIsloProvider) ApplyFlags(cfg *Config, fs *flag.FlagSet, values any) error {
+	return ApplyIsloProviderFlags(cfg, fs, values)
+}
+func (p testIsloProvider) Configure(cfg Config, rt Runtime) (Backend, error) {
+	return NewIsloBackend(p.Spec(), cfg, rt), nil
 }

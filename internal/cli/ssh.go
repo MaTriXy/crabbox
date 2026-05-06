@@ -28,6 +28,8 @@ type SSHTarget struct {
 	TargetOS      string
 	WindowsMode   string
 	ReadyCheck    string
+	AuthSecret    bool
+	NetworkKind   NetworkMode
 }
 
 func sshTargetFromConfig(cfg Config, host string) SSHTarget {
@@ -285,9 +287,7 @@ func sshBaseArgs(target SSHTarget) []string {
 }
 
 func sshBaseArgsWithOptions(target SSHTarget, connectTimeout, connectionAttempts string) []string {
-	return []string{
-		"-i", target.Key,
-		"-o", "IdentitiesOnly=yes",
+	args := []string{
 		"-o", "BatchMode=yes",
 		"-o", "StrictHostKeyChecking=accept-new",
 		"-o", "UserKnownHostsFile=" + sshConfigFileValue(knownHostsFile(target)),
@@ -295,11 +295,21 @@ func sshBaseArgsWithOptions(target SSHTarget, connectTimeout, connectionAttempts
 		"-o", "ConnectionAttempts=" + connectionAttempts,
 		"-o", "ServerAliveInterval=15",
 		"-o", "ServerAliveCountMax=2",
-		"-o", "ControlMaster=auto",
-		"-o", "ControlPersist=60s",
-		"-o", "ControlPath=" + sshControlPath(target),
 		"-p", target.Port,
 	}
+	if target.AuthSecret {
+		args = append(args, "-o", "ControlMaster=no")
+	} else {
+		args = append(args,
+			"-o", "ControlMaster=auto",
+			"-o", "ControlPersist=60s",
+			"-o", "ControlPath="+sshControlPath(target),
+		)
+	}
+	if target.Key != "" {
+		args = append([]string{"-i", target.Key, "-o", "IdentitiesOnly=yes"}, args...)
+	}
+	return args
 }
 
 func minDuration(left, right time.Duration) time.Duration {

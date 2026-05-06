@@ -23,7 +23,7 @@ const envSchema = {
 
 const providerSchema = {
   type: "string",
-  enum: ["aws", "hetzner"],
+  enum: ["aws", "hetzner", "ssh", "blacksmith-testbox", "blacksmith", "daytona", "islo"],
 };
 
 function readConfig(api) {
@@ -206,6 +206,7 @@ function registerRun(api, config) {
           description: "Crabbox lease ID or friendly slug.",
         },
         command: commandArraySchema,
+        provider: providerSchema,
         env: envSchema,
         noSync: {
           type: "boolean",
@@ -246,6 +247,7 @@ function registerRun(api, config) {
         throw new Error("crabbox_run is disabled by plugin config");
       }
       const args = ["run", "--id", readString(params, "id")];
+      maybePush(args, "--provider", readString(params, "provider"));
       maybePushBool(args, "--no-sync", params?.noSync);
       maybePushBool(args, "--sync-only", params?.syncOnly);
       maybePushBool(args, "--force-sync-large", params?.forceSyncLarge);

@@ -16,15 +16,15 @@ context and migration notes; the authoring guide is the handrail for new code.
 
 Crabbox has two real execution models.
 
-The first model is SSH lease execution. Hetzner, AWS, static SSH, and Daytona
-produce a machine or sandbox reachable through SSH. Crabbox owns the workflow:
-claim, sync, command wrapping, stdout/stderr streaming, result collection,
-timing, heartbeat, and release.
+The first model is SSH lease execution. Hetzner, AWS, and static SSH produce a
+machine reachable through SSH. Crabbox owns the workflow: claim, sync, command
+wrapping, stdout/stderr streaming, result collection, timing, heartbeat, and
+release.
 
-The second model is delegated execution. Blacksmith Testboxes and Islo own
-machine setup, file/workspace state, command execution, and output streaming.
-Crabbox keeps provider selection, config, local claims/slugs, and timing
-summaries, but it does not rsync into these providers.
+The second model is delegated execution. Blacksmith Testboxes, Daytona `run`,
+and Islo own machine setup or file/workspace transport, command execution, and
+output streaming. Crabbox keeps provider selection, config, local claims/slugs,
+and timing summaries, but it does not rsync into these providers.
 
 Relevant pull requests:
 
@@ -34,13 +34,12 @@ Relevant pull requests:
 
 SDK/source checks:
 
-- Daytona upstream has an official Go SDK at
-  `github.com/daytonaio/daytona/libs/sdk-go`, plus a lower-level generated API
-  client. The official SDK is large and brings more dependency surface than the
-  provider needs. The generated API client exposes the exact REST calls Crabbox
-  needs: create sandbox, create SSH access, list sandboxes, update labels, and
-  update last activity. Prefer a tiny Crabbox-owned REST client unless the SDK
-  becomes meaningfully simpler.
+- Daytona upstream ships a generated Go API client at
+  `github.com/daytonaio/daytona/libs/api-client-go` and a toolbox SDK at
+  `github.com/daytonaio/daytona/libs/sdk-go`. Use both through narrow
+  Crabbox-owned adapters: the generated client for list/get/start/delete,
+  labels, last activity, and SSH access; the SDK/toolbox for sandbox create,
+  file upload, and command execution.
 - Daytona snapshot creation does not accept CPU/memory/disk resources. Resource
   fields live on image creation. Snapshot-only mode must not expose resource
   flags that become no-ops.
@@ -331,7 +330,7 @@ provider            kind           coordinator  features
 hetzner             ssh-lease      supported    ssh, crabbox-sync, cleanup, tailscale
 aws                 ssh-lease      supported    ssh, crabbox-sync, cleanup, desktop, browser, code
 ssh                 ssh-lease      never        ssh, crabbox-sync, desktop, browser, code
-daytona             ssh-lease      never        ssh, crabbox-sync, cleanup
+daytona             ssh-lease      never        ssh, crabbox-sync
 blacksmith-testbox  delegated-run  never        delegated execution
 islo                delegated-run  never        delegated execution
 ```
@@ -353,7 +352,7 @@ validation:
 ```text
 provider=daytona managed provisioning supports target=linux only
 desktop/VNC is not supported for provider=islo; islo sandboxes are headless
---actions-runner is not supported for provider=daytona
+--actions-runner requires an SSH lease provider with target=linux
 ```
 
 ## Registry
@@ -510,7 +509,7 @@ Provider-specific flags:
 --daytona-target
 --daytona-user
 --daytona-work-root
---daytona-ssh-token-minutes
+--daytona-ssh-access-minutes
 
 --islo-image
 --islo-workdir
@@ -856,8 +855,8 @@ Daytona target example:
 ```go
 SSHTarget{
 	User: token,
-	Host: "ssh.app.daytona.io",
-	Port: "22",
+	Host: parsedHostFromSSHCommand,
+	Port: parsedPortFromSSHCommand,
 	Key: "",
 	TargetOS: "linux",
 	ReadyCheck: "command -v git >/dev/null && command -v rsync >/dev/null && command -v tar >/dev/null",
@@ -869,7 +868,7 @@ SSHTarget{
 Normal output:
 
 ```text
-ready ssh=<redacted>@ssh.app.daytona.io:22 network=public workroot=/home/daytona/crabbox
+ready ssh=<redacted>@<daytona-ssh-host>:<daytona-ssh-port> network=public workroot=/home/daytona/crabbox
 ```
 
 The actual interactive `crabbox ssh --provider daytona --id ...` command may
@@ -1109,7 +1108,7 @@ Does not support provider cleanup or coordinator.
 
 ### Daytona
 
-Backend: `SSHLeaseBackend`
+Backend: hybrid `SSHLeaseBackend` + `DelegatedRunBackend`
 
 Spec:
 
@@ -1117,24 +1116,26 @@ Spec:
 kind=ssh-lease
 coordinator=never
 targets=linux
-features=ssh, crabbox-sync, cleanup
+features=ssh, crabbox-sync
 ```
 
 Owns:
 
-- REST API auth and organization header;
+- Daytona generated Go API client auth and organization header;
+- Daytona SDK/toolbox auth;
 - sandbox create/list/get/start/stop/delete;
 - labels and last-activity touch;
 - SSH access token minting;
+- toolbox archive upload and command execution for `run`;
 - Daytona sandbox to `Server` mapping;
 - secret SSH user and public relay target metadata.
 
 Reuses core:
 
-- SSH sync/run;
+- sync manifest and guardrails;
 - claims;
 - status rendering;
-- cleanup policy.
+- explicit release/stop.
 
 Initial constraints:
 
@@ -1142,15 +1143,15 @@ Initial constraints:
 - No coordinator.
 - No Tailscale.
 - No VNC/screenshot/desktop/browser/code portal.
-- No Actions runner.
+- Actions runner hydration is not supported for Daytona warmup.
 - Snapshot mode only unless image mode is implemented fully.
 
 Rebase notes for https://github.com/openclaw/crabbox/pull/32:
 
-- Implement `Provider.Configure` returning a Daytona `SSHLeaseBackend`.
-- Keep raw REST instead of the official Daytona Go SDK.
-- Keep the labels body fix: Daytona label update expects
-  `{ "labels": { ... } }`.
+- Implement `Provider.Configure` returning a Daytona backend that supports
+  delegated `run` plus explicit SSH access.
+- Use Daytona's generated Go API client and SDK/toolbox; do not duplicate REST
+  plumbing in Crabbox.
 - Keep start-before-SSH for stopped sandboxes.
 - Require `DAYTONA_ORGANIZATION_ID` when JWT auth is used unless Daytona docs
   prove it is optional for the account shape.
@@ -1294,9 +1295,11 @@ Expected behavior change: none for existing configs.
 
 ### Phase 7: Rebase Daytona
 
-- Rebase https://github.com/openclaw/crabbox/pull/32 onto `SSHLeaseBackend`.
-- Keep Daytona REST client isolated.
-- Add tests for acquire/resolve/list/release/touch via backend.
+- Rebase https://github.com/openclaw/crabbox/pull/32 onto a hybrid Daytona
+  backend: delegated SDK/toolbox `run`, explicit SSH access for `ssh`.
+- Keep Daytona SDK access isolated behind the backend adapter.
+- Add tests for acquire/resolve/list/release/touch plus delegated backend
+  selection.
 - Add redaction tests for secret SSH user output.
 - Add live smoke behind explicit env gates only.
 
@@ -1370,8 +1373,8 @@ Daytona tests:
 - labels body shape;
 - snapshot mode omits unusable resource overrides;
 - stopped sandbox starts before SSH target creation;
-- SSH target uses relay host, empty key, secret user, public network, and ready
-  check;
+- SSH target parses the API-returned `sshCommand`, uses empty key, secret user,
+  public network, and ready check;
 - list/status/timing output, including JSON, redacts token-bearing user;
 - release removes local claim.
 
@@ -1401,7 +1404,7 @@ Docs tests:
 - A fake SSH lease backend can be tested without editing command handlers.
 - A fake delegated backend can be tested without editing command handlers.
 - Hetzner/AWS still use the coordinator when configured.
-- Daytona can be rebased by implementing `SSHLeaseBackend`.
+- Daytona can be rebased by implementing the hybrid backend.
 - Islo can be rebased by implementing `DelegatedRunBackend`.
 - No new provider requires touching the main command flow unless it adds a new
   top-level Crabbox feature.

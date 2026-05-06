@@ -13,6 +13,8 @@ crabbox run --desktop --browser --shell 'echo "$DISPLAY"; "$BROWSER" --version'
 crabbox run --id blue-lobster --shell 'pnpm install --frozen-lockfile && pnpm test'
 crabbox run --id cbx_abcdef123456 --junit junit.xml -- go test ./...
 crabbox run --provider blacksmith-testbox --blacksmith-workflow .github/workflows/ci-check-testbox.yml --blacksmith-job test -- pnpm test
+crabbox run --provider daytona --daytona-snapshot crabbox-ready -- pnpm test
+crabbox run --provider islo --islo-image docker.io/library/ubuntu:24.04 -- pnpm test
 crabbox run --provider ssh --target macos --static-host mac-studio.local -- xcodebuild test
 crabbox run --provider ssh --target windows --windows-mode normal --static-host win-dev.local -- dotnet test
 crabbox run --provider ssh --target windows --windows-mode normal --static-host win-dev.local --shell 'Write-Output ("BROWSER=" + $env:BROWSER)'
@@ -22,6 +24,16 @@ crabbox run --provider ssh --target windows --windows-mode wsl2 --static-host wi
 If `--id` is omitted, Crabbox creates a fresh non-kept lease and releases it when the command exits. `--id` accepts the stable `cbx_...` ID or the active friendly slug.
 
 With `--provider blacksmith-testbox`, `--id` accepts a Blacksmith `tbx_...` ID or a local Crabbox slug. Crabbox forwards the command to `blacksmith testbox run`, delegates sync to Blacksmith, and prints `sync=delegated` in the final timing summary.
+
+With `--provider daytona`, `--id` accepts a Daytona-backed Crabbox `cbx_...` ID
+or local slug. Crabbox uploads the sync archive through Daytona toolbox file
+APIs, extracts it in the sandbox, and runs the command through Daytona toolbox
+process APIs. The final timing summary reports `sync=delegated`.
+
+With `--provider islo`, `--id` accepts an `isb_<crabbox-sandbox-name>` lease ID,
+a Crabbox-created sandbox name, or a local Crabbox slug. Islo owns sandbox
+workspace setup and command execution, so sync is delegated and the final timing
+summary reports `sync=delegated`.
 
 When the lease has been hydrated by `crabbox actions hydrate`, `run` reads the remote marker under `$HOME/.crabbox/actions`, syncs into the workflow's `$GITHUB_WORKSPACE`, and sources the non-secret env file written by the workflow. That preserves the setup the workflow performed: checkout path, installed dependencies, service containers, caches, runner temp/toolcache paths, and any project-specific preparation. GitHub secrets and OIDC request tokens remain workflow-step scoped unless the project explicitly persists its own short-lived credentials.
 
@@ -77,7 +89,7 @@ Flags:
 
 ```text
 --id <lease-id-or-slug>
---provider hetzner|aws|ssh|blacksmith-testbox
+--provider hetzner|aws|ssh|blacksmith-testbox|daytona|islo
 --target linux|macos|windows
 --windows-mode normal|wsl2
 --static-host <host>

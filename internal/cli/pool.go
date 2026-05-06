@@ -10,7 +10,7 @@ import (
 func (a App) list(ctx context.Context, args []string) error {
 	defaults := defaultConfig()
 	fs := newFlagSet("list", a.Stderr)
-	provider := fs.String("provider", defaults.Provider, "provider: hetzner, aws, ssh, or blacksmith-testbox")
+	provider := fs.String("provider", defaults.Provider, providerHelpAll())
 	jsonOut := fs.Bool("json", false, "print JSON")
 	providerFlags := registerProviderFlags(fs, defaults)
 	targetFlags := registerTargetFlags(fs, defaults)

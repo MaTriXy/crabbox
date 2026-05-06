@@ -17,6 +17,8 @@ Core features:
 - [AWS](aws.md): EC2 Linux, Windows, WSL2, EC2 Mac, capacity, AMIs, and security groups.
 - [Hetzner](hetzner.md): Linux-only managed Hetzner behavior, classes, and cleanup.
 - [Blacksmith Testbox](blacksmith-testbox.md): delegated Testbox backend behavior.
+- [Daytona](daytona.md): Daytona SDK/toolbox sandbox leases with optional short-lived SSH access.
+- [Islo](islo.md): delegated Islo sandbox runs using the Islo Go SDK.
 - [Tailscale](tailscale.md): optional tailnet reachability for managed Linux leases and static hosts.
 - [Runner bootstrap](runner-bootstrap.md): cloud-init, installed tools, SSH port, and readiness.
 - [Prebaked runner images](prebaked-images.md): provider-owned image storage and the image/cache/state boundary.

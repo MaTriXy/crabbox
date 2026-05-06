@@ -309,6 +309,14 @@ func normalizeProviderName(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
 }
 
+func providerHelpAll() string {
+	return "provider: hetzner, aws, ssh, blacksmith-testbox, daytona, or islo"
+}
+
+func providerHelpSSH() string {
+	return "provider: hetzner, aws, ssh, or daytona"
+}
+
 type providerFlagValues map[string]any
 
 func registerProviderFlags(fs *flag.FlagSet, defaults Config) providerFlagValues {
@@ -375,23 +383,24 @@ func backendCoordinator(backend Backend) *CoordinatorClient {
 
 func leaseOptionsFromConfig(cfg Config) LeaseOptions {
 	return LeaseOptions{
-		TargetOS:    cfg.TargetOS,
-		WindowsMode: cfg.WindowsMode,
-		Class:       cfg.Class,
-		ServerType:  cfg.ServerType,
-		IdleTimeout: cfg.IdleTimeout,
-		TTL:         cfg.TTL,
-		Desktop:     cfg.Desktop,
-		Browser:     cfg.Browser,
-		Code:        cfg.Code,
-		Tailscale:   cfg.Tailscale,
-		WorkRoot:    cfg.WorkRoot,
-		SSHUser:     cfg.SSHUser,
-		SSHPort:     cfg.SSHPort,
-		SSHKey:      cfg.SSHKey,
-		Sync:        cfg.Sync,
-		Results:     cfg.Results,
-		EnvAllow:    cfg.EnvAllow,
+		TargetOS:      cfg.TargetOS,
+		WindowsMode:   cfg.WindowsMode,
+		Class:         cfg.Class,
+		ServerType:    cfg.ServerType,
+		IdleTimeout:   cfg.IdleTimeout,
+		TTL:           cfg.TTL,
+		Desktop:       cfg.Desktop,
+		Browser:       cfg.Browser,
+		Code:          cfg.Code,
+		Tailscale:     cfg.Tailscale,
+		WorkRoot:      cfg.WorkRoot,
+		SSHUser:       cfg.SSHUser,
+		SSHPort:       cfg.SSHPort,
+		SSHKey:        cfg.SSHKey,
+		Sync:          cfg.Sync,
+		Results:       cfg.Results,
+		EnvAllow:      cfg.EnvAllow,
+		ActionsRunner: cfg.Actions.Workflow != "" || len(cfg.Actions.RunnerLabels) > 0,
 	}
 }
 

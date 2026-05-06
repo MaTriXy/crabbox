@@ -228,6 +228,61 @@ func TestSSHArgsIncludeReliabilityOptions(t *testing.T) {
 	}
 }
 
+func TestSSHArgsAllowTokenUserWithoutIdentityFile(t *testing.T) {
+	t.Setenv("HOME", "/tmp/crabbox-home")
+	got := strings.Join(sshArgs(SSHTarget{
+		User: "tok_live_secret",
+		Host: "ssh.app.daytona.io",
+		Port: "22",
+	}, "true"), "\n")
+	for _, unwanted := range []string{"-i\n", "IdentitiesOnly=yes"} {
+		if strings.Contains(got, unwanted) {
+			t.Fatalf("sshArgs() should omit key-only option %q when target key is empty: %q", unwanted, got)
+		}
+	}
+	if !strings.Contains(got, "tok_live_secret@ssh.app.daytona.io") {
+		t.Fatalf("sshArgs() missing token user target: %q", got)
+	}
+}
+
+func TestSSHArgsAuthSecretDisablesControlMaster(t *testing.T) {
+	t.Setenv("HOME", "/tmp/crabbox-home")
+	got := strings.Join(sshArgs(SSHTarget{
+		User:       "tok_live_secret",
+		Host:       "ssh.app.daytona.io",
+		Port:       "22",
+		AuthSecret: true,
+	}, "true"), "\n")
+	for _, unwanted := range []string{"ControlMaster=auto", "ControlPersist=", "ControlPath="} {
+		if strings.Contains(got, unwanted) {
+			t.Fatalf("sshArgs() should omit mux option %q for secret auth target: %q", unwanted, got)
+		}
+	}
+	if !strings.Contains(got, "ControlMaster=no") {
+		t.Fatalf("sshArgs() missing ControlMaster=no for secret auth target: %q", got)
+	}
+}
+
+func TestSSHCommandLineRedactsSecretAuthUser(t *testing.T) {
+	target := SSHTarget{
+		User:       "tok_live_secret",
+		Host:       "ssh.app.daytona.io",
+		Port:       "22",
+		AuthSecret: true,
+	}
+	redacted := sshCommandLine(target, true)
+	if strings.Contains(redacted, target.User) {
+		t.Fatalf("redacted command leaked token: %q", redacted)
+	}
+	if !strings.Contains(redacted, daytonaTokenRedacted+"@ssh.app.daytona.io") {
+		t.Fatalf("redacted command missing placeholder user: %q", redacted)
+	}
+	full := sshCommandLine(target, false)
+	if !strings.Contains(full, target.User+"@ssh.app.daytona.io") {
+		t.Fatalf("full command missing token user: %q", full)
+	}
+}
+
 func TestSSHTransportProbeDoesNotRequireCrabboxReady(t *testing.T) {
 	got := sshTransportProbeCommand(SSHTarget{Host: "100.64.0.10", Port: "2222"})
 	if strings.Contains(got, "crabbox-ready") || strings.Contains(got, "git --version") || strings.Contains(got, "/work/crabbox") {

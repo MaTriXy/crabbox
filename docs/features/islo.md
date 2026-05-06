@@ -1,0 +1,62 @@
+# Islo
+
+Read when:
+
+- choosing `provider: islo`;
+- configuring Islo sandbox image, sizing, or gateway profile;
+- reviewing delegated provider behavior.
+
+`provider: islo` delegates sandbox setup and command execution to Islo. Crabbox
+uses the Islo Go SDK for auth, sandbox lifecycle, list, status, and stop. The
+SDK's current exec stream helper coalesces output, so Crabbox keeps a small SSE
+reader for `POST /sandboxes/{name}/exec/stream` while still using the SDK auth
+provider.
+
+## Auth
+
+```sh
+export ISLO_API_KEY=ak_...
+```
+
+`ISLO_BASE_URL` or `islo.baseUrl` can override the default
+`https://api.islo.dev`.
+
+## Config
+
+```yaml
+provider: islo
+target: linux
+islo:
+  image: docker.io/library/ubuntu:24.04
+  workdir: crabbox
+  gatewayProfile: ""
+  snapshotName: ""
+  vcpus: 2
+  memoryMB: 4096
+  diskGB: 20
+```
+
+Equivalent flags:
+
+```sh
+crabbox warmup --provider islo --islo-image docker.io/library/ubuntu:24.04
+crabbox run --provider islo -- pnpm test
+crabbox status --provider islo --id <slug>
+crabbox stop --provider islo <slug>
+```
+
+## Behavior
+
+- `warmup` creates a `crabbox-...` Islo sandbox and stores a local lease ID of
+  the form `isb_<crabbox-sandbox-name>` plus a Crabbox slug.
+- `run` creates or reuses a sandbox, streams stdout/stderr from Islo's SSE exec
+  endpoint, and returns the remote exit code.
+- Sync is delegated to Islo. `--sync-only`, `--checksum`, and
+  `--force-sync-large` are rejected because Crabbox cannot honor those local
+  rsync options.
+- `list`, `status`, and `stop` use the Islo SDK and return core-rendered
+  Crabbox views for Crabbox-created sandboxes only.
+
+Islo is not an SSH lease backend today. Commands that require a Crabbox SSH
+target, such as `ssh`, `vnc`, `code`, and Actions runner hydration, should use
+Hetzner, AWS, static SSH, or Daytona instead.

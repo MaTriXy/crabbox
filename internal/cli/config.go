@@ -51,6 +51,8 @@ type Config struct {
 	Capacity           CapacityConfig
 	Actions            ActionsConfig
 	Blacksmith         BlacksmithConfig
+	Daytona            DaytonaConfig
+	Islo               IsloConfig
 	Tailscale          TailscaleConfig
 	Static             StaticConfig
 	Results            ResultsConfig
@@ -98,6 +100,31 @@ type BlacksmithConfig struct {
 	Ref         string
 	IdleTimeout time.Duration
 	Debug       bool
+}
+
+type DaytonaConfig struct {
+	APIKey           string
+	JWTToken         string
+	OrganizationID   string
+	APIURL           string
+	Snapshot         string
+	Target           string
+	User             string
+	WorkRoot         string
+	SSHGatewayHost   string
+	SSHAccessMinutes int
+}
+
+type IsloConfig struct {
+	APIKey         string
+	BaseURL        string
+	Image          string
+	Workdir        string
+	GatewayProfile string
+	SnapshotName   string
+	VCPUs          int
+	MemoryMB       int
+	DiskGB         int
 }
 
 type StaticConfig struct {
@@ -207,6 +234,21 @@ func baseConfig() Config {
 			RunnerVersion: "latest",
 			Ephemeral:     true,
 		},
+		Daytona: DaytonaConfig{
+			APIURL:           "https://app.daytona.io/api",
+			User:             "daytona",
+			WorkRoot:         "/home/daytona/crabbox",
+			SSHGatewayHost:   "ssh.app.daytona.io",
+			SSHAccessMinutes: 30,
+		},
+		Islo: IsloConfig{
+			BaseURL:  "https://api.islo.dev",
+			Image:    "docker.io/library/ubuntu:24.04",
+			Workdir:  "crabbox",
+			VCPUs:    2,
+			MemoryMB: 4096,
+			DiskGB:   20,
+		},
 		Tailscale: TailscaleConfig{
 			Tags:             []string{"tag:crabbox"},
 			HostnameTemplate: "crabbox-{slug}",
@@ -245,6 +287,8 @@ type fileConfig struct {
 	Capacity         *fileCapacityConfig   `yaml:"capacity,omitempty"`
 	Actions          *fileActionsConfig    `yaml:"actions,omitempty"`
 	Blacksmith       *fileBlacksmithConfig `yaml:"blacksmith,omitempty"`
+	Daytona          *fileDaytonaConfig    `yaml:"daytona,omitempty"`
+	Islo             *fileIsloConfig       `yaml:"islo,omitempty"`
 	Tailscale        *fileTailscaleConfig  `yaml:"tailscale,omitempty"`
 	Static           *fileStaticConfig     `yaml:"static,omitempty"`
 	Results          *fileResultsConfig    `yaml:"results,omitempty"`
@@ -343,6 +387,27 @@ type fileBlacksmithConfig struct {
 	Ref         string `yaml:"ref,omitempty"`
 	IdleTimeout string `yaml:"idleTimeout,omitempty"`
 	Debug       *bool  `yaml:"debug,omitempty"`
+}
+
+type fileDaytonaConfig struct {
+	APIURL           string `yaml:"apiUrl,omitempty"`
+	Snapshot         string `yaml:"snapshot,omitempty"`
+	Target           string `yaml:"target,omitempty"`
+	User             string `yaml:"user,omitempty"`
+	WorkRoot         string `yaml:"workRoot,omitempty"`
+	SSHGatewayHost   string `yaml:"sshGatewayHost,omitempty"`
+	SSHAccessMinutes int    `yaml:"sshAccessMinutes,omitempty"`
+}
+
+type fileIsloConfig struct {
+	BaseURL        string `yaml:"baseUrl,omitempty"`
+	Image          string `yaml:"image,omitempty"`
+	Workdir        string `yaml:"workdir,omitempty"`
+	GatewayProfile string `yaml:"gatewayProfile,omitempty"`
+	SnapshotName   string `yaml:"snapshotName,omitempty"`
+	VCPUs          int    `yaml:"vcpus,omitempty"`
+	MemoryMB       int    `yaml:"memoryMB,omitempty"`
+	DiskGB         int    `yaml:"diskGB,omitempty"`
 }
 
 type fileTailscaleConfig struct {
@@ -704,6 +769,55 @@ func applyFileConfig(cfg *Config, file fileConfig) {
 			cfg.Blacksmith.Debug = *file.Blacksmith.Debug
 		}
 	}
+	if file.Daytona != nil {
+		if file.Daytona.APIURL != "" {
+			cfg.Daytona.APIURL = file.Daytona.APIURL
+		}
+		if file.Daytona.Snapshot != "" {
+			cfg.Daytona.Snapshot = file.Daytona.Snapshot
+		}
+		if file.Daytona.Target != "" {
+			cfg.Daytona.Target = file.Daytona.Target
+		}
+		if file.Daytona.User != "" {
+			cfg.Daytona.User = file.Daytona.User
+		}
+		if file.Daytona.WorkRoot != "" {
+			cfg.Daytona.WorkRoot = file.Daytona.WorkRoot
+		}
+		if file.Daytona.SSHGatewayHost != "" {
+			cfg.Daytona.SSHGatewayHost = file.Daytona.SSHGatewayHost
+		}
+		if file.Daytona.SSHAccessMinutes > 0 {
+			cfg.Daytona.SSHAccessMinutes = file.Daytona.SSHAccessMinutes
+		}
+	}
+	if file.Islo != nil {
+		if file.Islo.BaseURL != "" {
+			cfg.Islo.BaseURL = file.Islo.BaseURL
+		}
+		if file.Islo.Image != "" {
+			cfg.Islo.Image = file.Islo.Image
+		}
+		if file.Islo.Workdir != "" {
+			cfg.Islo.Workdir = file.Islo.Workdir
+		}
+		if file.Islo.GatewayProfile != "" {
+			cfg.Islo.GatewayProfile = file.Islo.GatewayProfile
+		}
+		if file.Islo.SnapshotName != "" {
+			cfg.Islo.SnapshotName = file.Islo.SnapshotName
+		}
+		if file.Islo.VCPUs > 0 {
+			cfg.Islo.VCPUs = file.Islo.VCPUs
+		}
+		if file.Islo.MemoryMB > 0 {
+			cfg.Islo.MemoryMB = file.Islo.MemoryMB
+		}
+		if file.Islo.DiskGB > 0 {
+			cfg.Islo.DiskGB = file.Islo.DiskGB
+		}
+	}
 	if file.Tailscale != nil {
 		if file.Tailscale.Enabled != nil {
 			cfg.Tailscale.Enabled = *file.Tailscale.Enabled
@@ -841,6 +955,25 @@ func applyEnv(cfg *Config) {
 	cfg.Blacksmith.Workflow = getenv("CRABBOX_BLACKSMITH_WORKFLOW", cfg.Blacksmith.Workflow)
 	cfg.Blacksmith.Job = getenv("CRABBOX_BLACKSMITH_JOB", cfg.Blacksmith.Job)
 	cfg.Blacksmith.Ref = getenv("CRABBOX_BLACKSMITH_REF", cfg.Blacksmith.Ref)
+	cfg.Daytona.APIKey = getenv("CRABBOX_DAYTONA_API_KEY", getenv("DAYTONA_API_KEY", cfg.Daytona.APIKey))
+	cfg.Daytona.JWTToken = getenv("CRABBOX_DAYTONA_JWT_TOKEN", getenv("DAYTONA_JWT_TOKEN", cfg.Daytona.JWTToken))
+	cfg.Daytona.OrganizationID = getenv("CRABBOX_DAYTONA_ORGANIZATION_ID", getenv("DAYTONA_ORGANIZATION_ID", cfg.Daytona.OrganizationID))
+	cfg.Daytona.APIURL = getenv("CRABBOX_DAYTONA_API_URL", getenv("DAYTONA_API_URL", cfg.Daytona.APIURL))
+	cfg.Daytona.Snapshot = getenv("CRABBOX_DAYTONA_SNAPSHOT", getenv("DAYTONA_SNAPSHOT", cfg.Daytona.Snapshot))
+	cfg.Daytona.Target = getenv("CRABBOX_DAYTONA_TARGET", getenv("DAYTONA_TARGET", cfg.Daytona.Target))
+	cfg.Daytona.User = getenv("CRABBOX_DAYTONA_USER", cfg.Daytona.User)
+	cfg.Daytona.WorkRoot = getenv("CRABBOX_DAYTONA_WORK_ROOT", cfg.Daytona.WorkRoot)
+	cfg.Daytona.SSHGatewayHost = getenv("CRABBOX_DAYTONA_SSH_GATEWAY_HOST", cfg.Daytona.SSHGatewayHost)
+	cfg.Daytona.SSHAccessMinutes = getenvInt("CRABBOX_DAYTONA_SSH_ACCESS_MINUTES", cfg.Daytona.SSHAccessMinutes)
+	cfg.Islo.APIKey = getenv("CRABBOX_ISLO_API_KEY", getenv("ISLO_API_KEY", cfg.Islo.APIKey))
+	cfg.Islo.BaseURL = getenv("CRABBOX_ISLO_BASE_URL", getenv("ISLO_BASE_URL", cfg.Islo.BaseURL))
+	cfg.Islo.Image = getenv("CRABBOX_ISLO_IMAGE", cfg.Islo.Image)
+	cfg.Islo.Workdir = getenv("CRABBOX_ISLO_WORKDIR", cfg.Islo.Workdir)
+	cfg.Islo.GatewayProfile = getenv("CRABBOX_ISLO_GATEWAY_PROFILE", cfg.Islo.GatewayProfile)
+	cfg.Islo.SnapshotName = getenv("CRABBOX_ISLO_SNAPSHOT_NAME", cfg.Islo.SnapshotName)
+	cfg.Islo.VCPUs = getenvInt("CRABBOX_ISLO_VCPUS", cfg.Islo.VCPUs)
+	cfg.Islo.MemoryMB = getenvInt("CRABBOX_ISLO_MEMORY_MB", cfg.Islo.MemoryMB)
+	cfg.Islo.DiskGB = getenvInt("CRABBOX_ISLO_DISK_GB", cfg.Islo.DiskGB)
 	if value, ok := getenvBool("CRABBOX_TAILSCALE"); ok {
 		cfg.Tailscale.Enabled = value
 	}
@@ -946,8 +1079,11 @@ func serverTypeForClass(class string) string {
 }
 
 func serverTypeForConfig(cfg Config) string {
-	if isBlacksmithProvider(cfg.Provider) || isStaticProvider(cfg.Provider) {
+	if isBlacksmithProvider(cfg.Provider) || isStaticProvider(cfg.Provider) || cfg.Provider == "islo" {
 		return ""
+	}
+	if cfg.Provider == "daytona" {
+		return "snapshot"
 	}
 	if cfg.Provider == "aws" {
 		return awsInstanceTypeCandidatesForConfig(cfg)[0]
@@ -956,8 +1092,11 @@ func serverTypeForConfig(cfg Config) string {
 }
 
 func serverTypeForProviderClass(provider, class string) string {
-	if isBlacksmithProvider(provider) || isStaticProvider(provider) {
+	if isBlacksmithProvider(provider) || isStaticProvider(provider) || provider == "islo" {
 		return ""
+	}
+	if provider == "daytona" {
+		return "snapshot"
 	}
 	if provider == "aws" {
 		return awsInstanceTypeCandidatesForClass(class)[0]
