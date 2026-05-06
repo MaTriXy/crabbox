@@ -44,10 +44,6 @@ func newLeaseSlug(leaseID string) string {
 	return adjective + "-" + noun
 }
 
-func NewLeaseSlug(leaseID string) string {
-	return newLeaseSlug(leaseID)
-}
-
 func slugWithCollisionSuffix(base, seed string) string {
 	base = normalizeLeaseSlug(base)
 	if base == "" {
@@ -75,19 +71,11 @@ func normalizeLeaseSlug(value string) string {
 	return strings.Trim(out.String(), "-")
 }
 
-func NormalizeLeaseSlug(value string) string {
-	return normalizeLeaseSlug(value)
-}
-
 func leaseProviderName(leaseID, slug string) string {
 	if slug = normalizeLeaseSlug(slug); slug != "" {
 		return fmt.Sprintf("crabbox-%s-%08x", slug, leaseSlugHash(leaseID))
 	}
 	return strings.ReplaceAll("crabbox-"+leaseID, "_", "-")
-}
-
-func LeaseProviderName(leaseID, slug string) string {
-	return leaseProviderName(leaseID, slug)
 }
 
 func allocateDirectLeaseSlug(leaseID string, servers []Server) string {
@@ -100,10 +88,6 @@ func allocateDirectLeaseSlug(leaseID string, servers []Server) string {
 		slug = slugWithCollisionSuffix(base, fmt.Sprintf("%s-%d", leaseID, attempt))
 	}
 	return slugWithCollisionSuffix(base, leaseID)
-}
-
-func AllocateDirectLeaseSlug(leaseID string, servers []Server) string {
-	return allocateDirectLeaseSlug(leaseID, servers)
 }
 
 func serverSlugInUse(slug string, servers []Server) bool {
@@ -123,16 +107,8 @@ func serverSlug(server Server) string {
 	return normalizeLeaseSlug(server.Labels["slug"])
 }
 
-func ServerSlug(server Server) string {
-	return serverSlug(server)
-}
-
 func isCanonicalLeaseID(value string) bool {
 	return canonicalLeaseIDPattern.MatchString(value)
-}
-
-func IsCanonicalLeaseID(value string) bool {
-	return isCanonicalLeaseID(value)
 }
 
 func leaseSlugHash(value string) uint32 {

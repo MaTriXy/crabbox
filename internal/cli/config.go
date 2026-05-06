@@ -264,10 +264,6 @@ func baseConfig() Config {
 	}
 }
 
-func BaseConfig() Config {
-	return baseConfig()
-}
-
 type fileConfig struct {
 	Profile          string                `yaml:"profile,omitempty"`
 	Provider         string                `yaml:"provider,omitempty"`
@@ -1106,10 +1102,6 @@ func serverTypeForProviderClass(provider, class string) string {
 		return awsInstanceTypeCandidatesForClass(class)[0]
 	}
 	return serverTypeForClass(class)
-}
-
-func ServerTypeForProviderClass(provider, class string) string {
-	return serverTypeForProviderClass(provider, class)
 }
 
 func serverTypeCandidatesForClass(class string) []string {

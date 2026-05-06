@@ -53,10 +53,6 @@ func directLeaseLabels(cfg Config, leaseID, slug, provider, market string, keep 
 	return sanitizeProviderLabels(labels)
 }
 
-func DirectLeaseLabels(cfg Config, leaseID, slug, provider, market string, keep bool, now time.Time) map[string]string {
-	return directLeaseLabels(cfg, leaseID, slug, provider, market, keep, now)
-}
-
 func touchDirectLeaseLabels(labels map[string]string, cfg Config, state string, now time.Time) map[string]string {
 	next := make(map[string]string, len(labels)+4)
 	for key, value := range labels {
@@ -94,10 +90,6 @@ func touchDirectLeaseLabels(labels map[string]string, cfg Config, state string, 
 	return sanitizeProviderLabels(next)
 }
 
-func TouchDirectLeaseLabels(labels map[string]string, cfg Config, state string, now time.Time) map[string]string {
-	return touchDirectLeaseLabels(labels, cfg, state, now)
-}
-
 func directLeaseExpiresAtFrom(createdAt, lastTouchedAt time.Time, ttl, idleTimeout time.Duration) time.Time {
 	expiresAt := lastTouchedAt.Add(idleTimeout)
 	if ttl > 0 {
@@ -111,10 +103,6 @@ func directLeaseExpiresAtFrom(createdAt, lastTouchedAt time.Time, ttl, idleTimeo
 
 func leaseLabelTime(t time.Time) string {
 	return strconv.FormatInt(t.UTC().Unix(), 10)
-}
-
-func LeaseLabelTime(t time.Time) string {
-	return leaseLabelTime(t)
 }
 
 func parseLeaseLabelTime(value string) (time.Time, bool) {
@@ -139,10 +127,6 @@ func leaseLabelTimeDisplay(value string) string {
 		return ""
 	}
 	return t.Format(time.RFC3339)
-}
-
-func LeaseLabelTimeDisplay(value string) string {
-	return leaseLabelTimeDisplay(value)
 }
 
 func durationSecondsLabel(duration time.Duration) string {
@@ -174,10 +158,6 @@ func leaseLabelDurationDisplay(secondsValue, fallbackValue string) string {
 		return duration.String()
 	}
 	return ""
-}
-
-func LeaseLabelDurationDisplay(secondsValue, fallbackValue string) string {
-	return leaseLabelDurationDisplay(secondsValue, fallbackValue)
 }
 
 func sanitizeProviderLabels(labels map[string]string) map[string]string {
