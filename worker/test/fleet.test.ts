@@ -964,6 +964,10 @@ describe("fleet lease identity and idle", () => {
     expect(runPage.headers.get("content-type")).toBe("text/html; charset=utf-8");
     const runBody = await runPage.text();
     expect(runBody).toContain('class="portal-shell run-shell"');
+    expect(runBody).toContain('class="panel detail-card run-summary-card"');
+    expect(runBody).toContain(
+      ".run-shell .meta-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }",
+    );
     expect(runBody).toContain("<h1>🦀 crabbox</h1>");
     expect(runBody).toContain(
       ".portal-header-meta { flex:1 1 auto; min-width:0; overflow:hidden; }",

@@ -214,7 +214,7 @@ export function portalRunDetail(
         `,
       })}
       <section class="detail-grid">
-        <div class="panel detail-card">
+        <div class="panel detail-card run-summary-card">
           <div class="section-head">
             <h2>run</h2>
             <span class="pill" data-tone="${stateTone}">${escapeHTML(run.state)}</span>
@@ -233,7 +233,7 @@ export function portalRunDetail(
             ${runTelemetryRows(run.telemetry)}
           </dl>
         </div>
-        <div class="panel detail-card">
+        <div class="panel detail-card run-artifact-card">
           <div class="section-head">
             <h2>artifacts</h2>
             <span>${run.results ? "junit" : "logs"}</span>
@@ -1100,6 +1100,12 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .bridge-row small { display:block; color:var(--muted); margin-top:2px; }
     .access-commands { display:grid; gap:8px; padding:10px; border-top:1px solid var(--line-soft); }
     .run-artifacts { display:grid; gap:8px; padding:10px; }
+    .run-shell .detail-grid { grid-template-columns:minmax(0,1fr) minmax(260px,0.42fr); }
+    .run-shell .meta-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+    .run-shell .meta-grid div { padding:6px 10px; }
+    .run-shell .meta-grid dt { margin-bottom:2px; font-size:10px; }
+    .run-shell .meta-grid dd { font-size:13px; }
+    .run-artifact-card .run-artifacts { gap:6px; padding:8px; }
     .result-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0; margin:4px -14px -14px; border-top:1px solid var(--line-soft); }
     .result-grid div { padding:8px 10px; border-bottom:1px solid var(--line-soft); }
     .result-grid dt { color:var(--muted); font-size:11px; text-transform:uppercase; margin-bottom:3px; }
