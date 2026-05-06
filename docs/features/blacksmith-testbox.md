@@ -90,6 +90,12 @@ The wrapper is deliberately thin for warmup, run, and stop. `crabbox list` and
 views so rendering stays core-owned across providers. Status currently reads
 `blacksmith testbox list --all` to build that view.
 
+If `blacksmith testbox list --all` and `crabbox status --provider
+blacksmith-testbox --id <tbx_id>` work but new warmups remain `queued` with no
+IP, treat it as Blacksmith service, queue, org-limit, or billing pressure
+instead of a Crabbox provisioning bug. Stop queued IDs you created and switch to
+another provider until the Blacksmith account or service recovers.
+
 `crabbox list --provider blacksmith-testbox --json` parses the Blacksmith table
 output into compatibility JSON rows with the fields Crabbox can see. That parser is a
 compatibility layer, not a Blacksmith API contract. If the Blacksmith CLI adds

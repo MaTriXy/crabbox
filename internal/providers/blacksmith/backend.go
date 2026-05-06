@@ -185,16 +185,18 @@ func (b *blacksmithBackend) Status(ctx context.Context, req StatusRequest) (stat
 		return statusView{}, err
 	}
 	deadline := b.rt.Clock.Now().Add(req.WaitTimeout)
+	var lastState statusView
 	for {
 		state, err := b.blacksmithStatusView(ctx, leaseID)
 		if err != nil {
 			return statusView{}, err
 		}
+		lastState = state
 		if !req.Wait || state.Ready {
 			return state, nil
 		}
 		if b.rt.Clock.Now().After(deadline) {
-			return statusView{}, exit(5, "timed out waiting for %s to become ready", req.ID)
+			return statusView{}, exit(5, "%s", blacksmithWaitTimeoutMessage(req.ID, lastState.State))
 		}
 		time.Sleep(5 * time.Second)
 	}
@@ -385,6 +387,17 @@ func blacksmithItemToServer(item blacksmithListItem) Server {
 	}
 	server.ServerType.Name = "testbox"
 	return server
+}
+
+func blacksmithWaitTimeoutMessage(identifier, state string) string {
+	state = strings.TrimSpace(state)
+	if strings.EqualFold(state, "queued") {
+		return fmt.Sprintf("timed out waiting for %s to become ready (last state queued; Blacksmith queue may be stalled, so stop queued ids you created or use another provider)", identifier)
+	}
+	if state != "" {
+		return fmt.Sprintf("timed out waiting for %s to become ready (last state %s)", identifier, state)
+	}
+	return fmt.Sprintf("timed out waiting for %s to become ready", identifier)
 }
 
 type statusView = core.StatusView

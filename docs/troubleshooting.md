@@ -101,7 +101,8 @@ Checks:
 ```sh
 bin/crabbox list --json
 bin/crabbox usage --scope all
-bin/crabbox warmup --provider aws --class beast --market on-demand --timing-json
+CRABBOX_CAPACITY_REGIONS=eu-west-1,eu-west-2,eu-central-1,us-east-1,us-west-2 \
+  bin/crabbox warmup --provider aws --class standard --market on-demand --timing-json
 ```
 
 Fixes:

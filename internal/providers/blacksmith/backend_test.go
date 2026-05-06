@@ -315,6 +315,24 @@ func TestBlacksmithBackendUsesInjectedCommandRunnerForListAndStatus(t *testing.T
 	}
 }
 
+func TestBlacksmithStatusWaitTimeoutMentionsQueuedState(t *testing.T) {
+	runner := &blacksmithFuncRunner{fn: func(LocalCommandRequest) (LocalCommandResult, error) {
+		return LocalCommandResult{
+			Stdout: "tbx_123 queued openclaw .github/workflows/testbox.yml test main 2026-05-06T00:00:00Z\n",
+		}, nil
+	}}
+	backend := newTestBlacksmithBackend(baseConfig(), runner)
+	_, err := backend.Status(context.Background(), StatusRequest{ID: "tbx_123", Wait: true, WaitTimeout: -time.Second})
+	if err == nil {
+		t.Fatal("expected queued timeout")
+	}
+	for _, want := range []string{"last state queued", "Blacksmith queue may be stalled"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error=%q, want %q", err.Error(), want)
+		}
+	}
+}
+
 func TestBlacksmithBackendListJSONKeepsParsedTableShape(t *testing.T) {
 	runner := &blacksmithFuncRunner{fn: func(LocalCommandRequest) (LocalCommandResult, error) {
 		return LocalCommandResult{

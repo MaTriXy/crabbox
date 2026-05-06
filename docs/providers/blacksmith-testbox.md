@@ -77,6 +77,11 @@ blacksmith testbox list --all
 blacksmith testbox stop ...
 ```
 
+If list/status calls work but new warmups sit `queued` with no IP, the
+Blacksmith service or organization is accepting requests but not assigning
+capacity. Stop queued IDs you created and use AWS, Hetzner, Static SSH, or
+Daytona until Blacksmith service, billing, or org limits are healthy again.
+
 Crabbox stores a per-Testbox SSH key locally, claims the Testbox for the current
 repo, maps IDs to friendly slugs, and prints a normal Crabbox timing summary.
 
