@@ -47,6 +47,7 @@ export function portalHome(
     "ended:ended",
     "external:external",
     "stale:stale",
+    "stuck:stuck",
     ...(admin ? ["mine:mine", "system:system"] : []),
     "aws:aws",
     "hetzner:hetzner",
@@ -672,21 +673,133 @@ function externalRunnerLeaseRow(
       ? `${runner.id} · ${runner.owner || "unknown"}`
       : [runner.repo, runner.workflow].filter(Boolean).join(" · ") || runner.id;
   const jobRef = [runner.job, runner.ref].filter(Boolean).join(" / ") || "-";
+  const actionState = externalRunnerActionState(runner);
   const actionsLinks = externalRunnerActionsLinks(runner);
-  return `<tr class="external-row" aria-disabled="true" data-filter-tags="${escapeHTML([state, "external", ownership, runner.provider, runner.status, runner.repo, runner.workflow, runner.job, runner.ref].filter(Boolean).join(" "))}">
+  const filterTags = [
+    state,
+    actionState?.stuck ? "stuck" : undefined,
+    actionState ? "actions" : undefined,
+    ownership,
+    "external",
+    runner.provider,
+    runner.status,
+    runner.actionsRunStatus,
+    runner.actionsRunConclusion,
+    runner.repo,
+    runner.workflow,
+    runner.job,
+    runner.ref,
+  ];
+  return `<tr class="external-row" aria-disabled="true" data-filter-tags="${escapeHTML(filterTags.filter(Boolean).join(" "))}">
     <td><span class="lease-link"><strong>${escapeHTML(runner.id)}</strong><small>${escapeHTML(subline)}</small></span></td>
-    <td><span class="pill" data-tone="${runner.stale ? "warn" : runnerStatusTone(runner.status)}">${escapeHTML(runner.status || "-")}</span></td>
+    <td><div class="state-stack"><span class="pill" data-tone="${runner.stale ? "warn" : runnerStatusTone(runner.status)}">${escapeHTML(runner.status || "-")}</span>${externalRunnerActionBadge(actionState)}</div></td>
     <td>${providerBadge(runner.provider)}</td>
     <td><span class="muted" title="Blacksmith owns runner host details">-</span></td>
-    <td><span title="${escapeHTML([runner.repo, runner.workflow, jobRef].filter(Boolean).join(" · "))}">${actionsLinks || "external"}</span></td>
-    <td><span class="access-cell disabled-cell" title="external runner; no Crabbox access data">${actionsLinks ? "no box access" : "no access"}</span></td>
+    <td><span title="${escapeHTML([runner.repo, runner.workflow, jobRef].filter(Boolean).join(" · "))}">${externalRunnerActionsCell(runner, actionsLinks)}</span></td>
+    <td>${externalRunnerAccessCell(runner, actionsLinks.length > 0)}</td>
     ${timeCell(runnerSortTime(runner))}
     <td></td>
   </tr>`;
 }
 
+type ExternalRunnerActionState = {
+  label: string;
+  title: string;
+  tone: string;
+  stuck: boolean;
+};
+
+function externalRunnerActionState(
+  runner: ExternalRunnerRecord,
+): ExternalRunnerActionState | undefined {
+  const status = runner.actionsRunStatus;
+  const conclusion = runner.actionsRunConclusion;
+  if (!status && !conclusion) {
+    return undefined;
+  }
+  const ageMs = runner.createdAt ? Date.now() - Date.parse(runner.createdAt) : undefined;
+  const validAge = ageMs !== undefined && Number.isFinite(ageMs) && ageMs >= 0;
+  const lowerStatus = status?.toLowerCase();
+  const lowerConclusion = conclusion?.toLowerCase();
+  const queuedTooLong = lowerStatus === "queued" && validAge && ageMs > 20 * 60 * 1000;
+  const runningTooLong =
+    (lowerStatus === "in_progress" || lowerStatus === "running") &&
+    validAge &&
+    ageMs > 90 * 60 * 1000;
+  const stuck = Boolean(!conclusion && (queuedTooLong || runningTooLong));
+  const title = [
+    runner.actionsRepo,
+    runner.actionsRunID ? `run ${runner.actionsRunID}` : undefined,
+    status,
+    conclusion,
+    runner.createdAt ? `created ${relativeTime(runner.createdAt)}` : undefined,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  if (stuck) {
+    return {
+      label: `stuck ${compactAge(runner.createdAt)}`,
+      title,
+      tone: "warn",
+      stuck: true,
+    };
+  }
+  const label = conclusion || status || "actions";
+  return {
+    label: `gha ${label.replaceAll("_", " ")}`,
+    title,
+    tone: externalRunnerActionTone(lowerStatus, lowerConclusion),
+    stuck: false,
+  };
+}
+
+function externalRunnerActionTone(
+  status: string | undefined,
+  conclusion: string | undefined,
+): string {
+  if (conclusion === "success") {
+    return "ok";
+  }
+  if (conclusion === "failure" || conclusion === "timed_out") {
+    return "bad";
+  }
+  if (conclusion === "cancelled" || conclusion === "skipped" || conclusion === "neutral") {
+    return "warn";
+  }
+  if (status === "in_progress" || status === "running") {
+    return "ok";
+  }
+  if (status === "queued" || status === "pending" || status === "waiting") {
+    return "warn";
+  }
+  return "";
+}
+
+function externalRunnerActionBadge(state: ExternalRunnerActionState | undefined): string {
+  if (!state) {
+    return "";
+  }
+  return `<span class="pill action-pill" data-tone="${escapeHTML(state.tone)}" title="${escapeHTML(state.title)}">${escapeHTML(state.label)}</span>`;
+}
+
+function externalRunnerActionsCell(runner: ExternalRunnerRecord, actionsLinks: string): string {
+  const label = runner.actionsWorkflowName || workflowBasename(runner.workflow) || "external";
+  const meta = [runner.job, runner.ref].filter(Boolean).join(" / ");
+  return `<div class="actions-stack">${actionsLinks || `<span class="muted">${escapeHTML(label)}</span>`}<small>${escapeHTML(meta || label)}</small></div>`;
+}
+
+function externalRunnerAccessCell(runner: ExternalRunnerRecord, hasActions: boolean): string {
+  const label = hasActions ? "no box access" : "no access";
+  const command =
+    runner.provider && runner.id ? `crabbox stop --provider ${runner.provider} ${runner.id}` : "";
+  const copy = command
+    ? `<button class="icon-btn mini" type="button" title="copy stop command" aria-label="copy stop command" data-copy-value="${escapeHTML(command)}">${copyIcon}</button>`
+    : "";
+  return `<div class="access-cell disabled-cell external-access" title="external runner; no Crabbox access data"><span>${label}</span>${copy}</div>`;
+}
+
 function externalRunnerActionsLinks(runner: ExternalRunnerRecord): string {
-  const links = [];
+  const links: string[] = [];
   if (runner.actionsRunURL) {
     const status = [runner.actionsRunStatus, runner.actionsRunConclusion].filter(Boolean).join("/");
     links.push(
@@ -699,6 +812,20 @@ function externalRunnerActionsLinks(runner: ExternalRunnerRecord): string {
     );
   }
   return links.length ? `<span class="row-links">${links.join("")}</span>` : "";
+}
+
+function workflowBasename(workflow: string | undefined): string | undefined {
+  if (!workflow) {
+    return undefined;
+  }
+  const parts = workflow.split("/");
+  for (let index = parts.length - 1; index >= 0; index -= 1) {
+    const part = parts[index];
+    if (part) {
+      return part;
+    }
+  }
+  return workflow;
 }
 
 function portalHeader(options: PortalHeaderOptions): string {
@@ -1290,6 +1417,12 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .actions-cell { display:flex; align-items:center; gap:5px; flex-wrap:nowrap; }
     .access-cell { display:flex; align-items:center; gap:5px; min-width:0; }
     .disabled-cell { color:#6b7280; font-size:12px; }
+    .state-stack { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+    .action-pill { max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+    .actions-stack { display:grid; gap:2px; min-width:0; }
+    .actions-stack small { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); font-size:10px; }
+    .external-access { flex-wrap:nowrap; }
+    .external-access span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .access-icon { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:6px; border:1px solid var(--line); color:#cbd5e1; background:#0c0e10; text-decoration:none; }
     .access-icon svg { width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
     .access-icon[data-access="vscode"] { color:#d8b4fe; }
@@ -1355,6 +1488,8 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .icon-btn:hover { background:#1b1f24; border-color:#3a4046; }
     .icon-btn:active { background:#22272d; }
     .icon-btn[data-state="ok"] { color:var(--ok); border-color:color-mix(in srgb, var(--ok) 45%, var(--line)); }
+    .icon-btn.mini { width:24px; height:24px; border-radius:6px; color:#9ca3af; flex:0 0 24px; }
+    .icon-btn.mini svg { width:13px; height:13px; }
     .screen { min-height:0; border:1px solid var(--line); border-radius:8px; background:var(--bg); overflow:hidden; box-shadow:inset 0 0 0 1px rgba(255,255,255,0.02); }
     .screen div { margin:0 auto; }
     .code-wait-screen { display:grid; place-items:center; padding:clamp(18px,5vw,64px); }
@@ -1465,6 +1600,11 @@ function portalEnhancementsScript(): string {
     button.addEventListener("click", () => {
       const target = button.closest(".command-row")?.querySelector("code");
       copyText(target?.textContent || "", button);
+    });
+  });
+  document.querySelectorAll("[data-copy-value]").forEach((button) => {
+    button.addEventListener("click", () => {
+      copyText(button.getAttribute("data-copy-value") || "", button);
     });
   });
   document.querySelectorAll("table[data-portal-table]").forEach((table, index) => {
@@ -1660,6 +1800,10 @@ function relativeTime(value: string | undefined): string {
   const amount = unit ? Math.max(1, Math.round(absSeconds / unit[0])) : Math.max(0, absSeconds);
   const suffix = deltaSeconds >= 0 ? "from now" : "ago";
   return `${amount}${unit ? unit[1] : "s"} ${suffix}`;
+}
+
+function compactAge(value: string | undefined): string {
+  return relativeTime(value).replace(" ago", "").replace(" from now", "");
 }
 
 function leaseSortTime(lease: LeaseRecord): string {
