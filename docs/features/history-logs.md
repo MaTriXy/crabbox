@@ -19,6 +19,7 @@ CLI finishes that run with:
 - total duration;
 - owner and org;
 - provider, class, and server type;
+- optional start/end Linux telemetry snapshots for load, memory, disk, and uptime;
 - retained remote output.
 
 Use:
@@ -33,9 +34,10 @@ crabbox logs run_...
 
 In the authenticated browser portal, `/portal/runs/<run-id>` renders the same
 run as a human page with command metadata, result summary, searchable/paginated
-recent events, and a copyable retained log tail. `/portal/runs/<run-id>/logs`
-stays a plain-text log endpoint, and `/portal/runs/<run-id>/events` stays JSON
-for copying or browser-side inspection.
+recent events, a compact resource summary, and a copyable retained log tail.
+`/portal/runs/<run-id>/logs` stays a plain-text log endpoint, and
+`/portal/runs/<run-id>/events` stays JSON for copying or browser-side
+inspection.
 
 History records and run events live in the Fleet Durable Object. Log text is
 stored separately from run metadata and intentionally capped so noisy commands

@@ -130,7 +130,8 @@ func TestCoordinatorFinishRunSendsLogChunks(t *testing.T) {
 	defer server.Close()
 	client := CoordinatorClient{BaseURL: server.URL, Client: server.Client()}
 	log := strings.Repeat("x", coordinatorRunLogChunkBytes) + "tail"
-	if _, err := client.FinishRun(context.Background(), "run_123", 1, time.Second, 2*time.Second, log, false, nil); err != nil {
+	load := 0.42
+	if _, err := client.FinishRun(context.Background(), "run_123", 1, time.Second, 2*time.Second, log, false, nil, &RunTelemetrySummary{End: &LeaseTelemetry{Load1: &load}}); err != nil {
 		t.Fatal(err)
 	}
 	chunks, ok := finishBody["logChunks"].([]any)
@@ -148,6 +149,9 @@ func TestCoordinatorFinishRunSendsLogChunks(t *testing.T) {
 	}
 	if got := finishBody["log"].(string); len(got) != runLogFallbackPreviewBytes || !strings.HasSuffix(got, "tail") {
 		t.Fatalf("fallback log length=%d suffix=%q", len(got), got[len(got)-4:])
+	}
+	if got := finishBody["telemetry"].(map[string]any)["end"].(map[string]any)["load1"]; got != 0.42 {
+		t.Fatalf("telemetry=%#v", finishBody["telemetry"])
 	}
 }
 

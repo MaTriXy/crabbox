@@ -84,7 +84,7 @@ export function portalLeaseDetail(
   const active = lease.state === "active";
   const runRows = runs.length
     ? runs.map((run) => runRow(run)).join("")
-    : `<tr><td colspan="7" class="empty">no recorded runs for this lease</td></tr>`;
+    : `<tr><td colspan="8" class="empty">no recorded runs for this lease</td></tr>`;
   const vncAction =
     active && lease.desktop
       ? `<a class="button" href="/portal/leases/${encodeURIComponent(lease.id)}/vnc">open VNC</a>`
@@ -171,6 +171,7 @@ export function portalLeaseDetail(
               <th>phase</th>
               <th>started</th>
               <th>duration</th>
+              <th>box</th>
               <th>log</th>
               <th></th>
             </tr>
@@ -237,6 +238,7 @@ export function portalRunDetail(
             ${metaRow("started", shortTime(run.startedAt))}
             ${metaRow("duration", formatDuration(run.durationMs))}
             ${metaRow("log", run.logBytes > 0 ? formatBytes(run.logBytes) : "empty")}
+            ${runTelemetryRows(run.telemetry)}
           </dl>
         </div>
         <div class="panel detail-card">
@@ -655,6 +657,7 @@ function runRow(run: RunRecord): string {
     <td>${escapeHTML(run.phase || "-")}</td>
     ${timeCell(run.startedAt)}
     <td>${escapeHTML(formatDuration(run.durationMs))}</td>
+    <td>${escapeHTML(runTelemetryCell(run.telemetry))}</td>
     <td>${escapeHTML(logLabel)}</td>
     <td><div class="actions-cell"><a class="button secondary" href="/portal/runs/${encodeURIComponent(run.id)}/logs">logs</a><a class="button secondary" href="/portal/runs/${encodeURIComponent(run.id)}/events">events</a></div></td>
   </tr>`;
@@ -745,6 +748,70 @@ function leaseTelemetryRows(telemetry: LeaseRecord["telemetry"]): string {
     ),
     metaRow("seen", telemetry.capturedAt ? relativeTime(telemetry.capturedAt) : undefined),
   ].join("");
+}
+
+function runTelemetryRows(telemetry: RunRecord["telemetry"]): string {
+  if (!telemetry) {
+    return "";
+  }
+  const current = telemetry.end || telemetry.start;
+  if (!current) {
+    return "";
+  }
+  return [
+    metaRow("box load", telemetryLoad(current)),
+    metaRow(
+      "box memory",
+      telemetryStorage(current.memoryUsedBytes, current.memoryTotalBytes, current.memoryPercent),
+    ),
+    metaRow(
+      "box disk",
+      telemetryStorage(current.diskUsedBytes, current.diskTotalBytes, current.diskPercent),
+    ),
+    metaRow(
+      "memory delta",
+      telemetryDelta(telemetry.start?.memoryUsedBytes, telemetry.end?.memoryUsedBytes),
+    ),
+    metaRow(
+      "disk delta",
+      telemetryDelta(telemetry.start?.diskUsedBytes, telemetry.end?.diskUsedBytes),
+    ),
+    metaRow("sampled", current.capturedAt ? relativeTime(current.capturedAt) : undefined),
+  ].join("");
+}
+
+function runTelemetryCell(telemetry: RunRecord["telemetry"]): string {
+  if (!telemetry) {
+    return "-";
+  }
+  const current = telemetry.end || telemetry.start;
+  if (!current) {
+    return "-";
+  }
+  const parts = [];
+  if (current.load1 !== undefined) {
+    parts.push(`load ${current.load1.toFixed(2)}`);
+  }
+  if (current.memoryPercent !== undefined) {
+    parts.push(`mem ${Math.round(current.memoryPercent)}%`);
+  }
+  const delta = telemetryDelta(telemetry.start?.memoryUsedBytes, telemetry.end?.memoryUsedBytes);
+  if (delta) {
+    parts.push(delta);
+  }
+  return parts.length ? parts.join(" · ") : "-";
+}
+
+function telemetryDelta(start: number | undefined, end: number | undefined): string | undefined {
+  if (start === undefined || end === undefined) {
+    return undefined;
+  }
+  const delta = end - start;
+  if (delta === 0) {
+    return "0 B";
+  }
+  const prefix = delta > 0 ? "+" : "-";
+  return `${prefix}${formatBytes(Math.abs(delta))}`;
 }
 
 function telemetryLoad(telemetry: LeaseRecord["telemetry"]): string | undefined {
@@ -942,10 +1009,12 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .lease-table th:nth-child(6) { width:118px; }
     .lease-table th:nth-child(7) { width:148px; }
     .lease-table th:nth-child(8) { width:24px; }
-    .run-table th:nth-child(1) { width:36%; }
-    .run-table th:nth-child(2) { width:90px; }
-    .run-table th:nth-child(3) { width:96px; }
-    .run-table th:nth-child(5),.run-table th:nth-child(6),.run-table th:nth-child(7) { width:84px; }
+    .run-table th:nth-child(1) { width:30%; }
+    .run-table th:nth-child(2) { width:86px; }
+    .run-table th:nth-child(3) { width:90px; }
+    .run-table th:nth-child(5),.run-table th:nth-child(7) { width:76px; }
+    .run-table th:nth-child(6) { width:138px; }
+    .run-table th:nth-child(8) { width:108px; }
     .event-table th:nth-child(1) { width:58px; }
     .event-table th:nth-child(2) { width:24%; }
     .event-table th:nth-child(3) { width:96px; }

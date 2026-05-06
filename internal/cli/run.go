@@ -341,6 +341,7 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 				fmt.Fprintf(a.Stderr, "network fallback %s\n", resolved.FallbackReason)
 			}
 		}
+		recorder.CaptureTelemetryStart(ctx, target)
 		recorder.Event("sync.started", "sync", "")
 		timings.syncSteps.sshReady = time.Since(stepStart)
 		excludes, err := syncExcludes(repo.Root, cfg)
@@ -465,7 +466,7 @@ afterSync:
 				return recordFailure(err)
 			}
 		}
-		recorder.Finish(0, timings.sync, 0, "", false, nil)
+		recorder.Finish(ctx, target, 0, timings.sync, 0, "", false, nil)
 		return nil
 	}
 
@@ -483,6 +484,7 @@ afterSync:
 			fmt.Fprintf(a.Stderr, "network fallback %s\n", resolved.FallbackReason)
 		}
 	}
+	recorder.CaptureTelemetryStart(ctx, target)
 	if *noSync {
 		mkdirCommand := remoteMkdir(workdir)
 		if isWindowsNativeTarget(target) {
@@ -535,7 +537,7 @@ afterSync:
 			fmt.Fprintln(a.Stderr, line)
 		}
 	}
-	recorder.Finish(code, timings.sync, timings.command, logBuffer.String(), logBuffer.Truncated(), results)
+	recorder.Finish(ctx, target, code, timings.sync, timings.command, logBuffer.String(), logBuffer.Truncated(), results)
 	total := time.Since(timings.started)
 	fmt.Fprintf(a.Stderr, "command complete in %s total=%s\n", timings.command.Round(time.Millisecond), total.Round(time.Millisecond))
 	fmt.Fprintln(a.Stderr, formatRunSummary(timings, total, code))

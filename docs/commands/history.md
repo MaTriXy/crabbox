@@ -21,8 +21,10 @@ Flags:
 ```
 
 Human output includes run ID, lease ID, state, phase, exit code, duration, start
-time, and command. Use the run ID with [events](events.md), [attach](attach.md),
-or [logs](logs.md).
+time, command, and any recorded run resource summary. `--json` includes the
+start/end telemetry snapshots when a coordinator-backed Linux run captured
+them. Use the run ID with [events](events.md), [attach](attach.md), or
+[logs](logs.md).
 
 Related docs:
 

@@ -25,6 +25,11 @@ type LeaseTelemetry struct {
 	UptimeSeconds    *int64   `json:"uptimeSeconds,omitempty"`
 }
 
+type RunTelemetrySummary struct {
+	Start *LeaseTelemetry `json:"start,omitempty"`
+	End   *LeaseTelemetry `json:"end,omitempty"`
+}
+
 type leaseTelemetryCollector func(context.Context) (*LeaseTelemetry, error)
 
 func leaseTelemetryCollectorForTarget(target SSHTarget) leaseTelemetryCollector {
@@ -163,6 +168,70 @@ func leaseTelemetryStatusSummary(telemetry *LeaseTelemetry) string {
 		parts = append(parts, "telemetry="+blank(idleForString(telemetry.CapturedAt, time.Now()), "now"))
 	}
 	return strings.Join(parts, " ")
+}
+
+func runTelemetrySummary(start, end *LeaseTelemetry) *RunTelemetrySummary {
+	if start == nil && end == nil {
+		return nil
+	}
+	return &RunTelemetrySummary{Start: start, End: end}
+}
+
+func runTelemetryStatusSummary(telemetry *RunTelemetrySummary) string {
+	if telemetry == nil {
+		return ""
+	}
+	current := telemetry.End
+	if current == nil {
+		current = telemetry.Start
+	}
+	if current == nil {
+		return ""
+	}
+	parts := []string{}
+	if current.Load1 != nil {
+		parts = append(parts, fmt.Sprintf("load=%.2f", *current.Load1))
+	}
+	if current.MemoryPercent != nil {
+		parts = append(parts, fmt.Sprintf("mem=%.0f%%", *current.MemoryPercent))
+	} else if current.MemoryUsedBytes != nil && current.MemoryTotalBytes != nil {
+		parts = append(parts, fmt.Sprintf("mem=%s/%s", formatBytesCompact(*current.MemoryUsedBytes), formatBytesCompact(*current.MemoryTotalBytes)))
+	}
+	if current.DiskPercent != nil {
+		parts = append(parts, fmt.Sprintf("disk=%.0f%%", *current.DiskPercent))
+	}
+	if delta := telemetryDeltaBytes(telemetry.Start, telemetry.End, "memory"); delta != "" {
+		parts = append(parts, "mem_delta="+delta)
+	}
+	return strings.Join(parts, " ")
+}
+
+func telemetryDeltaBytes(start, end *LeaseTelemetry, metric string) string {
+	if start == nil || end == nil {
+		return ""
+	}
+	var left, right *int64
+	switch metric {
+	case "memory":
+		left, right = start.MemoryUsedBytes, end.MemoryUsedBytes
+	case "disk":
+		left, right = start.DiskUsedBytes, end.DiskUsedBytes
+	default:
+		return ""
+	}
+	if left == nil || right == nil {
+		return ""
+	}
+	delta := *right - *left
+	if delta == 0 {
+		return "0B"
+	}
+	prefix := "+"
+	if delta < 0 {
+		prefix = "-"
+		delta = -delta
+	}
+	return prefix + formatBytesCompact(delta)
 }
 
 func formatBytesCompact(value int64) string {

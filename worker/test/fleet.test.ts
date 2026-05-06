@@ -744,6 +744,32 @@ describe("fleet lease identity and idle", () => {
         exitCode: 1,
         durationMs: 1234,
         logBytes: 11,
+        telemetry: {
+          start: {
+            capturedAt: "2026-05-01T00:00:00.000Z",
+            source: "ssh-linux",
+            load1: 0.12,
+            memoryUsedBytes: 1024,
+            memoryTotalBytes: 2048,
+            memoryPercent: 50,
+            diskUsedBytes: 1024 * 1024,
+            diskTotalBytes: 4 * 1024 * 1024,
+            diskPercent: 25,
+          },
+          end: {
+            capturedAt: "2026-05-01T00:00:02.000Z",
+            source: "ssh-linux",
+            load1: 0.42,
+            load5: 0.24,
+            load15: 0.12,
+            memoryUsedBytes: 1536,
+            memoryTotalBytes: 2048,
+            memoryPercent: 75,
+            diskUsedBytes: 2 * 1024 * 1024,
+            diskTotalBytes: 4 * 1024 * 1024,
+            diskPercent: 50,
+          },
+        },
         results: {
           format: "junit",
           files: ["junit.xml"],
@@ -804,6 +830,7 @@ describe("fleet lease identity and idle", () => {
     expect(body).toContain("<dt>memory</dt><dd>1.0 KiB / 2.0 KiB (50%)</dd>");
     expect(body).toContain("<dt>disk</dt><dd>1.0 GiB / 4.0 GiB (25%)</dd>");
     expect(body).toContain("<dt>uptime</dt><dd>1h</dd>");
+    expect(body).toContain("load 0.42 · mem 75% · +512 B");
     expect(body).toContain("table-search");
     expect(body).toContain("/portal/runs/run_000000000001");
     expect(body).toContain("/portal/runs/run_000000000001/logs");
@@ -833,6 +860,9 @@ describe("fleet lease identity and idle", () => {
       'data-filter-buttons="run:run,command:command,sync:sync,stdout:stdout,stderr:stderr,all:all"',
     );
     expect(runBody).toContain('data-filter-tags="command failed"');
+    expect(runBody).toContain("<dt>box load</dt><dd>0.42 / 0.24 / 0.12</dd>");
+    expect(runBody).toContain("<dt>box memory</dt><dd>1.5 KiB / 2.0 KiB (75%)</dd>");
+    expect(runBody).toContain("<dt>memory delta</dt><dd>+512 B</dd>");
     expect(runBody).toContain("table-search");
     expect(runBody).toContain("renders detail");
     expect(runBody).toContain("/portal/leases/cbx_000000000001");
@@ -1313,6 +1343,24 @@ describe("fleet run history", () => {
           syncMs: 12,
           commandMs: 34,
           log: "ok\n",
+          telemetry: {
+            start: {
+              capturedAt: "2026-05-01T00:00:00Z",
+              source: "ssh-linux",
+              load1: 0.1,
+              memoryUsedBytes: 1024,
+              memoryTotalBytes: 2048,
+              memoryPercent: 50,
+            },
+            end: {
+              capturedAt: "2026-05-01T00:00:02Z",
+              source: "ssh-linux",
+              load1: 0.2,
+              memoryUsedBytes: 1536,
+              memoryTotalBytes: 2048,
+              memoryPercent: 75,
+            },
+          },
           results: {
             format: "junit",
             files: ["junit.xml"],
@@ -1329,11 +1377,17 @@ describe("fleet run history", () => {
     );
     expect(finish.status).toBe(200);
     const finished = (await finish.json()) as {
-      run: { state: string; logBytes: number; results?: { tests: number } };
+      run: {
+        state: string;
+        logBytes: number;
+        results?: { tests: number };
+        telemetry?: { end?: { load1?: number; memoryPercent?: number } };
+      };
     };
     expect(finished.run.state).toBe("succeeded");
     expect(finished.run.logBytes).toBe(3);
     expect(finished.run.results?.tests).toBe(2);
+    expect(finished.run.telemetry?.end).toMatchObject({ load1: 0.2, memoryPercent: 75 });
 
     const listed = await fleet.fetch(
       request("GET", "/v1/runs?leaseID=cbx_000000000001", { headers: ownerHeaders }),

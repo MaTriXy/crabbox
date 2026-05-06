@@ -36,6 +36,7 @@ import type {
   RunEventRequest,
   RunFinishRequest,
   RunRecord,
+  RunTelemetrySummary,
   TestFailure,
   TestResultSummary,
   TailscaleMetadata,
@@ -1541,6 +1542,10 @@ export class FleetDurableObject implements DurableObject {
     if (input.results) {
       run.results = boundedTestResults(input.results);
     }
+    const telemetry = sanitizeRunTelemetry(input.telemetry, now);
+    if (telemetry) {
+      run.telemetry = telemetry;
+    }
     await this.writeRunLog(runID, logInput.log);
     await this.putRun(run);
     await this.appendRunEventRecord(run, {
@@ -2606,6 +2611,28 @@ function sanitizeLeaseTelemetry(
     }
   }
   return hasMetric ? telemetry : undefined;
+}
+
+function sanitizeRunTelemetry(
+  input: RunTelemetrySummary | undefined,
+  now: Date,
+): RunTelemetrySummary | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const start = sanitizeLeaseTelemetry(input.start, now);
+  const end = sanitizeLeaseTelemetry(input.end, now);
+  if (!start && !end) {
+    return undefined;
+  }
+  const telemetry: RunTelemetrySummary = {};
+  if (start) {
+    telemetry.start = start;
+  }
+  if (end) {
+    telemetry.end = end;
+  }
+  return telemetry;
 }
 
 function sanitizeTelemetryTimestamp(value: string | undefined, now: Date): string {

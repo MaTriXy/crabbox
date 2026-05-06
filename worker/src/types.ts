@@ -105,6 +105,11 @@ export interface LeaseTelemetry {
   uptimeSeconds?: number;
 }
 
+export interface RunTelemetrySummary {
+  start?: LeaseTelemetry;
+  end?: LeaseTelemetry;
+}
+
 export interface LeaseRecord {
   id: string;
   slug?: string;
@@ -196,6 +201,7 @@ export interface RunRecord {
   logBytes: number;
   logTruncated: boolean;
   results?: TestResultSummary;
+  telemetry?: RunTelemetrySummary;
   startedAt: string;
   lastEventAt?: string;
   eventCount?: number;
@@ -220,6 +226,7 @@ export interface RunFinishRequest {
   logChunks?: string[];
   logTruncated?: boolean;
   results?: TestResultSummary;
+  telemetry?: RunTelemetrySummary;
 }
 
 export interface RunEventRecord {
