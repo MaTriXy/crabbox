@@ -9,7 +9,7 @@
 - Added `crabbox media preview` for creating motion-trimmed GIF previews and optional trimmed MP4 clips from desktop recordings.
 - Added `crabbox code` and per-lease `/code/` portal URLs for authenticated code-server access on `--code` Linux leases.
 - Added per-lease portal detail pages with bridge status, pasteable commands, recent run links, and a stop action.
-- Added portal run detail pages with command metadata, result summaries, searchable/paginated portal tables, active/ended lease filters, and copyable retained log previews.
+- Added portal run detail pages with command metadata, result summaries, searchable/paginated portal tables, provider/OS badges, active/ended/provider/target filters, sticky portal chrome, and copyable retained log previews.
 - Added `.crabboxignore` for repo-local sync-only exclude patterns shared by `run` and `sync-plan`.
 - Documented the prebaked runner image boundary: provider-owned AMIs/snapshots hold machine capabilities while repo/runtime caches stay in QA workflows or warm leases.
 

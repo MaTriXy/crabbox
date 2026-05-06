@@ -32,7 +32,7 @@ export function portalHome(leases: LeaseRecord[], request: Request): Response {
           <h2>leases</h2>
           <span>${active.length} active / ${ended} ended</span>
         </div>
-        <table data-portal-table data-page-size="12" data-search-placeholder="search leases" data-filter-buttons="active:active,ended:ended,all:all" data-filter-default="${defaultFilter}">
+        <table data-portal-table data-page-size="12" data-search-placeholder="search leases" data-filter-buttons="active:active,ended:ended,aws:aws,hetzner:hetzner,linux:linux,macos:macos,windows:windows,all:all" data-filter-default="${defaultFilter}">
           <thead>
             <tr>
               <th>lease</th>
@@ -100,8 +100,8 @@ export function portalLeaseDetail(
             <span class="pill" data-state="${escapeHTML(lease.state)}">${escapeHTML(lease.state)}</span>
           </div>
           <dl class="meta-grid">
-            ${metaRow("provider", lease.provider)}
-            ${metaRow("target", lease.windowsMode ? `${lease.target} / ${lease.windowsMode}` : lease.target)}
+            ${metaHTMLRow("provider", providerBadge(lease.provider))}
+            ${metaHTMLRow("target", targetBadge(lease.target, lease.windowsMode))}
             ${metaRow("class", lease.class)}
             ${metaRow("host", lease.host || "pending")}
             ${metaRow("ssh", lease.sshPort ? `${lease.sshUser || "crabbox"}@${lease.host || "host"}:${lease.sshPort}` : "pending")}
@@ -139,7 +139,7 @@ export function portalLeaseDetail(
           <h2>recent runs</h2>
           <span>${runs.length}</span>
         </div>
-        <table class="run-table" data-portal-table data-page-size="8" data-search-placeholder="search runs">
+        <table class="run-table" data-portal-table data-page-size="8" data-search-placeholder="search runs" data-filter-buttons="succeeded:succeeded,failed:failed,running:running,all:all">
           <thead>
             <tr>
               <th>run</th>
@@ -204,8 +204,8 @@ export function portalRunDetail(
           </div>
           <dl class="meta-grid">
             ${metaRow("lease", run.slug ? `${run.slug} / ${run.leaseID}` : run.leaseID)}
-            ${metaRow("provider", run.provider)}
-            ${metaRow("target", run.windowsMode ? `${run.target || "linux"} / ${run.windowsMode}` : run.target || "linux")}
+            ${metaHTMLRow("provider", providerBadge(run.provider))}
+            ${metaHTMLRow("target", targetBadge(run.target || "linux", run.windowsMode))}
             ${metaRow("class", run.class)}
             ${metaRow("server type", run.serverType)}
             ${metaRow("phase", run.phase || run.state)}
@@ -264,7 +264,7 @@ export function portalRunDetail(
           <h2>events</h2>
           <span>${events.length}</span>
         </div>
-        <table class="event-table" data-portal-table data-page-size="12" data-search-placeholder="search events">
+        <table class="event-table" data-portal-table data-page-size="12" data-search-placeholder="search events" data-filter-buttons="run:run,command:command,sync:sync,stdout:stdout,stderr:stderr,all:all">
           <thead>
             <tr>
               <th>seq</th>
@@ -296,7 +296,7 @@ export function portalVNC(lease: LeaseRecord): Response {
       <header class="vnc-bar">
         <div class="vnc-meta">
           <h1>${escapeHTML(slug)}</h1>
-          <p><span>${escapeHTML(lease.provider)}</span><span class="vnc-dot"></span><span>${escapeHTML(lease.target)}</span><span class="vnc-dot"></span><span class="vnc-id">${escapeHTML(lease.id)}</span></p>
+          <p>${providerBadge(lease.provider)}<span class="vnc-dot"></span>${targetBadge(lease.target, lease.windowsMode)}<span class="vnc-dot"></span><span class="vnc-id">${escapeHTML(lease.id)}</span></p>
         </div>
         <div class="vnc-actions">
           <span id="status" class="status-pill">waiting for bridge</span>
@@ -525,6 +525,7 @@ function leaseRow(lease: LeaseRecord): string {
   const detailPath = `/portal/leases/${encodeURIComponent(lease.id)}`;
   const active = lease.state === "active";
   const filterValue = active ? "active" : "ended";
+  const target = lease.target || "linux";
   const vnc =
     active && lease.desktop
       ? `<a class="button" href="/portal/leases/${encodeURIComponent(lease.id)}/vnc">open</a>`
@@ -534,11 +535,11 @@ function leaseRow(lease: LeaseRecord): string {
       ? `<a class="button secondary" href="/portal/leases/${encodeURIComponent(lease.id)}/code/">code</a>`
       : `<span class="muted">no code</span>`;
   const timeLabel = active ? lease.expiresAt : lease.endedAt || lease.releasedAt || lease.updatedAt;
-  return `<tr data-filter-value="${filterValue}">
+  return `<tr data-filter-tags="${escapeHTML([filterValue, lease.provider, target].join(" "))}">
     <td><a class="lease-link" href="${detailPath}"><strong>${escapeHTML(label)}</strong><small>${escapeHTML(lease.id)}</small></a></td>
     <td><span class="pill" data-state="${escapeHTML(lease.state)}">${escapeHTML(lease.state)}</span></td>
-    <td>${escapeHTML(lease.provider)}</td>
-    <td>${escapeHTML(lease.target)}</td>
+    <td>${providerBadge(lease.provider)}</td>
+    <td>${targetBadge(target, lease.windowsMode)}</td>
     <td>${escapeHTML(lease.class)}</td>
     <td><div class="actions-cell">${vnc}${code}</div></td>
     <td>${escapeHTML(shortTime(timeLabel))}</td>
@@ -549,7 +550,7 @@ function leaseRow(lease: LeaseRecord): string {
 function runRow(run: RunRecord): string {
   const stateTone = run.state === "succeeded" ? "ok" : run.state === "failed" ? "bad" : "warn";
   const logLabel = run.logBytes > 0 ? formatBytes(run.logBytes) : "empty";
-  return `<tr>
+  return `<tr data-filter-tags="${escapeHTML([run.state, run.provider, run.target || "linux"].filter(Boolean).join(" "))}">
     <td><a class="lease-link" href="/portal/runs/${encodeURIComponent(run.id)}"><strong>${escapeHTML(run.id)}</strong><small>${escapeHTML(run.command.join(" "))}</small></a></td>
     <td><span class="pill" data-tone="${stateTone}">${escapeHTML(run.state)}</span></td>
     <td>${escapeHTML(run.phase || "-")}</td>
@@ -561,7 +562,8 @@ function runRow(run: RunRecord): string {
 }
 
 function eventRow(event: RunEventRecord): string {
-  return `<tr>
+  const eventGroup = event.type.split(".")[0] || event.type;
+  return `<tr data-filter-tags="${escapeHTML([eventGroup, event.phase, event.stream].filter(Boolean).join(" "))}">
     <td>${event.seq}</td>
     <td><strong>${escapeHTML(event.type)}</strong><small>${escapeHTML(event.stream || "")}</small></td>
     <td>${escapeHTML(event.phase || "-")}</td>
@@ -572,6 +574,41 @@ function eventRow(event: RunEventRecord): string {
 
 function metaRow(label: string, value: string | undefined): string {
   return `<div><dt>${escapeHTML(label)}</dt><dd>${escapeHTML(value || "-")}</dd></div>`;
+}
+
+function metaHTMLRow(label: string, value: string): string {
+  return `<div><dt>${escapeHTML(label)}</dt><dd>${value}</dd></div>`;
+}
+
+function providerBadge(provider: string | undefined): string {
+  const value = provider || "-";
+  return `<span class="icon-label" data-provider="${escapeHTML(value)}">${providerIcon(value)}<span>${escapeHTML(value)}</span></span>`;
+}
+
+function targetBadge(target: string | undefined, windowsMode?: string): string {
+  const value = target || "linux";
+  const label = windowsMode && value === "windows" ? `${value} / ${windowsMode}` : value;
+  return `<span class="icon-label" data-target="${escapeHTML(value)}">${targetIcon(value)}<span>${escapeHTML(label)}</span></span>`;
+}
+
+function providerIcon(provider: string): string {
+  if (provider === "aws") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15.5c3.8 2.2 9.1 2.5 14.8.9"/><path d="M17.5 13.2 20 16l-3.7.7"/><path d="M7 8.5h10l1.8 4H5.2z"/></svg>`;
+  }
+  if (provider === "hetzner") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 20 7.5v9L12 21l-8-4.5v-9z"/><path d="M8 8v8M16 8v8M8 12h8"/></svg>`;
+  }
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4z"/><path d="m7 10 3 2-3 2M12 15h5"/></svg>`;
+}
+
+function targetIcon(target: string): string {
+  if (target === "windows") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5 11 4v7H4z"/><path d="m13 3.7 7-1.5V11h-7z"/><path d="M4 13h7v7l-7-1.5z"/><path d="M13 13h7v8.8l-7-1.5z"/></svg>`;
+  }
+  if (target === "macos") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 4.5c-.7.8-1.5 1.3-2.5 1.2-.1-1 .4-1.9 1.1-2.5.7-.7 1.7-1.1 2.4-1.2.1.9-.3 1.8-1 2.5z"/><path d="M18.7 16.2c-.5 1.1-.8 1.5-1.4 2.4-.9 1.3-2.1 2.9-3.6 2.9-1.3 0-1.7-.8-3.5-.8s-2.2.8-3.6.8c-1.5 0-2.6-1.4-3.5-2.7-2.4-3.7-2.7-8 .1-10.3 1-.8 2.4-1.3 3.7-1.3 1.4 0 2.6.9 3.5.9.8 0 2.3-1.1 4-1 1.8.1 3.1.8 4 2.1-3.5 1.9-2.9 6.1.3 7z"/></svg>`;
+  }
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M7 9h10M7 12h10M7 15h6"/></svg>`;
 }
 
 function bridgeRow(
@@ -631,10 +668,10 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     * { box-sizing: border-box; }
     html { background:var(--bg); }
     body { margin:0; min-height:100vh; background:var(--bg); color:var(--fg); font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
-    main { width:min(1180px, calc(100vw - 32px)); margin:0 auto; padding:24px 0; }
+    main { width:min(1180px, calc(100vw - 32px)); margin:0 auto; padding:10px 0 22px; }
     h1,h2,p { margin:0; }
-    h1 { font-size:22px; font-weight:700; }
-    h2 { font-size:14px; text-transform:uppercase; color:var(--muted); }
+    h1 { font-size:20px; font-weight:700; }
+    h2 { font-size:12px; text-transform:uppercase; color:var(--muted); letter-spacing:0.04em; }
     a { color:inherit; }
     form { margin:0; }
     button { font:inherit; }
@@ -643,7 +680,8 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     th,td { padding:12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:middle; }
     th { color:var(--muted); font-weight:600; }
     td small { display:block; color:var(--muted); margin-top:2px; }
-    .top { display:flex; justify-content:space-between; gap:16px; align-items:center; margin-bottom:20px; }
+    .top { position:sticky; top:0; z-index:20; display:flex; justify-content:space-between; gap:14px; align-items:center; margin:0 0 10px; padding:8px 0; background:linear-gradient(180deg, var(--bg) 72%, color-mix(in srgb, var(--bg) 0%, transparent)); backdrop-filter:blur(10px); }
+    .top p { font-size:13px; }
     .top p,.muted,.empty { color:var(--muted); }
     .panel { border:1px solid var(--line); border-radius:8px; background:var(--panel); overflow:hidden; }
     .section-head { display:flex; justify-content:space-between; align-items:center; padding:14px 16px; border-bottom:1px solid var(--line); }
@@ -679,6 +717,14 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .pill[data-tone="ok"],.pill[data-state="active"] { color:var(--ok); border-color:color-mix(in srgb, var(--ok) 35%, var(--line)); }
     .pill[data-tone="warn"] { color:var(--warn); border-color:color-mix(in srgb, var(--warn) 35%, var(--line)); }
     .pill[data-tone="bad"],.pill[data-state="released"],.pill[data-state="expired"] { color:var(--bad); border-color:color-mix(in srgb, var(--bad) 45%, var(--line)); }
+    .icon-label { display:inline-flex; align-items:center; gap:7px; min-width:0; }
+    .icon-label svg { width:16px; height:16px; flex:0 0 16px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; color:#cbd5e1; }
+    .icon-label span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .icon-label[data-provider="aws"] svg { color:#fbbf24; }
+    .icon-label[data-provider="hetzner"] svg { color:#ef4444; }
+    .icon-label[data-target="linux"] svg { color:#34d399; }
+    .icon-label[data-target="windows"] svg { color:#38bdf8; }
+    .icon-label[data-target="macos"] svg { color:#d8b4fe; }
     .actions-cell { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
     .table-tools { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 12px; border-bottom:1px solid var(--line-soft); background:var(--panel-2); }
     .table-search { flex:1; min-width:180px; max-width:360px; height:32px; padding:0 10px; border:1px solid var(--line); border-radius:8px; background:#0c0e10; color:var(--fg); font:inherit; }
@@ -691,14 +737,14 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .table-footer { display:flex; justify-content:flex-end; align-items:center; gap:8px; padding:10px 12px; background:var(--panel-2); }
     .table-page { min-width:64px; color:var(--muted); font-size:12px; text-align:center; }
     tr[hidden] { display:none; }
-    .vnc-page { width:100vw; height:100vh; padding:10px 12px 10px; display:grid; grid-template-rows:auto 1fr auto; gap:10px; }
-    .vnc-bar { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:44px; padding:0 4px; }
+    .vnc-page { width:100vw; height:100vh; padding:0 12px 10px; display:grid; grid-template-rows:auto minmax(0,1fr) auto; gap:10px; overflow:auto; }
+    .vnc-bar { position:sticky; top:0; z-index:10; display:flex; align-items:center; justify-content:space-between; gap:14px; min-height:42px; margin:0 -12px; padding:6px 16px; border-bottom:1px solid var(--line); background:color-mix(in srgb, var(--panel) 92%, transparent); box-shadow:0 8px 24px rgba(0,0,0,0.25); }
     .vnc-meta { display:flex; align-items:baseline; gap:12px; min-width:0; }
     .vnc-meta h1 { font-size:18px; font-weight:700; letter-spacing:-0.01em; white-space:nowrap; }
     .vnc-meta p { display:inline-flex; align-items:center; gap:8px; color:var(--muted); font-size:12px; min-width:0; overflow:hidden; }
     .vnc-meta .vnc-id { font-family:var(--mono); font-size:11px; opacity:0.85; }
     .vnc-meta .vnc-dot { width:3px; height:3px; border-radius:50%; background:#3a4046; flex-shrink:0; }
-    .vnc-actions { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+    .vnc-actions { display:flex; align-items:center; gap:6px; flex-shrink:0; }
     .status-pill { display:inline-flex; align-items:center; gap:8px; height:32px; padding:0 12px 0 11px; border-radius:8px; background:var(--panel-2); border:1px solid var(--line); font-size:12px; color:var(--muted); white-space:nowrap; transition:color 0.2s, border-color 0.2s; }
     .status-pill::before { content:""; width:8px; height:8px; border-radius:50%; background:currentColor; box-shadow:0 0 0 3px color-mix(in srgb, currentColor 18%, transparent); flex-shrink:0; }
     .status-pill[data-tone="ok"] { color:var(--ok); border-color:color-mix(in srgb, var(--ok) 35%, var(--line)); }
@@ -731,7 +777,7 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
       .table-filter { flex:1; }
       .table-footer { justify-content:space-between; }
       .top{align-items:flex-start;}
-      .vnc-bar { flex-wrap:wrap; gap:8px; min-height:0; padding:4px 0; }
+      .vnc-bar { flex-wrap:wrap; gap:8px; min-height:0; padding:6px 10px; margin:0 -12px; }
       .vnc-meta { flex-wrap:wrap; gap:4px 10px; }
       .vnc-meta p .vnc-id { display:none; }
       .vnc-actions { gap:6px; }
@@ -865,9 +911,13 @@ function portalEnhancementsScript(): string {
     table.dataset.enhancedIndex = String(index);
     function apply() {
       const filtered = dataRows.filter(
-        (row) =>
-          (selectedFilter === "all" || row.dataset.filterValue === selectedFilter) &&
-          row.textContent.toLowerCase().includes(query),
+        (row) => {
+          const tags = (row.dataset.filterTags || row.dataset.filterValue || "").split(/\\s+/);
+          return (
+            (selectedFilter === "all" || tags.includes(selectedFilter)) &&
+            row.textContent.toLowerCase().includes(query)
+          );
+        },
       );
       const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
       page = Math.min(page, pages);

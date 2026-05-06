@@ -514,8 +514,13 @@ describe("fleet lease identity and idle", () => {
     );
     expect(response.status).toBe(200);
     const body = await response.text();
-    expect(body).toContain('data-filter-buttons="active:active,ended:ended,all:all"');
+    expect(body).toContain(
+      'data-filter-buttons="active:active,ended:ended,aws:aws,hetzner:hetzner,linux:linux,macos:macos,windows:windows,all:all"',
+    );
     expect(body).toContain('data-filter-default="active"');
+    expect(body).toContain('data-provider="hetzner"');
+    expect(body).toContain('data-target="linux"');
+    expect(body).toContain('data-filter-tags="active hetzner linux"');
     expect(body).toContain("blue-lobster");
     expect(body).toContain("old-clam");
     expect(body).toContain("released");
@@ -636,6 +641,11 @@ describe("fleet lease identity and idle", () => {
     );
     expect(body).toContain("crabbox code --id blue-lobster --open");
     expect(body).toContain('data-search-placeholder="search runs"');
+    expect(body).toContain(
+      'data-filter-buttons="succeeded:succeeded,failed:failed,running:running,all:all"',
+    );
+    expect(body).toContain('data-provider="hetzner"');
+    expect(body).toContain('data-target="linux"');
     expect(body).toContain("table-search");
     expect(body).toContain("/portal/runs/run_000000000001");
     expect(body).toContain("/portal/runs/run_000000000001/logs");
@@ -659,6 +669,10 @@ describe("fleet lease identity and idle", () => {
     expect(runBody).toContain("portal log");
     expect(runBody).toContain('data-copy-target="#run-log-tail"');
     expect(runBody).toContain('data-search-placeholder="search events"');
+    expect(runBody).toContain(
+      'data-filter-buttons="run:run,command:command,sync:sync,stdout:stdout,stderr:stderr,all:all"',
+    );
+    expect(runBody).toContain('data-filter-tags="command failed"');
     expect(runBody).toContain("table-search");
     expect(runBody).toContain("renders detail");
     expect(runBody).toContain("/portal/leases/cbx_000000000001");
@@ -828,6 +842,9 @@ describe("fleet lease identity and idle", () => {
     expect(pageBody).toContain("function scheduleRetry");
     expect(pageBody).toContain("/portal/leases/cbx_000000000001/vnc/status");
     expect(pageBody).toContain("vnc-copy");
+    expect(pageBody).toContain("position:sticky");
+    expect(pageBody).toContain('data-provider="hetzner"');
+    expect(pageBody).toContain('data-target="linux"');
     expect(pageBody).toContain("no bridge connected; run the bridge command below");
     expect(pageBody).toContain('fragment.get("username")');
     expect(pageBody).toContain('types.includes("username")');
