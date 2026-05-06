@@ -14,6 +14,8 @@ export interface Env {
   CRABBOX_AWS_MAC_HOST_ID?: string;
   CRABBOX_CAPACITY_REGIONS?: string;
   CRABBOX_CAPACITY_AVAILABILITY_ZONES?: string;
+  CRABBOX_CAPACITY_HINTS?: string;
+  CRABBOX_CAPACITY_LARGE_CLASSES?: string;
   CRABBOX_SHARED_TOKEN?: string;
   CRABBOX_ADMIN_TOKEN?: string;
   CRABBOX_SESSION_SECRET?: string;
@@ -78,6 +80,7 @@ export interface LeaseRequest {
     fallback?: string;
     regions?: string[];
     availabilityZones?: string[];
+    hints?: boolean;
   };
   sshUser?: string;
   sshPort?: string;
@@ -133,7 +136,9 @@ export interface LeaseRecord {
   class: string;
   serverType: string;
   requestedServerType?: string;
+  market?: string;
   provisioningAttempts?: ProvisioningAttempt[];
+  capacityHints?: CapacityHint[];
   serverID: number;
   serverName: string;
   providerKey: string;
@@ -171,10 +176,22 @@ export interface TailscaleMetadata {
 }
 
 export interface ProvisioningAttempt {
+  region?: string;
   serverType: string;
   market?: string;
   category?: string;
   message: string;
+}
+
+export interface CapacityHint {
+  code: string;
+  message: string;
+  action?: string;
+  region?: string;
+  market?: string;
+  class?: string;
+  serverType?: string;
+  regionsTried?: string[];
 }
 
 export interface ProviderImage {

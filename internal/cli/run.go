@@ -749,6 +749,9 @@ func coordinatorFallbackSummary(lease CoordinatorLease) string {
 	attempts := make([]string, 0, len(lease.ProvisioningAttempts))
 	for _, attempt := range lease.ProvisioningAttempts {
 		label := attempt.ServerType
+		if attempt.Region != "" {
+			label = attempt.Region + "/" + label
+		}
 		if attempt.Market != "" && attempt.Market != "spot" {
 			label = attempt.Market + "/" + label
 		}
@@ -758,6 +761,27 @@ func coordinatorFallbackSummary(lease CoordinatorLease) string {
 		attempts = append(attempts, label)
 	}
 	return fmt.Sprintf("requested_type=%s actual_type=%s attempts=%s", lease.RequestedServerType, lease.ServerType, blank(strings.Join(attempts, ","), "-"))
+}
+
+func coordinatorCapacityHintLines(lease CoordinatorLease) []string {
+	lines := make([]string, 0, len(lease.CapacityHints))
+	for _, hint := range lease.CapacityHints {
+		if hint.Code == "" && hint.Message == "" {
+			continue
+		}
+		line := hint.Code
+		if hint.Message != "" {
+			if line != "" {
+				line += ": "
+			}
+			line += hint.Message
+		}
+		if hint.Action != "" {
+			line += " action=" + hint.Action
+		}
+		lines = append(lines, line)
+	}
+	return lines
 }
 
 func acquireAttempts(bool) int {

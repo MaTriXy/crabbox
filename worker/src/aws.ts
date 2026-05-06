@@ -87,7 +87,12 @@ export class EC2SpotClient {
     leaseID: string,
     slug: string,
     owner: string,
-  ): Promise<{ server: ProviderMachine; serverType: string; attempts?: ProvisioningAttempt[] }> {
+  ): Promise<{
+    server: ProviderMachine;
+    serverType: string;
+    market?: string;
+    attempts?: ProvisioningAttempt[];
+  }> {
     await this.ensureSSHKey(config.providerKey, config.sshPublicKey);
     const imageID = await this.resolveAMI(config);
     const securityGroupID = await this.ensureSecurityGroup(config);
@@ -120,8 +125,9 @@ export class EC2SpotClient {
         const result: {
           server: ProviderMachine;
           serverType: string;
+          market?: string;
           attempts?: ProvisioningAttempt[];
-        } = { server, serverType };
+        } = { server, serverType, market: config.capacityMarket };
         if (attempts.length > 0) {
           result.attempts = attempts;
         }
@@ -129,6 +135,7 @@ export class EC2SpotClient {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         attempts.push({
+          region: this.region,
           serverType,
           market: config.capacityMarket,
           category: awsProvisioningErrorCategory(message) || "fatal",
@@ -162,8 +169,9 @@ export class EC2SpotClient {
           const result: {
             server: ProviderMachine;
             serverType: string;
+            market?: string;
             attempts?: ProvisioningAttempt[];
-          } = { server, serverType };
+          } = { server, serverType, market: "on-demand" };
           if (attempts.length > 0) {
             result.attempts = attempts;
           }
@@ -171,6 +179,7 @@ export class EC2SpotClient {
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           attempts.push({
+            region: this.region,
             serverType,
             market: "on-demand",
             category: awsProvisioningErrorCategory(message) || "fatal",
@@ -776,6 +785,7 @@ export function awsQuotaPreflightAttempt(
   }
   const quotaCode = awsQuotaCodeForMarket(market);
   return {
+    region,
     serverType,
     market,
     category: "quota",

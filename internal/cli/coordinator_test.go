@@ -422,7 +422,9 @@ func TestCoordinatorLeaseDecodesProvisioningAttempts(t *testing.T) {
 		"provider":"aws",
 		"serverType":"c7i.24xlarge",
 		"requestedServerType":"c7a.48xlarge",
-		"provisioningAttempts":[{"serverType":"c7a.48xlarge","market":"spot","category":"policy","message":"not eligible"}]
+		"market":"on-demand",
+		"provisioningAttempts":[{"region":"eu-west-1","serverType":"c7a.48xlarge","market":"spot","category":"policy","message":"not eligible"}],
+		"capacityHints":[{"code":"aws_capacity_routed","message":"AWS launch routed to eu-west-2","action":"keep regions","region":"eu-west-2","market":"on-demand","class":"beast","serverType":"c7i.24xlarge","regionsTried":["eu-west-1","eu-west-2"]}]
 	}`), &lease); err != nil {
 		t.Fatal(err)
 	}
@@ -432,6 +434,9 @@ func TestCoordinatorLeaseDecodesProvisioningAttempts(t *testing.T) {
 	if len(lease.ProvisioningAttempts) != 1 || lease.ProvisioningAttempts[0].Category != "policy" {
 		t.Fatalf("attempts=%#v", lease.ProvisioningAttempts)
 	}
+	if lease.Market != "on-demand" || len(lease.CapacityHints) != 1 || lease.CapacityHints[0].Region != "eu-west-2" {
+		t.Fatalf("capacity fields market=%q hints=%#v", lease.Market, lease.CapacityHints)
+	}
 }
 
 func TestCoordinatorFallbackSummary(t *testing.T) {
@@ -439,14 +444,28 @@ func TestCoordinatorFallbackSummary(t *testing.T) {
 		RequestedServerType: "c7a.48xlarge",
 		ServerType:          "c7i.24xlarge",
 		ProvisioningAttempts: []ProvisioningAttempt{{
+			Region:     "eu-west-1",
 			ServerType: "c7a.48xlarge",
 			Market:     "spot",
 			Category:   "policy",
 			Message:    "not eligible",
 		}},
 	})
-	if !strings.Contains(summary, "requested_type=c7a.48xlarge") || !strings.Contains(summary, "attempts=c7a.48xlarge:policy") {
+	if !strings.Contains(summary, "requested_type=c7a.48xlarge") || !strings.Contains(summary, "attempts=eu-west-1/c7a.48xlarge:policy") {
 		t.Fatalf("summary=%q", summary)
+	}
+}
+
+func TestCoordinatorCapacityHintLines(t *testing.T) {
+	lines := coordinatorCapacityHintLines(CoordinatorLease{
+		CapacityHints: []CapacityHint{{
+			Code:    "aws_capacity_routed",
+			Message: "AWS launch routed to eu-west-2",
+			Action:  "keep multiple regions configured",
+		}},
+	})
+	if len(lines) != 1 || !strings.Contains(lines[0], "aws_capacity_routed") || !strings.Contains(lines[0], "action=keep multiple regions") {
+		t.Fatalf("lines=%#v", lines)
 	}
 }
 

@@ -28,6 +28,7 @@ import {
   validateTailscaleTags,
 } from "./tailscale";
 import type {
+  CapacityHint,
   Env,
   ExternalRunnerInput,
   ExternalRunnerRecord,
@@ -513,7 +514,7 @@ export class FleetDurableObject implements DurableObject {
     if (limitError) {
       return json({ error: "cost_limit_exceeded", message: limitError }, { status: 429 });
     }
-    const { server, serverType, attempts } = await provider.createServerWithFallback(
+    const { server, serverType, market, attempts } = await provider.createServerWithFallback(
       config,
       leaseID,
       slug,
@@ -521,6 +522,9 @@ export class FleetDurableObject implements DurableObject {
     );
     record.cloudID = server.cloudID;
     record.serverType = serverType;
+    if (market) {
+      record.market = market;
+    }
     if (config.provider === "aws" && server.region) {
       config.awsRegion = server.region;
     }
@@ -544,6 +548,10 @@ export class FleetDurableObject implements DurableObject {
     record.maxEstimatedUSD = finalCost.maxUSD;
     if (config.provider === "aws") {
       record.region = server.region ?? config.awsRegion;
+      const hints = capacityHints(this.env, config, record, attempts ?? []);
+      if (hints.length > 0) {
+        record.capacityHints = hints;
+      }
     }
     await this.putLease(record);
     await this.scheduleAlarm();
@@ -3061,6 +3069,94 @@ async function optionalJson<T>(request: Request): Promise<T> {
   return readJson<T>(request);
 }
 
+function capacityHints(
+  env: Env,
+  config: ReturnType<typeof leaseConfig>,
+  lease: LeaseRecord,
+  attempts: ProvisioningAttempt[],
+): CapacityHint[] {
+  if (!config.capacityHints || envFlagDisabled(env.CRABBOX_CAPACITY_HINTS)) {
+    return [];
+  }
+  const hints: CapacityHint[] = [];
+  const selectedRegion = lease.region || config.awsRegion;
+  const selectedMarket = lease.market || config.capacityMarket;
+  const attemptedRegions = uniqueNonEmpty(attempts.map((attempt) => attempt.region));
+  const failedRegions = attemptedRegions.filter((region) => region !== selectedRegion);
+  if (selectedRegion && failedRegions.length > 0) {
+    hints.push({
+      code: "aws_capacity_routed",
+      message: `AWS launch routed to ${selectedRegion} after failed attempts in ${failedRegions.join(", ")}`,
+      action: "Keep multiple capacity regions configured and avoid pinning a single AWS region during capacity pressure.",
+      region: selectedRegion,
+      market: selectedMarket,
+      class: config.class,
+      serverType: lease.serverType,
+      regionsTried: uniqueNonEmpty([...attemptedRegions, selectedRegion]),
+    });
+  }
+  if (attempts.some((attempt) => attempt.category === "quota")) {
+    hints.push({
+      code: "aws_quota_pressure",
+      message: `AWS quota rejected at least one ${config.class} candidate before selecting ${lease.serverType}`,
+      action: "Use a smaller class or request more EC2 Standard Spot/On-Demand vCPU quota for the affected regions.",
+      region: selectedRegion,
+      market: selectedMarket,
+      class: config.class,
+      serverType: lease.serverType,
+      regionsTried: uniqueNonEmpty([...attemptedRegions, selectedRegion]),
+    });
+  }
+  if (
+    selectedMarket === "on-demand" &&
+    attempts.some((attempt) => (attempt.market || "spot") === "spot")
+  ) {
+    hints.push({
+      code: "aws_on_demand_fallback",
+      message: `AWS launch used on-demand after spot capacity attempts for ${config.class}`,
+      action: "Keep on-demand fallback for reliability, or switch back to spot when cost matters more than launch success.",
+      region: selectedRegion,
+      market: selectedMarket,
+      class: config.class,
+      serverType: lease.serverType,
+      regionsTried: uniqueNonEmpty([...attemptedRegions, selectedRegion]),
+    });
+  }
+  if (capacityLargeClasses(env).includes(config.class)) {
+    hints.push({
+      code: "capacity_large_class",
+      message: `class=${config.class} is configured as a high-pressure capacity class`,
+      action: "Use a smaller class unless the workload is explicitly CPU-bound or this large class was requested intentionally.",
+      region: selectedRegion,
+      market: selectedMarket,
+      class: config.class,
+      serverType: lease.serverType,
+    });
+  }
+  return hints;
+}
+
+function capacityLargeClasses(env: Env): string[] {
+  return uniqueNonEmpty((env.CRABBOX_CAPACITY_LARGE_CLASSES || "beast").split(","));
+}
+
+function envFlagDisabled(value: string | undefined): boolean {
+  return ["0", "false", "no", "off"].includes((value || "").trim().toLowerCase());
+}
+
+function uniqueNonEmpty(values: Array<string | undefined>): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    const normalized = (value || "").trim();
+    if (normalized && !seen.has(normalized)) {
+      seen.add(normalized);
+      out.push(normalized);
+    }
+  }
+  return out;
+}
+
 interface CloudProvider {
   listCrabboxServers(): Promise<ProviderMachine[]>;
   createServerWithFallback(
@@ -3068,7 +3164,12 @@ interface CloudProvider {
     leaseID: string,
     slug: string,
     owner: string,
-  ): Promise<{ server: ProviderMachine; serverType: string; attempts?: ProvisioningAttempt[] }>;
+  ): Promise<{
+    server: ProviderMachine;
+    serverType: string;
+    market?: string;
+    attempts?: ProvisioningAttempt[];
+  }>;
   deleteServer(id: string): Promise<void>;
   createImage(instanceID: string, name: string, noReboot: boolean): Promise<ProviderImage>;
   getImage(imageID: string): Promise<ProviderImage>;
@@ -3096,7 +3197,12 @@ class HetznerProvider implements CloudProvider {
     leaseID: string,
     slug: string,
     owner: string,
-  ): Promise<{ server: ProviderMachine; serverType: string; attempts?: ProvisioningAttempt[] }> {
+  ): Promise<{
+    server: ProviderMachine;
+    serverType: string;
+    market?: string;
+    attempts?: ProvisioningAttempt[];
+  }> {
     const { server, serverType } = await this.client.createServerWithFallback(
       config,
       leaseID,
@@ -3151,7 +3257,12 @@ class AWSProvider implements CloudProvider {
     leaseID: string,
     slug: string,
     owner: string,
-  ): Promise<{ server: ProviderMachine; serverType: string; attempts?: ProvisioningAttempt[] }> {
+  ): Promise<{
+    server: ProviderMachine;
+    serverType: string;
+    market?: string;
+    attempts?: ProvisioningAttempt[];
+  }> {
     const regions = awsRegionCandidates(config, this.env, this.region);
     const failures: string[] = [];
     const regionAttempts: ProvisioningAttempt[] = [];
@@ -3159,7 +3270,7 @@ class AWSProvider implements CloudProvider {
       const client = region === this.region ? this.client : new EC2SpotClient(this.env, region);
       try {
         // oxlint-disable-next-line eslint/no-await-in-loop -- region fallback must preserve ordered capacity preference.
-        const { server, serverType, attempts } = await client.createServerWithFallback(
+        const { server, serverType, market, attempts } = await client.createServerWithFallback(
           { ...config, awsRegion: region },
           leaseID,
           slug,
@@ -3170,8 +3281,9 @@ class AWSProvider implements CloudProvider {
         const result: {
           server: ProviderMachine;
           serverType: string;
+          market?: string;
           attempts?: ProvisioningAttempt[];
-        } = { server: { ...readyServer, region }, serverType };
+        } = { server: { ...readyServer, region }, serverType, market };
         const allAttempts = [...regionAttempts, ...(attempts ?? [])];
         if (allAttempts.length > 0) {
           result.attempts = allAttempts;
@@ -3180,6 +3292,7 @@ class AWSProvider implements CloudProvider {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         regionAttempts.push({
+          region,
           serverType: config.serverType,
           market: config.capacityMarket,
           category: awsProvisioningErrorCategory(message) || "region",

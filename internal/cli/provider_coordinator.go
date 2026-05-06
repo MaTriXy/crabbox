@@ -58,6 +58,9 @@ func (b *coordinatorLeaseBackend) acquireOnce(ctx context.Context, keep bool) (L
 	if summary := coordinatorFallbackSummary(lease); summary != "" {
 		fmt.Fprintf(b.rt.Stderr, "fallback resolved %s\n", summary)
 	}
+	for _, line := range coordinatorCapacityHintLines(lease) {
+		fmt.Fprintf(b.rt.Stderr, "capacity hint %s\n", line)
+	}
 	waitCtx, cancelWait := context.WithCancelCause(ctx)
 	defer cancelWait(nil)
 	stopHeartbeat := startCoordinatorHeartbeat(waitCtx, b.coord, leaseID, cfg.IdleTimeout, nil, leaseTelemetryCollectorForTarget(target), b.rt.Stderr)

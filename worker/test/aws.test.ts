@@ -127,6 +127,7 @@ describe("aws provider", () => {
     expect(awsQuotaCodeForMarket("spot")).toBe("L-34B43A08");
     expect(awsQuotaCodeForMarket("on-demand")).toBe("L-1216C47A");
     expect(awsQuotaPreflightAttempt("c7a.48xlarge", "on-demand", "eu-west-1", 32)).toEqual({
+      region: "eu-west-1",
       serverType: "c7a.48xlarge",
       market: "on-demand",
       category: "quota",

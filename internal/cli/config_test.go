@@ -115,6 +115,7 @@ capacity:
   market: spot
   strategy: most-available
   fallback: on-demand-after-120s
+  hints: false
   regions:
     - eu-west-1
 actions:
@@ -229,7 +230,7 @@ ssh:
 	if len(cfg.EnvAllow) != 3 || cfg.EnvAllow[2] != "CUSTOM_*" {
 		t.Fatalf("env allow not loaded: %#v", cfg.EnvAllow)
 	}
-	if cfg.Capacity.Strategy != "most-available" || len(cfg.Capacity.Regions) != 1 || cfg.Capacity.Regions[0] != "eu-west-1" {
+	if cfg.Capacity.Strategy != "most-available" || cfg.Capacity.Hints || len(cfg.Capacity.Regions) != 1 || cfg.Capacity.Regions[0] != "eu-west-1" {
 		t.Fatalf("capacity config not loaded: %#v", cfg.Capacity)
 	}
 	if cfg.Actions.Repo != "openclaw/crabbox" || cfg.Actions.Workflow != ".github/workflows/crabbox.yml" || cfg.Actions.Job != "hydrate" || cfg.Actions.Ref != "main" {

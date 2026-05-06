@@ -152,10 +152,19 @@ describe("lease config", () => {
     expect(config.sshFallbackPorts).toEqual(["22"]);
     expect(config.capacityMarket).toBe("spot");
     expect(config.capacityStrategy).toBe("most-available");
+    expect(config.capacityHints).toBe(true);
     expect(config.desktop).toBe(false);
     expect(config.browser).toBe(false);
     expect(config.code).toBe(false);
     expect(config.ttlSeconds).toBe(86_400);
+  });
+
+  it("allows capacity hints to be disabled per lease", () => {
+    const config = leaseConfig({
+      sshPublicKey: "ssh-ed25519 test",
+      capacity: { hints: false },
+    });
+    expect(config.capacityHints).toBe(false);
   });
 
   it("preserves requested desktop, browser, and code capabilities", () => {

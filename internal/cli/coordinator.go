@@ -40,7 +40,9 @@ type CoordinatorLease struct {
 	Class                string                `json:"class"`
 	ServerType           string                `json:"serverType"`
 	RequestedServerType  string                `json:"requestedServerType,omitempty"`
+	Market               string                `json:"market,omitempty"`
 	ProvisioningAttempts []ProvisioningAttempt `json:"provisioningAttempts,omitempty"`
+	CapacityHints        []CapacityHint        `json:"capacityHints,omitempty"`
 	ServerID             int64                 `json:"serverID"`
 	CloudID              string                `json:"cloudID"`
 	ServerName           string                `json:"serverName"`
@@ -62,10 +64,22 @@ type CoordinatorLease struct {
 }
 
 type ProvisioningAttempt struct {
+	Region     string `json:"region,omitempty"`
 	ServerType string `json:"serverType"`
 	Market     string `json:"market,omitempty"`
 	Category   string `json:"category,omitempty"`
 	Message    string `json:"message"`
+}
+
+type CapacityHint struct {
+	Code         string   `json:"code"`
+	Message      string   `json:"message"`
+	Action       string   `json:"action,omitempty"`
+	Region       string   `json:"region,omitempty"`
+	Market       string   `json:"market,omitempty"`
+	Class        string   `json:"class,omitempty"`
+	ServerType   string   `json:"serverType,omitempty"`
+	RegionsTried []string `json:"regionsTried,omitempty"`
 }
 
 type CoordinatorMachine struct {
@@ -368,6 +382,7 @@ func (c *CoordinatorClient) CreateLease(ctx context.Context, cfg Config, publicK
 			"fallback":          cfg.Capacity.Fallback,
 			"regions":           cfg.Capacity.Regions,
 			"availabilityZones": cfg.Capacity.AvailabilityZones,
+			"hints":             cfg.Capacity.Hints,
 		},
 		"sshUser":            cfg.SSHUser,
 		"sshPort":            cfg.SSHPort,

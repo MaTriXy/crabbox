@@ -36,6 +36,7 @@ export interface LeaseConfig {
   capacityFallback: string;
   capacityRegions: string[];
   capacityAvailabilityZones: string[];
+  capacityHints: boolean;
   sshUser: string;
   sshPort: string;
   sshFallbackPorts: string[];
@@ -118,6 +119,7 @@ export function leaseConfig(input: LeaseRequest): LeaseConfig {
     capacityFallback: input.capacity?.fallback ?? "on-demand-after-120s",
     capacityRegions: input.capacity?.regions ?? [],
     capacityAvailabilityZones: input.capacity?.availabilityZones ?? [],
+    capacityHints: input.capacity?.hints ?? true,
     sshUser: input.sshUser ?? defaultSSHUser(provider, target, windowsMode),
     sshPort: input.sshPort ?? "2222",
     sshFallbackPorts: validPorts(input.sshFallbackPorts ?? ["22"]),

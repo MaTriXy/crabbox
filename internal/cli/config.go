@@ -80,6 +80,7 @@ type CapacityConfig struct {
 	Fallback          string
 	Regions           []string
 	AvailabilityZones []string
+	Hints             bool
 }
 
 type ActionsConfig struct {
@@ -229,6 +230,7 @@ func baseConfig() Config {
 			Market:   "spot",
 			Strategy: "most-available",
 			Fallback: "on-demand-after-120s",
+			Hints:    true,
 		},
 		Actions: ActionsConfig{
 			RunnerVersion: "latest",
@@ -367,6 +369,7 @@ type fileCapacityConfig struct {
 	Fallback          string   `yaml:"fallback,omitempty"`
 	Regions           []string `yaml:"regions,omitempty"`
 	AvailabilityZones []string `yaml:"availabilityZones,omitempty"`
+	Hints             *bool    `yaml:"hints,omitempty"`
 }
 
 type fileActionsConfig struct {
@@ -726,6 +729,9 @@ func applyFileConfig(cfg *Config, file fileConfig) {
 		if len(file.Capacity.AvailabilityZones) > 0 {
 			cfg.Capacity.AvailabilityZones = appendUniqueStrings(nil, file.Capacity.AvailabilityZones...)
 		}
+		if file.Capacity.Hints != nil {
+			cfg.Capacity.Hints = *file.Capacity.Hints
+		}
 	}
 	if file.Actions != nil {
 		if file.Actions.Repo != "" {
@@ -954,6 +960,9 @@ func applyEnv(cfg *Config) {
 	cfg.Capacity.Market = getenv("CRABBOX_CAPACITY_MARKET", cfg.Capacity.Market)
 	cfg.Capacity.Strategy = getenv("CRABBOX_CAPACITY_STRATEGY", cfg.Capacity.Strategy)
 	cfg.Capacity.Fallback = getenv("CRABBOX_CAPACITY_FALLBACK", cfg.Capacity.Fallback)
+	if value, ok := getenvBool("CRABBOX_CAPACITY_HINTS"); ok {
+		cfg.Capacity.Hints = value
+	}
 	cfg.Actions.Workflow = getenv("CRABBOX_ACTIONS_WORKFLOW", cfg.Actions.Workflow)
 	cfg.Actions.Job = getenv("CRABBOX_ACTIONS_JOB", cfg.Actions.Job)
 	cfg.Actions.Ref = getenv("CRABBOX_ACTIONS_REF", cfg.Actions.Ref)

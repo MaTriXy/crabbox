@@ -321,10 +321,11 @@ describe("fleet lease identity and idle", () => {
   it("records requested type and provider fallback attempts on resolved leases", async () => {
     const attempts: ProvisioningAttempt[] = [
       {
+        region: "eu-west-1",
         serverType: "c7a.48xlarge",
         market: "spot",
-        category: "policy",
-        message: "InvalidParameterCombination: not eligible",
+        category: "quota",
+        message: "quota L-34B43A08 in eu-west-1 is 64 vCPUs; c7a.48xlarge needs 192 vCPUs",
       },
     ];
     const fleet = testFleet(new MemoryStorage(), {
@@ -332,6 +333,7 @@ describe("fleet lease identity and idle", () => {
         provider: "aws",
         serverType: "c7i.24xlarge",
         cloudID: "i-123",
+        market: "on-demand",
         attempts,
       }),
     });
@@ -356,7 +358,15 @@ describe("fleet lease identity and idle", () => {
     const { lease } = (await create.json()) as { lease: LeaseRecord };
     expect(lease.requestedServerType).toBe("c7a.48xlarge");
     expect(lease.serverType).toBe("c7i.24xlarge");
+    expect(lease.market).toBe("on-demand");
     expect(lease.provisioningAttempts).toEqual(attempts);
+    expect(lease.capacityHints?.map((hint) => hint.code)).toEqual([
+      "aws_capacity_routed",
+      "aws_quota_pressure",
+      "aws_on_demand_fallback",
+      "capacity_large_class",
+    ]);
+    expect(lease.capacityHints?.[0]?.regionsTried).toEqual(["eu-west-1", "eu-west-2"]);
   });
 
   it("scopes non-admin usage to the current owner", async () => {
@@ -2437,6 +2447,7 @@ function fakeProvider(
     provider?: "hetzner" | "aws";
     serverType?: string;
     cloudID?: string;
+    market?: string;
     attempts?: ProvisioningAttempt[];
   } = {},
 ) {
@@ -2459,9 +2470,11 @@ function fakeProvider(
           status: "running",
           serverType: result.serverType ?? "cpx62",
           host: "192.0.2.10",
+          region: result.provider === "aws" ? "eu-west-2" : undefined,
           labels: {},
         },
         serverType: result.serverType ?? "cpx62",
+        market: result.market,
         attempts: result.attempts,
       };
     },
