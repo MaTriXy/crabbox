@@ -3,30 +3,30 @@ package hetzner
 import (
 	"flag"
 
-	"github.com/openclaw/crabbox/internal/cli"
+	core "github.com/openclaw/crabbox/internal/cli"
 )
 
 func init() {
-	cli.RegisterProvider(Provider{})
+	core.RegisterProvider(Provider{})
 }
 
 type Provider struct{}
 
 func (Provider) Name() string      { return "hetzner" }
 func (Provider) Aliases() []string { return nil }
-func (Provider) Spec() cli.ProviderSpec {
-	return cli.ProviderSpec{
+func (Provider) Spec() core.ProviderSpec {
+	return core.ProviderSpec{
 		Name:        "hetzner",
-		Kind:        cli.ProviderKindSSHLease,
-		Targets:     []cli.TargetSpec{{OS: "linux"}},
-		Features:    cli.FeatureSet{cli.FeatureSSH, cli.FeatureCrabboxSync, cli.FeatureCleanup, cli.FeatureDesktop, cli.FeatureBrowser, cli.FeatureCode, cli.FeatureTailscale},
-		Coordinator: cli.CoordinatorSupported,
+		Kind:        core.ProviderKindSSHLease,
+		Targets:     []core.TargetSpec{{OS: core.TargetLinux}},
+		Features:    core.FeatureSet{core.FeatureSSH, core.FeatureCrabboxSync, core.FeatureCleanup, core.FeatureDesktop, core.FeatureBrowser, core.FeatureCode, core.FeatureTailscale},
+		Coordinator: core.CoordinatorSupported,
 	}
 }
-func (Provider) RegisterFlags(*flag.FlagSet, cli.Config) any { return cli.NoProviderFlags() }
-func (Provider) ApplyFlags(*cli.Config, *flag.FlagSet, any) error {
+func (Provider) RegisterFlags(*flag.FlagSet, core.Config) any { return core.NoProviderFlags() }
+func (Provider) ApplyFlags(*core.Config, *flag.FlagSet, any) error {
 	return nil
 }
-func (p Provider) Configure(cfg cli.Config, rt cli.Runtime) (cli.Backend, error) {
-	return cli.NewHetznerLeaseBackend(p.Spec(), cfg, rt), nil
+func (p Provider) Configure(cfg core.Config, rt core.Runtime) (core.Backend, error) {
+	return NewHetznerLeaseBackend(p.Spec(), cfg, rt), nil
 }

@@ -1,4 +1,4 @@
-package cli
+package blacksmith
 
 import (
 	"context"
@@ -11,6 +11,10 @@ import (
 	"testing"
 	"time"
 )
+
+type testClock struct{}
+
+func (testClock) Now() time.Time { return time.Now() }
 
 type blacksmithFuncRunner struct {
 	calls [][]string
@@ -27,9 +31,9 @@ func (r *blacksmithFuncRunner) Run(_ context.Context, req LocalCommandRequest) (
 
 func newTestBlacksmithBackend(cfg Config, runner CommandRunner) *blacksmithBackend {
 	return &blacksmithBackend{
-		spec: testBlacksmithProvider{}.Spec(),
+		spec: Provider{}.Spec(),
 		cfg:  cfg,
-		rt:   Runtime{Stdout: io.Discard, Stderr: io.Discard, Clock: realClock{}, Exec: runner},
+		rt:   Runtime{Stdout: io.Discard, Stderr: io.Discard, Clock: testClock{}, Exec: runner},
 	}
 }
 
@@ -281,6 +285,56 @@ func TestBlacksmithOneShotRunRemovesClaimAfterStop(t *testing.T) {
 	}
 }
 
+func TestBlacksmithBackendUsesInjectedCommandRunnerForListAndStatus(t *testing.T) {
+	runner := &blacksmithFuncRunner{fn: func(LocalCommandRequest) (LocalCommandResult, error) {
+		return LocalCommandResult{
+			Stdout: "tbx_123 ready openclaw .github/workflows/testbox.yml test main 2026-05-06T00:00:00Z\n",
+		}, nil
+	}}
+	cfg := baseConfig()
+	cfg.Blacksmith.Workflow = ".github/workflows/testbox.yml"
+	cfg.Blacksmith.Job = "test"
+	cfg.Blacksmith.Ref = "main"
+	backend := newTestBlacksmithBackend(cfg, runner)
+	servers, err := backend.List(context.Background(), ListRequest{})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(servers) != 1 || servers[0].CloudID != "tbx_123" {
+		t.Fatalf("servers=%#v", servers)
+	}
+	state, err := backend.Status(context.Background(), StatusRequest{ID: "tbx_123"})
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if !state.Ready || state.ID != "tbx_123" {
+		t.Fatalf("state=%#v", state)
+	}
+	if len(runner.calls) != 2 {
+		t.Fatalf("runner calls=%d, want 2", len(runner.calls))
+	}
+}
+
+func TestBlacksmithBackendListJSONKeepsParsedTableShape(t *testing.T) {
+	runner := &blacksmithFuncRunner{fn: func(LocalCommandRequest) (LocalCommandResult, error) {
+		return LocalCommandResult{
+			Stdout: "tbx_123 ready openclaw .github/workflows/testbox.yml test main 2026-05-06T00:00:00Z\n",
+		}, nil
+	}}
+	backend := newTestBlacksmithBackend(baseConfig(), runner)
+	view, err := backend.ListJSON(context.Background(), ListRequest{})
+	if err != nil {
+		t.Fatalf("list json: %v", err)
+	}
+	items, ok := view.([]blacksmithListItem)
+	if !ok {
+		t.Fatalf("view=%T, want []blacksmithListItem", view)
+	}
+	if len(items) != 1 || items[0].ID != "tbx_123" || items[0].Repo != "openclaw" {
+		t.Fatalf("items=%#v", items)
+	}
+}
+
 func TestApplyBlacksmithFlagOverrides(t *testing.T) {
 	defaults := baseConfig()
 	defaults.Blacksmith = BlacksmithConfig{
@@ -432,13 +486,4 @@ func TestBlacksmithClaimSlugPreservesExistingSlug(t *testing.T) {
 	if got != "Blue Lobster" {
 		t.Fatalf("slug=%q", got)
 	}
-}
-
-func containsString(items []string, want string) bool {
-	for _, item := range items {
-		if item == want {
-			return true
-		}
-	}
-	return false
 }

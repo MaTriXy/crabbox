@@ -90,6 +90,10 @@ func staticLease(cfg Config) (Server, SSHTarget, string, error) {
 	return server, target, leaseID, nil
 }
 
+func StaticLease(cfg Config) (Server, SSHTarget, string, error) {
+	return staticLease(cfg)
+}
+
 func staticReadyCommand(target SSHTarget) string {
 	if isWindowsNativeTarget(target) {
 		return windowsRemoteDoctor()

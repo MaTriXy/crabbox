@@ -193,7 +193,7 @@ type DelegatedRunBackend interface {
 	Warmup(ctx context.Context, req WarmupRequest) error
 	Run(ctx context.Context, req RunRequest) (RunResult, error)
 	List(ctx context.Context, req ListRequest) ([]LeaseView, error)
-	Status(ctx context.Context, req StatusRequest) (statusView, error)
+	Status(ctx context.Context, req StatusRequest) (StatusView, error)
 	Stop(ctx context.Context, req StopRequest) error
 }
 ```
@@ -203,10 +203,7 @@ remote command wrapping for these providers. Delegated providers may stream
 stdout/stderr during `Run`, but they should not own normal `list` or `status`
 rendering when a normalized value can describe the result. If a provider has a
 lossy or native-only status shape, keep that loss inside its backend and return
-the closest status view instead of printing directly from command code. The
-current implementation still uses unexported `statusView`; exporting
-`StatusView` is a follow-up before delegated backend implementations can move
-fully out of `internal/cli`.
+the closest status view instead of printing directly from command code.
 
 ### Optional Backend Interfaces
 
@@ -417,30 +414,28 @@ internal/providers/hetzner             # Hetzner provider registration/spec
 internal/providers/aws                 # AWS provider registration/spec
 internal/providers/ssh                 # static SSH provider registration/spec
 internal/providers/blacksmith          # Blacksmith provider registration/spec
+internal/providers/daytona             # Daytona provider registration/spec
+internal/providers/islo                # Islo provider registration/spec
 internal/cli/provider_backend.go       # core interfaces, registry, requests
-internal/cli/providers_common.go       # shared direct SSH backend helpers
-internal/cli/provider_aws.go           # AWS SSH lease backend implementation
-internal/cli/provider_hetzner.go       # Hetzner SSH lease backend implementation
-internal/cli/provider_static.go        # static SSH lease backend implementation
 internal/cli/provider_coordinator.go   # brokered coordinator lease backend
-internal/cli/provider_blacksmith.go    # delegated Blacksmith backend implementation
+internal/providers/shared              # shared direct SSH backend helpers
+internal/providers/aws/backend.go      # AWS SSH lease backend implementation
+internal/providers/hetzner/backend.go  # Hetzner SSH lease backend implementation
+internal/providers/ssh/backend.go      # static SSH lease backend implementation
+internal/providers/blacksmith          # delegated Blacksmith backend implementation
+internal/providers/daytona             # Daytona SSH + delegated SDK backend
+internal/providers/islo                # Islo delegated backend implementation
 internal/cli/hcloud.go                 # Hetzner API client
 internal/cli/aws.go                    # AWS API client
 internal/cli/static.go                 # static SSH target mapping and flags
-internal/cli/blacksmith.go             # Blacksmith args/parsing helpers
 ```
 
-The first split keeps backend implementations in `internal/cli` because the
-existing providers still use broad unexported lifecycle helpers for SSH keys,
-claims, labels, slugs, coordinator heartbeats, sync, release, and timing. The
-exported contract between provider folders and CLI is deliberately small:
-`Provider`, `ProviderSpec`, request/result types, `Runtime`, and one backend
-constructor per built-in provider.
-
-Move each backend implementation deeper into `internal/providers/<name>` only
-as the required helper surface becomes intentionally exported. New providers
-such as Daytona and Islo should start in their own provider folder and avoid
-depending on CLI internals that are not part of that exported contract.
+The backend implementations now live with their provider packages. The exported
+contract between provider folders and CLI stays deliberately small: `Provider`,
+`ProviderSpec`, request/result/view types, `Runtime`, and narrow helpers for
+claims, labels, sync preflight, SSH key storage, and timing output. Keep command
+orchestration in `internal/cli`; move provider lifecycle/client code into the
+provider folder.
 
 ## Flag Parsing
 
@@ -736,8 +731,8 @@ SSH workflow consumes sync, result, and environment options. After the provider
 split lands, consider splitting this into `ProvisionOptions` and `RunOptions`.
 
 `LeaseView` and `StatusView` are command-facing view models. They can wrap or
-alias the existing `Server` and `statusView` during migration, but they must
-carry redaction metadata for secret-bearing auth. Rendering is core-owned for
+alias existing core structs during migration, but they must carry redaction
+metadata for secret-bearing auth. Rendering is core-owned for
 both backend kinds: `ListRequest` and `StatusRequest` do not carry JSON or human
 format flags because backends return normalized views and core renders them.
 `JSONListBackend` is a narrow compatibility escape hatch for existing

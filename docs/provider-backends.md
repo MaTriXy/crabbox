@@ -84,29 +84,22 @@ type DelegatedRunBackend interface {
 	Warmup(ctx context.Context, req WarmupRequest) error
 	Run(ctx context.Context, req RunRequest) (RunResult, error)
 	List(ctx context.Context, req ListRequest) ([]LeaseView, error)
-	Status(ctx context.Context, req StatusRequest) (statusView, error)
+	Status(ctx context.Context, req StatusRequest) (StatusView, error)
 	Stop(ctx context.Context, req StopRequest) error
 }
 ```
 
-The current implementation still returns the unexported `statusView`. That means
-a delegated backend implementation cannot live entirely outside `internal/cli`
-yet. Keep delegated backend implementations in `internal/cli`, or expose a
-narrow constructor from `internal/cli` and let the provider package own only
-registration/spec/flags/configure. Exporting `StatusView` is the next cleanup
-before delegated backends can move fully into `internal/providers/<name>`.
+Delegated backends return normalized `StatusView` values. Rendering remains
+core-owned, so provider packages should not print their own `status` or `list`
+tables unless a compatibility interface explicitly asks for native output.
 
 A delegated backend must reject sync-only options that Crabbox cannot honor:
 
 ```go
-if err := rejectDelegatedSyncOptions(providerName, req); err != nil {
+if err := cli.RejectDelegatedSyncOptions(providerName, req); err != nil {
 	return RunResult{}, err
 }
 ```
-
-`rejectDelegatedSyncOptions` is currently an `internal/cli` helper. Delegated
-backends outside `internal/cli` need an exported equivalent before they can use
-this directly.
 
 Do not pretend a delegated provider is SSH-like unless the provider has a stable
 SSH contract. If Crabbox cannot run rsync and remote commands itself, use
@@ -158,7 +151,8 @@ internal/providers/islo
 ```
 
 Each provider package owns registration, provider name, aliases, spec,
-provider-specific flags, and backend configuration. `cmd/crabbox` imports
+provider-specific flags, backend configuration, provider clients, provider
+lifecycle code, and provider-specific tests. `cmd/crabbox` imports
 `internal/providers/all` for side-effect registration:
 
 ```go
@@ -168,35 +162,26 @@ import (
 )
 ```
 
-The core provider contract and current backend implementations live in
-`internal/cli`:
+The core provider contract remains in `internal/cli`; built-in implementations
+live in their provider folders:
 
 ```text
-internal/cli/provider_backend.go     # interfaces, registry, request/result types
-internal/cli/providers_common.go     # shared direct SSH backend helpers
-internal/cli/provider_aws.go         # AWS SSH lease backend implementation
-internal/cli/provider_hetzner.go     # Hetzner SSH lease backend implementation
-internal/cli/provider_static.go      # static SSH lease backend implementation
-internal/cli/provider_coordinator.go # brokered coordinator lease backend
-internal/cli/provider_blacksmith.go  # existing delegated Blacksmith backend
-internal/cli/provider_daytona.go     # Daytona SSH access backend implementation
-internal/cli/provider_daytona_delegated.go # Daytona SDK/toolbox run backend
-internal/cli/provider_islo.go        # Islo delegated backend implementation
+internal/cli/provider_backend.go          # interfaces, registry, request/result types
+internal/cli/provider_coordinator.go      # brokered coordinator lease wrapper
+internal/cli/provider_labels.go           # shared direct-provider label helpers
+internal/providers/shared                 # shared direct SSH retry/touch/cleanup helpers
+internal/providers/aws                    # AWS SSH lease backend
+internal/providers/hetzner                # Hetzner SSH lease backend
+internal/providers/ssh                    # static SSH backend
+internal/providers/blacksmith             # Blacksmith delegated backend
+internal/providers/daytona                # Daytona SSH + delegated SDK backend
+internal/providers/islo                   # Islo delegated backend
 ```
 
-This split is intentional. Existing built-ins still use a broad set of
-unexported lifecycle helpers for SSH keys, labels, slugs, claims, coordinator
-heartbeats, sync, timing, and release. Provider packages should depend only on
-the exported contract. Move backend implementation code into
-`internal/providers/<name>` only when the required helper surface is small and
-intentionally exported.
-
-New providers should start in their own provider folder. If an SSH backend can
-be implemented against the exported contract, keep it there. If it needs
-temporary core helpers, expose a narrow constructor or helper from
-`internal/cli` rather than exporting a large grab bag. Delegated backends cannot
-move fully out of `internal/cli` until `statusView` and delegated sync-option
-validation are exported.
+Provider packages may use small exported core helpers for claims, labels,
+sync preflight, timing JSON, and SSH key storage. Keep that helper surface
+narrow: if a provider needs broad command orchestration, the behavior probably
+belongs in core instead.
 
 ## Provider Registration
 

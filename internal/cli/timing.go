@@ -6,12 +6,12 @@ import (
 	"time"
 )
 
-type timingReport struct {
+type TimingReport struct {
 	Provider      string        `json:"provider"`
 	LeaseID       string        `json:"leaseId,omitempty"`
 	Slug          string        `json:"slug,omitempty"`
 	SyncMs        int64         `json:"syncMs"`
-	SyncPhases    []timingPhase `json:"syncPhases,omitempty"`
+	SyncPhases    []TimingPhase `json:"syncPhases,omitempty"`
 	SyncSkipped   bool          `json:"syncSkipped"`
 	SyncDelegated bool          `json:"syncDelegated,omitempty"`
 	CommandMs     int64         `json:"commandMs"`
@@ -20,17 +20,42 @@ type timingReport struct {
 	ActionsRunURL string        `json:"actionsRunUrl,omitempty"`
 }
 
-type timingPhase struct {
+type TimingPhase struct {
 	Name    string `json:"name"`
 	Ms      int64  `json:"ms,omitempty"`
 	Skipped bool   `json:"skipped,omitempty"`
 	Reason  string `json:"reason,omitempty"`
 }
 
-func writeTimingJSON(w io.Writer, report timingReport) error {
+type timingReport = TimingReport
+type timingPhase = TimingPhase
+
+func writeTimingJSON(w io.Writer, report TimingReport) error {
 	encoder := json.NewEncoder(w)
 	encoder.SetEscapeHTML(false)
 	return encoder.Encode(report)
+}
+
+func WriteTimingJSON(w io.Writer, report TimingReport) error {
+	return writeTimingJSON(w, report)
+}
+
+func DurationMinutesCeil(duration time.Duration) int {
+	if duration <= 0 {
+		return 1
+	}
+	minutes := int(duration / time.Minute)
+	if duration%time.Minute != 0 {
+		minutes++
+	}
+	if minutes < 1 {
+		return 1
+	}
+	return minutes
+}
+
+func durationMinutesCeil(duration time.Duration) int {
+	return DurationMinutesCeil(duration)
 }
 
 func timingReportFromRun(provider, leaseID, slug string, timings runTimings, total time.Duration, exitCode int) timingReport {

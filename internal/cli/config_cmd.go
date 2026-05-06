@@ -225,3 +225,7 @@ func blank(value, fallback string) string {
 	}
 	return value
 }
+
+func Blank(value, fallback string) string {
+	return blank(value, fallback)
+}

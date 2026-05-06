@@ -20,6 +20,10 @@ func ensureAWSSSHCIDRs(ctx context.Context, cfg *Config) {
 	cfg.AWSSSHCIDRs = []string{cidr}
 }
 
+func EnsureAWSSSHCIDRs(ctx context.Context, cfg *Config) {
+	ensureAWSSSHCIDRs(ctx, cfg)
+}
+
 func detectOutboundIPv4CIDR(ctx context.Context) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

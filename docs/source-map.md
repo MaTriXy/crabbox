@@ -33,12 +33,12 @@ This page maps user-facing behavior back to implementation files. Keep docs desc
 
 ## Providers And Runner Bootstrap
 
-- Direct Hetzner provider: `internal/cli/hcloud.go`
-- Direct AWS provider: `internal/cli/aws.go`
-- Static SSH macOS/Windows provider: `internal/cli/static.go`
-- Blacksmith Testbox argument/parsing helpers: `internal/cli/blacksmith.go`
-- Daytona provider backend and SDK/toolbox wrapper: `internal/cli/provider_daytona.go`, `internal/cli/provider_daytona_delegated.go`, `internal/providers/daytona`
-- Islo delegated backend and SDK wrapper: `internal/cli/provider_islo.go`, `internal/providers/islo`
+- Direct Hetzner provider: `internal/providers/hetzner`, with API client helpers in `internal/cli/hcloud.go`
+- Direct AWS provider: `internal/providers/aws`, with API client helpers in `internal/cli/aws.go`
+- Static SSH macOS/Windows provider: `internal/providers/ssh`, with target mapping helpers in `internal/cli/static.go`
+- Blacksmith Testbox backend and argument/parsing helpers: `internal/providers/blacksmith`
+- Daytona provider backend and SDK/toolbox wrapper: `internal/providers/daytona`
+- Islo delegated backend and SDK wrapper: `internal/providers/islo`
 - Provider backend interfaces, registry, and request/result types:
   `internal/cli/provider_backend.go`
 - Built-in provider registration packages:
@@ -47,10 +47,10 @@ This page maps user-facing behavior back to implementation files. Keep docs desc
   `internal/providers/daytona`, `internal/providers/islo`,
   `internal/providers/all`
 - Built-in provider backend implementations:
-  `internal/cli/providers_common.go`, `internal/cli/provider_aws.go`,
-  `internal/cli/provider_hetzner.go`, `internal/cli/provider_static.go`,
-  `internal/cli/provider_coordinator.go`, `internal/cli/provider_blacksmith.go`,
-  `internal/cli/provider_daytona.go`, `internal/cli/provider_islo.go`
+  `internal/providers/aws`, `internal/providers/hetzner`,
+  `internal/providers/ssh`, `internal/providers/blacksmith`,
+  `internal/providers/daytona`, `internal/providers/islo`,
+  plus shared helpers in `internal/providers/shared`
 - Worker Hetzner provider: `worker/src/hetzner.ts`
 - Worker AWS EC2 provider: `worker/src/aws.ts`
 - Worker AWS AMI create/read/promote routes: `worker/src/fleet.ts`, `worker/src/aws.ts`

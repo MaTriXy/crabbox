@@ -19,6 +19,10 @@ func newLeaseID() string {
 	return "cbx_" + hex.EncodeToString(b[:])
 }
 
+func NewLeaseID() string {
+	return newLeaseID()
+}
+
 func publicKeyFor(privatePath string) (string, error) {
 	pub := privatePath + ".pub"
 	data, err := os.ReadFile(pub)
@@ -40,8 +44,16 @@ func testboxKeyPath(leaseID string) (string, error) {
 	return filepath.Join(dir, "crabbox", "testboxes", leaseID, "id_ed25519"), nil
 }
 
+func TestboxKeyPath(leaseID string) (string, error) {
+	return testboxKeyPath(leaseID)
+}
+
 func ensureTestboxKey(leaseID string) (string, string, error) {
 	return ensureTestboxKeyWithType(leaseID, "ed25519")
+}
+
+func EnsureTestboxKey(leaseID string) (string, string, error) {
+	return ensureTestboxKey(leaseID)
 }
 
 func ensureTestboxKeyForConfig(cfg Config, leaseID string) (string, string, error) {
@@ -49,6 +61,10 @@ func ensureTestboxKeyForConfig(cfg Config, leaseID string) (string, string, erro
 		return ensureTestboxKeyWithType(leaseID, "rsa")
 	}
 	return ensureTestboxKey(leaseID)
+}
+
+func EnsureTestboxKeyForConfig(cfg Config, leaseID string) (string, string, error) {
+	return ensureTestboxKeyForConfig(cfg, leaseID)
 }
 
 func ensureTestboxKeyWithType(leaseID, keyType string) (string, string, error) {
@@ -114,6 +130,10 @@ func moveStoredTestboxKey(oldLeaseID, newLeaseID string) error {
 	return os.Rename(oldDir, newDir)
 }
 
+func MoveStoredTestboxKey(oldLeaseID, newLeaseID string) error {
+	return moveStoredTestboxKey(oldLeaseID, newLeaseID)
+}
+
 func removeStoredTestboxKey(leaseID string) {
 	keyPath, err := testboxKeyPath(leaseID)
 	if err == nil {
@@ -121,6 +141,14 @@ func removeStoredTestboxKey(leaseID string) {
 	}
 }
 
+func RemoveStoredTestboxKey(leaseID string) {
+	removeStoredTestboxKey(leaseID)
+}
+
 func providerKeyForLease(leaseID string) string {
 	return strings.ReplaceAll("crabbox-"+leaseID, "_", "-")
+}
+
+func ProviderKeyForLease(leaseID string) string {
+	return providerKeyForLease(leaseID)
 }

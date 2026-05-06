@@ -274,7 +274,7 @@ func TestSSHCommandLineRedactsSecretAuthUser(t *testing.T) {
 	if strings.Contains(redacted, target.User) {
 		t.Fatalf("redacted command leaked token: %q", redacted)
 	}
-	if !strings.Contains(redacted, daytonaTokenRedacted+"@ssh.app.daytona.io") {
+	if !strings.Contains(redacted, "<token>@ssh.app.daytona.io") {
 		t.Fatalf("redacted command missing placeholder user: %q", redacted)
 	}
 	full := sshCommandLine(target, false)

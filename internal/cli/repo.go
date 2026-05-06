@@ -79,6 +79,10 @@ func syncExcludes(root string, cfg Config) ([]string, error) {
 	return appendUniqueStrings(excludes, ignore...), nil
 }
 
+func SyncExcludes(root string, cfg Config) ([]string, error) {
+	return syncExcludes(root, cfg)
+}
+
 func readCrabboxIgnore(root string) ([]string, error) {
 	if root == "" {
 		return nil, nil
@@ -114,6 +118,10 @@ func allowedEnv(allow []string) map[string]string {
 		}
 	}
 	return out
+}
+
+func AllowedEnv(allow []string) map[string]string {
+	return allowedEnv(allow)
 }
 
 func envAllowed(name string, allow []string) bool {
@@ -256,6 +264,10 @@ func syncManifest(root string, excludes []string) (SyncManifest, error) {
 	return manifest, nil
 }
 
+func BuildSyncManifest(root string, excludes []string) (SyncManifest, error) {
+	return syncManifest(root, excludes)
+}
+
 func (m SyncManifest) NUL() []byte {
 	var b bytes.Buffer
 	for _, rel := range m.Files {
@@ -347,6 +359,10 @@ func checkSyncPreflight(manifest SyncManifest, cfg Config, force bool, stderr io
 		fmt.Fprintf(stderr, "warning: large sync candidate: %s >= warning threshold %s\n", humanBytes(manifest.Bytes), humanBytes(cfg.Sync.WarnBytes))
 	}
 	return nil
+}
+
+func CheckSyncPreflight(manifest SyncManifest, cfg Config, force bool, stderr io.Writer) error {
+	return checkSyncPreflight(manifest, cfg, force, stderr)
 }
 
 func humanBytes(n int64) string {

@@ -43,7 +43,7 @@ func (a App) ssh(ctx context.Context, args []string) error {
 func sshCommandLine(target SSHTarget, redactSecret bool) string {
 	renderTarget := target
 	if redactSecret {
-		renderTarget.User = daytonaTokenRedacted
+		renderTarget.User = "<token>"
 	}
 	args := append([]string{"ssh"}, sshBaseArgs(renderTarget)...)
 	args = append(args, renderTarget.User+"@"+renderTarget.Host)

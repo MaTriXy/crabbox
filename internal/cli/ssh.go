@@ -36,6 +36,10 @@ func sshTargetFromConfig(cfg Config, host string) SSHTarget {
 	return sshTargetForLease(cfg, host, cfg.SSHUser, cfg.SSHPort)
 }
 
+func SSHTargetFromConfig(cfg Config, host string) SSHTarget {
+	return sshTargetFromConfig(cfg, host)
+}
+
 func sshTargetForLease(cfg Config, host, user, port string) SSHTarget {
 	if user == "" {
 		user = cfg.SSHUser
@@ -58,11 +62,19 @@ func waitForSSH(ctx context.Context, target *SSHTarget, stderr io.Writer) error 
 	return waitForSSHReady(ctx, target, stderr, "bootstrap", 20*time.Minute)
 }
 
+func WaitForSSH(ctx context.Context, target *SSHTarget, stderr io.Writer) error {
+	return waitForSSH(ctx, target, stderr)
+}
+
 func bootstrapWaitTimeout(cfg Config) time.Duration {
 	if cfg.Desktop || cfg.Browser {
 		return 45 * time.Minute
 	}
 	return 20 * time.Minute
+}
+
+func BootstrapWaitTimeout(cfg Config) time.Duration {
+	return bootstrapWaitTimeout(cfg)
 }
 
 func waitForSSHReady(ctx context.Context, target *SSHTarget, stderr io.Writer, phase string, timeout time.Duration) error {
@@ -105,6 +117,10 @@ func waitForSSHReady(ctx context.Context, target *SSHTarget, stderr io.Writer, p
 		fmt.Fprintln(stderr, sshWaitProgressMessage(target, phase, reachablePort, transportPort, time.Since(start), time.Until(deadline)))
 		time.Sleep(10 * time.Second)
 	}
+}
+
+func WaitForSSHReady(ctx context.Context, target *SSHTarget, stderr io.Writer, phase string, timeout time.Duration) error {
+	return waitForSSHReady(ctx, target, stderr, phase, timeout)
 }
 
 func sshWaitProgressMessage(target *SSHTarget, phase, reachablePort, transportPort string, elapsed, remaining time.Duration) string {
@@ -464,6 +480,10 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
+func ShellQuote(s string) string {
+	return shellQuote(s)
+}
+
 func psQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
 }
@@ -533,6 +553,36 @@ func shellScriptFromArgv(command []string) string {
 	return strings.Join(parts, " ")
 }
 
+func ShellScriptFromArgv(command []string) string {
+	return shellScriptFromArgv(command)
+}
+
+func isShellEnvAssignment(word string) bool {
+	if word == "" {
+		return false
+	}
+	idx := strings.IndexByte(word, '=')
+	if idx <= 0 {
+		return false
+	}
+	for i, r := range word[:idx] {
+		if i == 0 {
+			if !((r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || r == '_') {
+				return false
+			}
+			continue
+		}
+		if !((r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+func IsShellEnvAssignment(word string) bool {
+	return isShellEnvAssignment(word)
+}
+
 func isShellControlOperator(word string) bool {
 	switch word {
 	case "&&", "||", ";", "|", ">", ">>", "<", "2>", "2>>":
@@ -576,6 +626,10 @@ func shellWords(words []string) []string {
 		out = append(out, shellQuote(w))
 	}
 	return out
+}
+
+func ShellWords(words []string) []string {
+	return shellWords(words)
 }
 
 func remoteMkdir(workdir string) string {
@@ -812,4 +866,8 @@ func exitCode(err error) int {
 func parseServerID(s string) (int64, bool) {
 	id, err := strconv.ParseInt(s, 10, 64)
 	return id, err == nil
+}
+
+func ParseServerID(s string) (int64, bool) {
+	return parseServerID(s)
 }

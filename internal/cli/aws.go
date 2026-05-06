@@ -33,6 +33,10 @@ func newAWSClient(ctx context.Context, cfg Config) (*AWSClient, error) {
 	return &AWSClient{ec2: ec2.NewFromConfig(awsCfg), region: cfg.AWSRegion}, nil
 }
 
+func NewAWSClient(ctx context.Context, cfg Config) (*AWSClient, error) {
+	return newAWSClient(ctx, cfg)
+}
+
 func (c *AWSClient) SpotPlacementScores(ctx context.Context, cfg Config) ([]types.SpotPlacementScore, error) {
 	regions := cfg.Capacity.Regions
 	if len(regions) == 0 && cfg.AWSRegion != "" {
@@ -283,6 +287,10 @@ func (c *AWSClient) waitForServerIP(ctx context.Context, id string) (Server, err
 		}
 		time.Sleep(5 * time.Second)
 	}
+}
+
+func (c *AWSClient) WaitForServerIP(ctx context.Context, id string) (Server, error) {
+	return c.waitForServerIP(ctx, id)
 }
 
 func (c *AWSClient) GetServer(ctx context.Context, id string) (Server, error) {

@@ -1,4 +1,4 @@
-package cli
+package blacksmith
 
 import (
 	"context"
@@ -7,7 +7,33 @@ import (
 	"io"
 	"strings"
 	"time"
+
+	core "github.com/openclaw/crabbox/internal/cli"
 )
+
+type Config = core.Config
+type ProviderSpec = core.ProviderSpec
+type Runtime = core.Runtime
+type Backend = core.Backend
+type BlacksmithConfig = core.BlacksmithConfig
+type WarmupRequest = core.WarmupRequest
+type RunRequest = core.RunRequest
+type RunResult = core.RunResult
+type ListRequest = core.ListRequest
+type LeaseView = core.LeaseView
+type StatusRequest = core.StatusRequest
+type StatusView = core.StatusView
+type StopRequest = core.StopRequest
+type Server = core.Server
+type Repo = core.Repo
+type ExitError = core.ExitError
+type LocalCommandRequest = core.LocalCommandRequest
+type LocalCommandResult = core.LocalCommandResult
+type CommandRunner = core.CommandRunner
+type timingReport = core.TimingReport
+type timingPhase = core.TimingPhase
+
+const targetLinux = core.TargetLinux
 
 func RegisterBlacksmithProviderFlags(fs *flag.FlagSet, defaults Config) any {
 	return registerBlacksmithFlags(fs, defaults)
@@ -354,4 +380,54 @@ func blacksmithItemToServer(item blacksmithListItem) Server {
 	}
 	server.ServerType.Name = "testbox"
 	return server
+}
+
+type statusView = core.StatusView
+
+func rejectDelegatedSyncOptions(provider string, req RunRequest) error {
+	return core.RejectDelegatedSyncOptions(provider, req)
+}
+
+func writeTimingJSON(w io.Writer, report timingReport) error {
+	return core.WriteTimingJSON(w, report)
+}
+
+func newLeaseID() string {
+	return core.NewLeaseID()
+}
+
+func newLeaseSlug(leaseID string) string {
+	return core.NewLeaseSlug(leaseID)
+}
+
+func claimLeaseForRepoProvider(leaseID, slug, provider, repoRoot string, idleTimeout time.Duration, reclaim bool) error {
+	return core.ClaimLeaseForRepoProvider(leaseID, slug, provider, repoRoot, idleTimeout, reclaim)
+}
+
+func removeLeaseClaim(leaseID string) {
+	core.RemoveLeaseClaim(leaseID)
+}
+
+func ensureTestboxKey(leaseID string) (string, string, error) {
+	return core.EnsureTestboxKey(leaseID)
+}
+
+func moveStoredTestboxKey(oldLeaseID, newLeaseID string) error {
+	return core.MoveStoredTestboxKey(oldLeaseID, newLeaseID)
+}
+
+func removeStoredTestboxKey(leaseID string) {
+	core.RemoveStoredTestboxKey(leaseID)
+}
+
+func testboxKeyPath(leaseID string) (string, error) {
+	return core.TestboxKeyPath(leaseID)
+}
+
+func baseConfig() Config {
+	return core.BaseConfig()
+}
+
+func readLeaseClaim(leaseID string) (core.LeaseClaim, error) {
+	return core.ReadLeaseClaim(leaseID)
 }

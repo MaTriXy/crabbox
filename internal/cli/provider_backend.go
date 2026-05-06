@@ -40,7 +40,7 @@ type DelegatedRunBackend interface {
 	Warmup(ctx context.Context, req WarmupRequest) error
 	Run(ctx context.Context, req RunRequest) (RunResult, error)
 	List(ctx context.Context, req ListRequest) ([]LeaseView, error)
-	Status(ctx context.Context, req StatusRequest) (statusView, error)
+	Status(ctx context.Context, req StatusRequest) (StatusView, error)
 	Stop(ctx context.Context, req StopRequest) error
 }
 
@@ -317,6 +317,10 @@ func providerHelpSSH() string {
 	return "provider: hetzner, aws, ssh, or daytona"
 }
 
+func isBlacksmithProvider(provider string) bool {
+	return provider == "blacksmith-testbox" || provider == "blacksmith"
+}
+
 type providerFlagValues map[string]any
 
 func registerProviderFlags(fs *flag.FlagSet, defaults Config) providerFlagValues {
@@ -434,6 +438,10 @@ func rejectDelegatedSyncOptions(provider string, req RunRequest) error {
 		return exit(2, "%s delegates sync; --force-sync-large is not supported", provider)
 	}
 	return nil
+}
+
+func RejectDelegatedSyncOptions(provider string, req RunRequest) error {
+	return rejectDelegatedSyncOptions(provider, req)
 }
 
 func renderServerList(stdout io.Writer, servers []Server) {

@@ -148,7 +148,7 @@ func leaseStatusStateCanBeReady(lease LeaseTarget, state string) bool {
 	return state != "provisioning"
 }
 
-type statusView struct {
+type StatusView struct {
 	ID               string             `json:"id"`
 	Slug             string             `json:"slug,omitempty"`
 	Provider         string             `json:"provider"`
@@ -175,6 +175,8 @@ type statusView struct {
 	Telemetry        *LeaseTelemetry    `json:"telemetry,omitempty"`
 	TelemetryHistory []*LeaseTelemetry  `json:"telemetryHistory,omitempty"`
 }
+
+type statusView = StatusView
 
 func (a App) leaseStatus(ctx context.Context, cfg Config, id string) (statusView, error) {
 	backend, err := loadBackend(cfg, runtimeForApp(a))
@@ -225,6 +227,20 @@ func idleForString(value string, now time.Time) string {
 		return ""
 	}
 	return now.Sub(touched).Round(time.Second).String()
+}
+
+func IdleForString(value string, now time.Time) string {
+	return idleForString(value, now)
+}
+
+func redactedSSHUser(cfg Config, server Server, target SSHTarget) string {
+	if target.AuthSecret {
+		return "<token>"
+	}
+	if cfg.Provider == "daytona" || server.Provider == "daytona" {
+		return "<token>"
+	}
+	return target.User
 }
 
 func formatSecondsDuration(seconds int) string {

@@ -36,6 +36,10 @@ exit $LASTEXITCODE`)
 	return waitForSSHReady(ctx, target, stderr, "bootstrap", bootstrapWaitTimeout(cfg))
 }
 
+func BootstrapAWSWindowsDesktop(ctx context.Context, cfg Config, target *SSHTarget, publicKey string, stderr io.Writer) error {
+	return bootstrapAWSWindowsDesktop(ctx, cfg, target, publicKey, stderr)
+}
+
 func bootstrapAWSWindowsWSL2(ctx context.Context, cfg Config, target *SSHTarget, bootstrapTarget SSHTarget, publicKey string, stderr io.Writer) error {
 	for attempt := 1; attempt <= 5; attempt++ {
 		if err := waitForSSHReady(ctx, &bootstrapTarget, stderr, "windows openssh", 20*time.Minute); err != nil {

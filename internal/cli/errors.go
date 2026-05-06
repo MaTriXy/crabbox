@@ -18,3 +18,7 @@ func AsExitError(err error, target *ExitError) bool {
 func exit(code int, format string, args ...any) ExitError {
 	return ExitError{Code: code, Message: sprintf(format, args...)}
 }
+
+func Exit(code int, format string, args ...any) ExitError {
+	return exit(code, format, args...)
+}

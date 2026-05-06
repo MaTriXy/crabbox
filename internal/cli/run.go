@@ -684,6 +684,18 @@ func shouldUseShell(command []string) bool {
 	return false
 }
 
+func ShouldUseShell(command []string) bool {
+	return shouldUseShell(command)
+}
+
+func leadingEnvAssignment(command []string) bool {
+	return len(command) > 1 && strings.Contains(command[0], "=") && !strings.HasPrefix(command[0], "-")
+}
+
+func LeadingEnvAssignment(command []string) bool {
+	return leadingEnvAssignment(command)
+}
+
 func validateCoordinatorLeaseCapabilities(cfg Config, lease CoordinatorLease) error {
 	if cfg.Desktop && !lease.Desktop {
 		return exit(5, "coordinator did not provision desktop=true for lease %s; deploy the coordinator with desktop/VNC support", blank(lease.ID, "-"))
@@ -750,11 +762,19 @@ func acquireAttempts(bool) int {
 	return 2
 }
 
+func AcquireAttempts(keep bool) int {
+	return acquireAttempts(keep)
+}
+
 func isBootstrapWaitError(err error) bool {
 	var exitErr ExitError
 	return AsExitError(err, &exitErr) &&
 		exitErr.Code == 5 &&
 		strings.Contains(exitErr.Message, "timed out waiting for SSH")
+}
+
+func IsBootstrapWaitError(err error) bool {
+	return isBootstrapWaitError(err)
 }
 
 func releaseCoordinatorLease(ctx context.Context, coord *CoordinatorClient, leaseID string) error {
@@ -903,6 +923,10 @@ func waitForServerIP(ctx context.Context, client *HetznerClient, id int64) (Serv
 	}
 }
 
+func WaitForServerIP(ctx context.Context, client *HetznerClient, id int64) (Server, error) {
+	return waitForServerIP(ctx, client, id)
+}
+
 func findServerByAlias(servers []Server, id string) (Server, string, error) {
 	if isCanonicalLeaseID(id) {
 		for _, server := range servers {
@@ -935,6 +959,10 @@ func findServerByAlias(servers []Server, id string) (Server, string, error) {
 		}
 	}
 	return Server{}, "", nil
+}
+
+func FindServerByAlias(servers []Server, id string) (Server, string, error) {
+	return findServerByAlias(servers, id)
 }
 
 func (a App) stop(ctx context.Context, args []string) error {
@@ -1047,6 +1075,10 @@ func deleteServer(ctx context.Context, cfg Config, server Server) error {
 		return client.DeleteSSHKey(ctx, keyName)
 	}
 	return nil
+}
+
+func DeleteServer(ctx context.Context, cfg Config, server Server) error {
+	return deleteServer(ctx, cfg, server)
 }
 
 func serverProviderKey(server Server) string {

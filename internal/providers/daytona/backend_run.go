@@ -1,9 +1,10 @@
-package cli
+package daytona
 
 import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path"
@@ -330,14 +331,8 @@ func (b *daytonaLeaseBackend) syncDaytonaToolbox(ctx context.Context, sandbox *s
 	if _, err := archive.Seek(0, 0); err != nil {
 		return nil, fmt.Errorf("daytona rewind archive: %w", err)
 	}
-	if sandbox.ToolboxClient == nil {
-		return nil, fmt.Errorf("daytona toolbox client is not configured")
-	}
-	if _, httpResp, err := sandbox.ToolboxClient.FileSystemAPI.UploadFile(ctx).Path(archivePath).File(archive).Execute(); err != nil {
-		if httpResp != nil {
-			return nil, fmt.Errorf("daytona upload archive: %s: %w", httpResp.Status, err)
-		}
-		return nil, fmt.Errorf("daytona upload archive: %w", err)
+	if err := b.uploadDaytonaArchive(ctx, sandbox.ID, archivePath, archive); err != nil {
+		return nil, err
 	}
 	uploadDuration := time.Since(uploadStarted)
 	extractStarted := time.Now()
@@ -373,7 +368,7 @@ func (b *daytonaLeaseBackend) syncDaytonaToolbox(ctx context.Context, sandbox *s
 	return phases, nil
 }
 
-func createDaytonaSyncArchive(ctx context.Context, repo Repo, manifest SyncManifest, stderr anyWriter) (*os.File, error) {
+func createDaytonaSyncArchive(ctx context.Context, repo Repo, manifest SyncManifest, stderr io.Writer) (*os.File, error) {
 	var input bytes.Buffer
 	input.Write(manifest.NUL())
 	archive, err := os.CreateTemp("", "crabbox-daytona-sync-*.tgz")

@@ -19,6 +19,8 @@ type leaseClaim struct {
 	IdleTimeoutSeconds int    `json:"idleTimeoutSeconds,omitempty"`
 }
 
+type LeaseClaim = leaseClaim
+
 func claimLeaseForRepo(leaseID, slug, repoRoot string, idleTimeout time.Duration, reclaim bool) error {
 	return claimLeaseForRepoProvider(leaseID, slug, "", repoRoot, idleTimeout, reclaim)
 }
@@ -74,6 +76,10 @@ func claimLeaseForRepoProvider(leaseID, slug, provider, repoRoot string, idleTim
 	return nil
 }
 
+func ClaimLeaseForRepoProvider(leaseID, slug, provider, repoRoot string, idleTimeout time.Duration, reclaim bool) error {
+	return claimLeaseForRepoProvider(leaseID, slug, provider, repoRoot, idleTimeout, reclaim)
+}
+
 func resolveLeaseClaim(identifier string) (leaseClaim, bool, error) {
 	if identifier == "" {
 		return leaseClaim{}, false, nil
@@ -111,11 +117,19 @@ func resolveLeaseClaim(identifier string) (leaseClaim, bool, error) {
 	return leaseClaim{}, false, nil
 }
 
+func ResolveLeaseClaim(identifier string) (LeaseClaim, bool, error) {
+	return resolveLeaseClaim(identifier)
+}
+
 func removeLeaseClaim(leaseID string) {
 	path, err := leaseClaimPath(leaseID)
 	if err == nil {
 		_ = os.Remove(path)
 	}
+}
+
+func RemoveLeaseClaim(leaseID string) {
+	removeLeaseClaim(leaseID)
 }
 
 func readLeaseClaim(leaseID string) (leaseClaim, error) {
@@ -135,6 +149,10 @@ func readLeaseClaim(leaseID string) (leaseClaim, error) {
 		return leaseClaim{}, exit(2, "parse claim %s: %v", path, err)
 	}
 	return claim, nil
+}
+
+func ReadLeaseClaim(leaseID string) (LeaseClaim, error) {
+	return readLeaseClaim(leaseID)
 }
 
 func leaseClaimPath(leaseID string) (string, error) {

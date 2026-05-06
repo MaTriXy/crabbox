@@ -1,4 +1,4 @@
-package cli
+package islo
 
 import (
 	"context"
@@ -11,6 +11,31 @@ import (
 	"time"
 
 	gosdk "github.com/islo-labs/go-sdk"
+	core "github.com/openclaw/crabbox/internal/cli"
+)
+
+type Config = core.Config
+type ProviderSpec = core.ProviderSpec
+type Runtime = core.Runtime
+type Backend = core.Backend
+type IsloConfig = core.IsloConfig
+type WarmupRequest = core.WarmupRequest
+type RunRequest = core.RunRequest
+type RunResult = core.RunResult
+type ListRequest = core.ListRequest
+type LeaseView = core.LeaseView
+type StatusRequest = core.StatusRequest
+type StatusView = core.StatusView
+type StopRequest = core.StopRequest
+type Server = core.Server
+type Repo = core.Repo
+type ExitError = core.ExitError
+type timingReport = core.TimingReport
+type timingPhase = core.TimingPhase
+
+const (
+	targetLinux   = core.TargetLinux
+	NetworkPublic = core.NetworkPublic
 )
 
 const (

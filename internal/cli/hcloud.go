@@ -61,6 +61,10 @@ func newHetznerClient() (*HetznerClient, error) {
 	return &HetznerClient{Token: token, Client: &http.Client{Timeout: 60 * time.Second}}, nil
 }
 
+func NewHetznerClient() (*HetznerClient, error) {
+	return newHetznerClient()
+}
+
 func (c *HetznerClient) do(ctx context.Context, method, path string, body any, out any) error {
 	var r io.Reader
 	if body != nil {
@@ -276,4 +280,8 @@ func summarizeJSON(data []byte) string {
 		return s[:500] + "..."
 	}
 	return s
+}
+
+func SummarizeJSON(data []byte) string {
+	return summarizeJSON(data)
 }

@@ -150,6 +150,10 @@ func shouldCleanupServer(server Server, now time.Time) (bool, string) {
 	return true, "expired"
 }
 
+func ShouldCleanupServer(server Server, now time.Time) (bool, string) {
+	return shouldCleanupServer(server, now)
+}
+
 func cleanupExpiry(labels map[string]string) (time.Time, bool) {
 	for _, key := range []string{"expires_at", "ttl"} {
 		value := strings.TrimSpace(labels[key])

@@ -20,6 +20,10 @@
 - Added `provider: daytona` for Daytona sandbox leases using Daytona's SDK/toolbox for sync and command execution, with short-lived SSH access available through `crabbox ssh`.
 - Added `provider: islo` for delegated Islo sandbox runs using the Islo Go SDK.
 
+### Changed
+
+- Refactored built-in provider backend implementations into `internal/providers/<name>` packages while keeping command orchestration and rendering core-owned.
+
 ### Fixed
 
 - Fixed managed Linux desktop/browser leases to preinstall video capture and native addon build helpers, avoiding per-scenario apt installs in browser QA runs.
@@ -41,7 +45,7 @@
 - Fixed managed Linux browser setup so Chrome/Chromium launches skip first-run and default-browser prompts.
 - Fixed managed Linux browser cloud-init setup so Chrome/Chromium policy and wrapper generation cannot break YAML parsing.
 - Fixed Islo delegated runs so shell-mode commands preserve raw shell strings and truncated exec streams fail instead of silently reporting success.
-- Fixed Daytona SDK sync so the tar archive uploads from a temp file instead of buffering the whole archive in memory.
+- Fixed Daytona SDK sync so tar creation and Daytona toolbox upload stream from disk instead of buffering large archives in memory.
 - Fixed WebVNC portal passwords with escaped special characters and kept the bridge alive across viewer resets and transient coordinator EOFs.
 - Fixed managed AWS Windows WSL2 bootstrap by using the current Ubuntu WSL rootfs URL, downloading large rootfs files through `curl.exe`, and retrying empty or partial rootfs downloads instead of reusing a poisoned tarball. Thanks @vincentkoc.
 - Fixed AWS Windows WSL2 mode overrides so they refresh the default instance type to a nested-virtualization-capable family. Thanks @steipete.

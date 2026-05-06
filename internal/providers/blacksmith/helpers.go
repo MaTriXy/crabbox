@@ -1,4 +1,4 @@
-package cli
+package blacksmith
 
 import (
 	"flag"
@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	core "github.com/openclaw/crabbox/internal/cli"
 )
 
 const blacksmithTestboxProvider = "blacksmith-testbox"
@@ -182,17 +184,7 @@ func blacksmithIdleTimeout(cfg Config) time.Duration {
 }
 
 func durationMinutesCeil(duration time.Duration) int {
-	if duration <= 0 {
-		return 1
-	}
-	minutes := int(duration / time.Minute)
-	if duration%time.Minute != 0 {
-		minutes++
-	}
-	if minutes < 1 {
-		return 1
-	}
-	return minutes
+	return core.DurationMinutesCeil(duration)
 }
 
 func parseBlacksmithID(output string) string {
@@ -279,4 +271,32 @@ func isShellEnvAssignment(word string) bool {
 		}
 	}
 	return true
+}
+
+func flagWasSet(fs *flag.FlagSet, name string) bool {
+	return core.FlagWasSet(fs, name)
+}
+
+func exit(code int, format string, args ...any) core.ExitError {
+	return core.Exit(code, format, args...)
+}
+
+func blank(value, fallback string) string {
+	return core.Blank(value, fallback)
+}
+
+func resolveLeaseClaim(identifier string) (core.LeaseClaim, bool, error) {
+	return core.ResolveLeaseClaim(identifier)
+}
+
+func shouldUseShell(command []string) bool {
+	return core.ShouldUseShell(command)
+}
+
+func shellScriptFromArgv(command []string) string {
+	return core.ShellScriptFromArgv(command)
+}
+
+func shellQuote(s string) string {
+	return core.ShellQuote(s)
 }

@@ -17,6 +17,12 @@ const (
 	defaultWindowsWorkRoot = `C:\crabbox`
 )
 
+const (
+	TargetLinux   = targetLinux
+	TargetMacOS   = targetMacOS
+	TargetWindows = targetWindows
+)
+
 func normalizeTargetConfig(cfg *Config) {
 	cfg.TargetOS = normalizeTargetOS(cfg.TargetOS)
 	cfg.WindowsMode = normalizeWindowsMode(cfg.WindowsMode)
@@ -181,6 +187,10 @@ func remoteJoin(cfg Config, parts ...string) string {
 		return windowsPathJoin(values...)
 	}
 	return path.Join(values...)
+}
+
+func RemoteJoin(cfg Config, parts ...string) string {
+	return remoteJoin(cfg, parts...)
 }
 
 func windowsPathJoin(parts ...string) string {
