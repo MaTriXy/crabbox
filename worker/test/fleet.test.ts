@@ -409,7 +409,17 @@ describe("fleet lease identity and idle", () => {
           "x-crabbox-owner": "peter@example.com",
           "x-crabbox-org": "openclaw",
         },
-        body: { idleTimeoutSeconds: 2400 },
+        body: {
+          idleTimeoutSeconds: 2400,
+          telemetry: {
+            capturedAt: "2026-05-05T01:02:03Z",
+            source: "ssh-linux",
+            load1: 0.42,
+            memoryUsedBytes: 1024,
+            memoryTotalBytes: 2048,
+            memoryPercent: 50,
+          },
+        },
       }),
     );
     expect(heartbeat.status).toBe(200);
@@ -417,7 +427,91 @@ describe("fleet lease identity and idle", () => {
     expect(lease.id).toBe("cbx_000000000001");
     expect(lease.slug).toBe("blue-lobster");
     expect(lease.idleTimeoutSeconds).toBe(2400);
+    expect(lease.telemetry).toMatchObject({
+      capturedAt: "2026-05-05T01:02:03.000Z",
+      source: "ssh-linux",
+      load1: 0.42,
+      memoryUsedBytes: 1024,
+      memoryTotalBytes: 2048,
+      memoryPercent: 50,
+    });
+    expect(lease.telemetryHistory).toHaveLength(1);
+    expect(lease.telemetryHistory?.[0]).toMatchObject({ load1: 0.42, memoryPercent: 50 });
     expect(Date.parse(lease.expiresAt)).toBeGreaterThan(expiresAt.getTime());
+
+    const secondHeartbeat = await fleet.fetch(
+      request("POST", "/v1/leases/cbx_000000000001/heartbeat", {
+        headers: {
+          "x-crabbox-owner": "peter@example.com",
+          "x-crabbox-org": "openclaw",
+        },
+        body: {
+          telemetry: {
+            capturedAt: "2026-05-05T01:03:03Z",
+            source: "ssh-linux",
+            load1: 0.84,
+            memoryPercent: 55,
+          },
+        },
+      }),
+    );
+    expect(secondHeartbeat.status).toBe(200);
+    const second = (await secondHeartbeat.json()) as { lease: LeaseRecord };
+    expect(second.lease.telemetry).toMatchObject({
+      capturedAt: "2026-05-05T01:03:03.000Z",
+      load1: 0.84,
+      memoryPercent: 55,
+    });
+    expect(second.lease.telemetryHistory?.map((sample) => sample.load1)).toEqual([0.42, 0.84]);
+    expect(second.lease.telemetryHistory?.map((sample) => sample.capturedAt)).toEqual([
+      "2026-05-05T01:02:03.000Z",
+      "2026-05-05T01:03:03.000Z",
+    ]);
+  });
+
+  it("keeps lease telemetry history bounded to the latest samples", async () => {
+    const storage = new MemoryStorage();
+    const fleet = testFleet(storage);
+    storage.seed(
+      "lease:cbx_000000000001",
+      testLease({
+        id: "cbx_000000000001",
+        slug: "blue-lobster",
+        owner: "peter@example.com",
+        org: "openclaw",
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        telemetryHistory: Array.from({ length: 60 }, (_, index) => ({
+          capturedAt: new Date(Date.UTC(2026, 4, 5, 1, index, 0)).toISOString(),
+          source: "ssh-linux",
+          load1: index,
+        })),
+      }),
+    );
+
+    const heartbeat = await fleet.fetch(
+      request("POST", "/v1/leases/blue-lobster/heartbeat", {
+        headers: {
+          "x-crabbox-owner": "peter@example.com",
+          "x-crabbox-org": "openclaw",
+        },
+        body: {
+          telemetry: {
+            capturedAt: "2026-05-05T02:00:00Z",
+            source: "ssh-linux",
+            load1: 61,
+          },
+        },
+      }),
+    );
+
+    expect(heartbeat.status).toBe(200);
+    const { lease } = (await heartbeat.json()) as { lease: LeaseRecord };
+    expect(lease.telemetryHistory).toHaveLength(60);
+    expect(lease.telemetryHistory?.[0]?.capturedAt).toBe("2026-05-05T01:01:00.000Z");
+    expect(lease.telemetryHistory?.at(-1)).toMatchObject({
+      capturedAt: "2026-05-05T02:00:00.000Z",
+      load1: 61,
+    });
   });
 
   it("hides exact lease IDs and lists from other non-admin users", async () => {
@@ -476,6 +570,20 @@ describe("fleet lease identity and idle", () => {
         org: "openclaw",
         desktop: true,
         code: true,
+        telemetry: {
+          capturedAt: new Date(Date.now() - 15_000).toISOString(),
+          source: "ssh-linux",
+          load1: 0.42,
+          load5: 0.24,
+          load15: 0.12,
+          memoryUsedBytes: 1024,
+          memoryTotalBytes: 2048,
+          memoryPercent: 50,
+          diskUsedBytes: 1024 * 1024 * 1024,
+          diskTotalBytes: 4 * 1024 * 1024 * 1024,
+          diskPercent: 25,
+          uptimeSeconds: 3600,
+        },
         expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       }),
     );
@@ -489,6 +597,44 @@ describe("fleet lease identity and idle", () => {
         desktop: true,
       }),
     );
+    storage.seed(
+      "lease:cbx_000000000003",
+      testLease({
+        id: "cbx_000000000003",
+        slug: "old-clam",
+        owner: "peter@example.com",
+        org: "openclaw",
+        desktop: true,
+        code: true,
+        state: "released",
+        releasedAt: "2026-05-01T00:20:00.000Z",
+        endedAt: "2026-05-01T00:20:00.000Z",
+      }),
+    );
+    storage.seed(
+      "lease:cbx_000000000004",
+      testLease({
+        id: "cbx_000000000004",
+        slug: "silver-window",
+        owner: "peter@example.com",
+        org: "openclaw",
+        provider: "aws",
+        target: "windows",
+        windowsMode: "normal",
+      }),
+    );
+    storage.seed(
+      "lease:cbx_000000000005",
+      testLease({
+        id: "cbx_000000000005",
+        slug: "wsl-window",
+        owner: "peter@example.com",
+        org: "openclaw",
+        provider: "aws",
+        target: "windows",
+        windowsMode: "wsl2",
+      }),
+    );
 
     const response = await fleet.fetch(
       request("GET", "/portal", {
@@ -500,11 +646,132 @@ describe("fleet lease identity and idle", () => {
     );
     expect(response.status).toBe(200);
     const body = await response.text();
+    expect(body).toContain('class="portal-shell"');
+    expect(body).toContain("table-scroll");
+    expect(body).toContain(".lease-table th:nth-child(1)");
+    expect(body).toContain(
+      'data-filter-buttons="active:active,ended:ended,aws:aws,hetzner:hetzner,linux:linux,macos:macos,windows:windows,all:all"',
+    );
+    expect(body).toContain('data-filter-default="active"');
+    expect(body).toContain('data-provider="hetzner"');
+    expect(body).toContain('data-target="linux"');
+    expect(body).toContain('data-target="windows"');
+    expect(body).toContain("<span>win</span>");
+    expect(body).toContain("<span>win (wsl2)</span>");
+    expect(body).toContain('data-filter-tags="active mine hetzner linux"');
+    expect(body).toContain('class="access-cell"');
+    expect(body).toContain('title="server"');
+    expect(body).toContain('data-access="vscode"');
+    expect(body).toContain('data-access="vnc"');
+    expect(body).toContain("data-sort=");
+    expect(body).toContain("<time datetime=");
+    expect(body).not.toContain("windows / normal");
     expect(body).toContain("blue-lobster");
+    expect(body).toContain("old-clam");
+    expect(body).toContain("released");
     expect(body).toContain("/portal/leases/cbx_000000000001");
     expect(body).toContain("/portal/leases/cbx_000000000001/vnc");
     expect(body).toContain("/portal/leases/cbx_000000000001/code/");
     expect(body).not.toContain("amber-krill");
+  });
+
+  it("shows non-owned runner leases only in the admin portal", async () => {
+    const storage = new MemoryStorage();
+    const fleet = testFleet(storage);
+    storage.seed(
+      "lease:cbx_000000000001",
+      testLease({
+        id: "cbx_000000000001",
+        slug: "blue-lobster",
+        owner: "peter@example.com",
+        org: "openclaw",
+      }),
+    );
+    storage.seed(
+      "lease:cbx_000000000002",
+      testLease({
+        id: "cbx_000000000002",
+        slug: "testbox-runner",
+        owner: "blacksmith",
+        org: "openclaw",
+        provider: "aws",
+        class: "standard",
+      }),
+    );
+
+    const userResponse = await fleet.fetch(
+      request("GET", "/portal", {
+        headers: {
+          "x-crabbox-owner": "peter@example.com",
+          "x-crabbox-org": "openclaw",
+        },
+      }),
+    );
+    const userBody = await userResponse.text();
+    expect(userBody).toContain("blue-lobster");
+    expect(userBody).not.toContain("testbox-runner");
+    expect(userBody).not.toContain("system:system");
+
+    const adminResponse = await fleet.fetch(
+      request("GET", "/portal", {
+        headers: {
+          "x-crabbox-admin": "true",
+          "x-crabbox-owner": "peter@example.com",
+          "x-crabbox-org": "openclaw",
+        },
+      }),
+    );
+    expect(adminResponse.status).toBe(200);
+    const adminBody = await adminResponse.text();
+    expect(adminBody).toContain("blue-lobster");
+    expect(adminBody).toContain("testbox-runner");
+    expect(adminBody).toContain("1 system");
+    expect(adminBody).toContain("mine:mine,system:system");
+    expect(adminBody).toContain('data-filter-tags="active mine hetzner linux"');
+    expect(adminBody).toContain('data-filter-tags="active system aws linux"');
+    expect(adminBody).toContain("cbx_000000000002 · blacksmith");
+
+    const detail = await fleet.fetch(
+      request("GET", "/portal/leases/cbx_000000000002", {
+        headers: {
+          "x-crabbox-admin": "true",
+          "x-crabbox-owner": "peter@example.com",
+          "x-crabbox-org": "openclaw",
+        },
+      }),
+    );
+    expect(detail.status).toBe(200);
+  });
+
+  it("defaults the portal lease table to all leases when none are active", async () => {
+    const storage = new MemoryStorage();
+    const fleet = testFleet(storage);
+    storage.seed(
+      "lease:cbx_000000000003",
+      testLease({
+        id: "cbx_000000000003",
+        slug: "old-clam",
+        owner: "peter@example.com",
+        org: "openclaw",
+        state: "expired",
+        endedAt: "2026-05-01T00:20:00.000Z",
+      }),
+    );
+
+    const response = await fleet.fetch(
+      request("GET", "/portal", {
+        headers: {
+          "x-crabbox-owner": "peter@example.com",
+          "x-crabbox-org": "openclaw",
+        },
+      }),
+    );
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain('data-filter-default="all"');
+    expect(body).toContain("old-clam");
+    expect(body).toContain("expired");
+    expect(body).not.toContain("no leases visible");
   });
 
   it("renders lease detail pages with run logs and stop controls", async () => {
@@ -523,6 +790,36 @@ describe("fleet lease identity and idle", () => {
         org: "openclaw",
         desktop: true,
         code: true,
+        telemetry: {
+          capturedAt: new Date(Date.now() - 15_000).toISOString(),
+          source: "ssh-linux",
+          load1: 0.42,
+          load5: 0.24,
+          load15: 0.12,
+          memoryUsedBytes: 1024,
+          memoryTotalBytes: 2048,
+          memoryPercent: 50,
+          diskUsedBytes: 1024 * 1024 * 1024,
+          diskTotalBytes: 4 * 1024 * 1024 * 1024,
+          diskPercent: 25,
+          uptimeSeconds: 3600,
+        },
+        telemetryHistory: [
+          {
+            capturedAt: new Date(Date.now() - 45_000).toISOString(),
+            source: "ssh-linux",
+            load1: 0.22,
+            memoryPercent: 42,
+            diskPercent: 24,
+          },
+          {
+            capturedAt: new Date(Date.now() - 30_000).toISOString(),
+            source: "ssh-linux",
+            load1: 0.32,
+            memoryPercent: 47,
+            diskPercent: 25,
+          },
+        ],
         expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       }),
     );
@@ -539,6 +836,50 @@ describe("fleet lease identity and idle", () => {
         exitCode: 1,
         durationMs: 1234,
         logBytes: 11,
+        telemetry: {
+          start: {
+            capturedAt: "2026-05-01T00:00:00.000Z",
+            source: "ssh-linux",
+            load1: 0.12,
+            memoryUsedBytes: 1024,
+            memoryTotalBytes: 2048,
+            memoryPercent: 50,
+            diskUsedBytes: 1024 * 1024,
+            diskTotalBytes: 4 * 1024 * 1024,
+            diskPercent: 25,
+          },
+          end: {
+            capturedAt: "2026-05-01T00:00:02.000Z",
+            source: "ssh-linux",
+            load1: 0.42,
+            load5: 0.24,
+            load15: 0.12,
+            memoryUsedBytes: 1536,
+            memoryTotalBytes: 2048,
+            memoryPercent: 75,
+            diskUsedBytes: 2 * 1024 * 1024,
+            diskTotalBytes: 4 * 1024 * 1024,
+            diskPercent: 50,
+          },
+        },
+        results: {
+          format: "junit",
+          files: ["junit.xml"],
+          suites: 1,
+          tests: 2,
+          failures: 1,
+          errors: 0,
+          skipped: 0,
+          timeSeconds: 0.42,
+          failed: [
+            {
+              suite: "portal",
+              name: "renders detail",
+              message: "expected detail page",
+              kind: "failure",
+            },
+          ],
+        },
       }),
     );
     storage.seed(
@@ -568,6 +909,29 @@ describe("fleet lease identity and idle", () => {
       "crabbox webvnc --provider hetzner --target linux --id blue-lobster --open",
     );
     expect(body).toContain("crabbox code --id blue-lobster --open");
+    expect(body).toContain("data-copy-command");
+    expect(body).toContain('querySelector("code")');
+    expect(body).toContain('class="portal-shell lease-shell"');
+    expect(body).toContain('data-search-placeholder="search runs"');
+    expect(body).toContain(
+      'data-filter-buttons="succeeded:succeeded,failed:failed,running:running,all:all"',
+    );
+    expect(body).not.toContain("<th>phase</th>");
+    expect(body).not.toContain("<th>log</th>");
+    expect(body).toContain('title="2026-05-01T00:00:00Z"');
+    expect(body).toContain('data-provider="hetzner"');
+    expect(body).toContain('data-target="linux"');
+    expect(body).toContain("<dt>load</dt><dd>0.42 / 0.24 / 0.12</dd>");
+    expect(body).toContain("<dt>memory</dt><dd>1.0 KiB / 2.0 KiB (50%)</dd>");
+    expect(body).toContain("<dt>disk</dt><dd>1.0 GiB / 4.0 GiB (25%)</dd>");
+    expect(body).toContain("<dt>uptime</dt><dd>1h</dd>");
+    expect(body).toContain("box telemetry");
+    expect(body).toContain('class="telemetry-chart"');
+    expect(body).toContain("<span>0.42</span>");
+    expect(body).toContain("<span>50%</span>");
+    expect(body).toContain("load 0.42 · mem 75% · +512 B");
+    expect(body).toContain("table-search");
+    expect(body).toContain("/portal/runs/run_000000000001");
     expect(body).toContain("/portal/runs/run_000000000001/logs");
     expect(body).toContain("/portal/runs/run_000000000001/events");
     expect(body).toContain("/portal/leases/cbx_000000000001/release");
@@ -579,6 +943,29 @@ describe("fleet lease identity and idle", () => {
     expect(logs.status).toBe(200);
     expect(logs.headers.get("content-type")).toBe("text/plain; charset=utf-8");
     expect(await logs.text()).toBe("portal log\n");
+
+    const runPage = await fleet.fetch(request("GET", "/portal/runs/run_000000000001", { headers }));
+    expect(runPage.status).toBe(200);
+    expect(runPage.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    const runBody = await runPage.text();
+    expect(runBody).toContain('class="portal-shell run-shell"');
+    expect(runBody).toContain("run_000000000001");
+    expect(runBody).toContain("go test ./...");
+    expect(runBody).toContain("data-copy-command");
+    expect(runBody).toContain("portal log");
+    expect(runBody).toContain('data-copy-target="#run-log-tail"');
+    expect(runBody).toContain('data-search-placeholder="search events"');
+    expect(runBody).toContain(
+      'data-filter-buttons="run:run,command:command,sync:sync,stdout:stdout,stderr:stderr,all:all"',
+    );
+    expect(runBody).toContain('data-filter-tags="command failed"');
+    expect(runBody).toContain("<dt>box load</dt><dd>0.42 / 0.24 / 0.12</dd>");
+    expect(runBody).toContain("<dt>box memory</dt><dd>1.5 KiB / 2.0 KiB (75%)</dd>");
+    expect(runBody).toContain("<dt>memory delta</dt><dd>+512 B</dd>");
+    expect(runBody).toContain("table-search");
+    expect(runBody).toContain("renders detail");
+    expect(runBody).toContain("/portal/leases/cbx_000000000001");
+    expect(runBody).toContain("/portal/runs/run_000000000001/logs");
 
     const events = await fleet.fetch(
       request("GET", "/portal/runs/run_000000000001/events", { headers }),
@@ -635,6 +1022,11 @@ describe("fleet lease identity and idle", () => {
     expect(page.status).toBe(200);
     const pageBody = await page.text();
     expect(pageBody).toContain("crabbox code --id blue-lobster --open");
+    expect(pageBody).toContain('class="vnc-page code-wait-page"');
+    expect(pageBody).toContain('id="code-status"');
+    expect(pageBody).toContain('id="code-copy"');
+    expect(pageBody).toContain("/portal/leases/cbx_000000000001/code/health");
+    expect(pageBody).toContain("window.location.reload()");
 
     const health = await fleet.fetch(
       request("GET", "/portal/leases/blue-lobster/code/health", { headers }),
@@ -744,6 +1136,9 @@ describe("fleet lease identity and idle", () => {
     expect(pageBody).toContain("function scheduleRetry");
     expect(pageBody).toContain("/portal/leases/cbx_000000000001/vnc/status");
     expect(pageBody).toContain("vnc-copy");
+    expect(pageBody).toContain("position:sticky");
+    expect(pageBody).toContain('data-provider="hetzner"');
+    expect(pageBody).toContain('data-target="linux"');
     expect(pageBody).toContain("no bridge connected; run the bridge command below");
     expect(pageBody).toContain("another viewer is connected; close stale WebVNC tabs");
     expect(pageBody).toContain('fragment.get("username")');
@@ -1048,6 +1443,24 @@ describe("fleet run history", () => {
           syncMs: 12,
           commandMs: 34,
           log: "ok\n",
+          telemetry: {
+            start: {
+              capturedAt: "2026-05-01T00:00:00Z",
+              source: "ssh-linux",
+              load1: 0.1,
+              memoryUsedBytes: 1024,
+              memoryTotalBytes: 2048,
+              memoryPercent: 50,
+            },
+            end: {
+              capturedAt: "2026-05-01T00:00:02Z",
+              source: "ssh-linux",
+              load1: 0.2,
+              memoryUsedBytes: 1536,
+              memoryTotalBytes: 2048,
+              memoryPercent: 75,
+            },
+          },
           results: {
             format: "junit",
             files: ["junit.xml"],
@@ -1064,11 +1477,17 @@ describe("fleet run history", () => {
     );
     expect(finish.status).toBe(200);
     const finished = (await finish.json()) as {
-      run: { state: string; logBytes: number; results?: { tests: number } };
+      run: {
+        state: string;
+        logBytes: number;
+        results?: { tests: number };
+        telemetry?: { end?: { load1?: number; memoryPercent?: number } };
+      };
     };
     expect(finished.run.state).toBe("succeeded");
     expect(finished.run.logBytes).toBe(3);
     expect(finished.run.results?.tests).toBe(2);
+    expect(finished.run.telemetry?.end).toMatchObject({ load1: 0.2, memoryPercent: 75 });
 
     const listed = await fleet.fetch(
       request("GET", "/v1/runs?leaseID=cbx_000000000001", { headers: ownerHeaders }),

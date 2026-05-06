@@ -42,7 +42,7 @@ leased machine
 8. CLI seeds remote Git when possible, compares sync fingerprints, and syncs changed files with `rsync --delete`.
 9. CLI runs sync sanity and configured base-ref hydration.
 10. CLI runs the command over SSH and streams stdout/stderr.
-11. CLI heartbeats while the command runs; heartbeats touch `lastTouchedAt` and recompute idle expiry up to the TTL cap.
+11. CLI heartbeats while the command runs; heartbeats touch `lastTouchedAt`, recompute idle expiry up to the TTL cap, and attach a best-effort latest Linux telemetry snapshot when SSH is reachable.
 12. CLI releases the lease when done.
 13. Durable Object alarm cleans up stale leases and expired machines.
 
@@ -72,6 +72,8 @@ POST /v1/admin/leases/{id-or-slug}/delete
 
 Admin endpoints and `GET /v1/pool` require the separate admin token. GitHub browser-login tokens are user tokens for normal lease operations and are minted only after allowed GitHub org membership is verified. User-token list, exact-ID lookup, slug lookup, heartbeat, release, run history, logs, and usage are scoped to the token owner/org.
 
+Heartbeat bodies may include a `telemetry` object. The coordinator stores the latest sanitized snapshot on the lease record and retains a bounded `telemetryHistory` ring of the latest 60 samples for portal trend charts. Current CLI snapshots include Linux load average, memory use, root-disk use, uptime, source, and capture timestamp. Completed run records may also store sanitized start/end telemetry snapshots so history can show resource deltas without keeping an unbounded time series.
+
 ## Durable Object State
 
 Use one fleet Durable Object for MVP. It owns all atomic scheduling decisions.
@@ -79,8 +81,8 @@ Use one fleet Durable Object for MVP. It owns all atomic scheduling decisions.
 Core stored records:
 
 ```sql
-leases(id, slug, provider, cloud_id, region, owner, org, profile, class, server_type, server_id, server_name, provider_key, host, ssh_user, ssh_port, work_root, keep, ttl_seconds, idle_timeout_seconds, estimated_hourly_usd, max_estimated_usd, state, created_at, updated_at, last_touched_at, expires_at, released_at, ended_at)
-runs(id, lease_id, slug, owner, org, provider, class, server_type, command_json, state, exit_code, sync_ms, command_ms, duration_ms, log_bytes, log_truncated, results_json, started_at, ended_at)
+leases(id, slug, provider, cloud_id, region, owner, org, profile, class, server_type, server_id, server_name, provider_key, host, ssh_user, ssh_port, work_root, keep, ttl_seconds, idle_timeout_seconds, estimated_hourly_usd, max_estimated_usd, state, telemetry_json, telemetry_history_json, created_at, updated_at, last_touched_at, expires_at, released_at, ended_at)
+runs(id, lease_id, slug, owner, org, provider, class, server_type, command_json, state, exit_code, sync_ms, command_ms, duration_ms, log_bytes, log_truncated, results_json, telemetry_json, started_at, ended_at)
 runlog(run_id, bounded_stdout_stderr_capture)
 ```
 

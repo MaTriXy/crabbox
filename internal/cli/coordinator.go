@@ -57,6 +57,8 @@ type CoordinatorLease struct {
 	UpdatedAt            string                `json:"updatedAt,omitempty"`
 	LastTouchedAt        string                `json:"lastTouchedAt,omitempty"`
 	ExpiresAt            string                `json:"expiresAt"`
+	Telemetry            *LeaseTelemetry       `json:"telemetry,omitempty"`
+	TelemetryHistory     []*LeaseTelemetry     `json:"telemetryHistory,omitempty"`
 }
 
 type ProvisioningAttempt struct {
@@ -127,30 +129,31 @@ type CoordinatorRunResponse struct {
 }
 
 type CoordinatorRun struct {
-	ID           string             `json:"id"`
-	LeaseID      string             `json:"leaseID"`
-	Slug         string             `json:"slug,omitempty"`
-	Owner        string             `json:"owner"`
-	Org          string             `json:"org"`
-	Provider     string             `json:"provider"`
-	TargetOS     string             `json:"target,omitempty"`
-	WindowsMode  string             `json:"windowsMode,omitempty"`
-	Class        string             `json:"class"`
-	ServerType   string             `json:"serverType"`
-	Command      []string           `json:"command"`
-	State        string             `json:"state"`
-	Phase        string             `json:"phase,omitempty"`
-	ExitCode     *int               `json:"exitCode,omitempty"`
-	SyncMs       int64              `json:"syncMs,omitempty"`
-	CommandMs    int64              `json:"commandMs,omitempty"`
-	DurationMs   int64              `json:"durationMs,omitempty"`
-	LogBytes     int64              `json:"logBytes"`
-	LogTruncated bool               `json:"logTruncated"`
-	Results      *TestResultSummary `json:"results,omitempty"`
-	StartedAt    string             `json:"startedAt"`
-	LastEventAt  string             `json:"lastEventAt,omitempty"`
-	EventCount   int                `json:"eventCount,omitempty"`
-	EndedAt      string             `json:"endedAt,omitempty"`
+	ID           string               `json:"id"`
+	LeaseID      string               `json:"leaseID"`
+	Slug         string               `json:"slug,omitempty"`
+	Owner        string               `json:"owner"`
+	Org          string               `json:"org"`
+	Provider     string               `json:"provider"`
+	TargetOS     string               `json:"target,omitempty"`
+	WindowsMode  string               `json:"windowsMode,omitempty"`
+	Class        string               `json:"class"`
+	ServerType   string               `json:"serverType"`
+	Command      []string             `json:"command"`
+	State        string               `json:"state"`
+	Phase        string               `json:"phase,omitempty"`
+	ExitCode     *int                 `json:"exitCode,omitempty"`
+	SyncMs       int64                `json:"syncMs,omitempty"`
+	CommandMs    int64                `json:"commandMs,omitempty"`
+	DurationMs   int64                `json:"durationMs,omitempty"`
+	LogBytes     int64                `json:"logBytes"`
+	LogTruncated bool                 `json:"logTruncated"`
+	Results      *TestResultSummary   `json:"results,omitempty"`
+	Telemetry    *RunTelemetrySummary `json:"telemetry,omitempty"`
+	StartedAt    string               `json:"startedAt"`
+	LastEventAt  string               `json:"lastEventAt,omitempty"`
+	EventCount   int                  `json:"eventCount,omitempty"`
+	EndedAt      string               `json:"endedAt,omitempty"`
 }
 
 type CoordinatorRunEventsResponse struct {
@@ -378,25 +381,36 @@ func (c *CoordinatorClient) ReleaseLease(ctx context.Context, id string, deleteS
 }
 
 func (c *CoordinatorClient) TouchLease(ctx context.Context, id string) (CoordinatorLease, error) {
-	return c.heartbeatLease(ctx, id, nil)
+	return c.heartbeatLease(ctx, id, nil, nil)
+}
+
+func (c *CoordinatorClient) TouchLeaseWithTelemetry(ctx context.Context, id string, telemetry *LeaseTelemetry) (CoordinatorLease, error) {
+	return c.heartbeatLease(ctx, id, nil, telemetry)
 }
 
 func (c *CoordinatorClient) UpdateLeaseIdleTimeout(ctx context.Context, id string, idleTimeout time.Duration) (CoordinatorLease, error) {
-	return c.heartbeatLease(ctx, id, &idleTimeout)
+	return c.heartbeatLease(ctx, id, &idleTimeout, nil)
 }
 
-func (c *CoordinatorClient) heartbeatLease(ctx context.Context, id string, idleTimeout *time.Duration) (CoordinatorLease, error) {
+func (c *CoordinatorClient) UpdateLeaseIdleTimeoutWithTelemetry(ctx context.Context, id string, idleTimeout time.Duration, telemetry *LeaseTelemetry) (CoordinatorLease, error) {
+	return c.heartbeatLease(ctx, id, &idleTimeout, telemetry)
+}
+
+func (c *CoordinatorClient) heartbeatLease(ctx context.Context, id string, idleTimeout *time.Duration, telemetry *LeaseTelemetry) (CoordinatorLease, error) {
 	var res struct {
 		Lease CoordinatorLease `json:"lease"`
 	}
-	err := c.do(ctx, http.MethodPost, "/v1/leases/"+url.PathEscape(id)+"/heartbeat", heartbeatRequestBody(idleTimeout), &res)
+	err := c.do(ctx, http.MethodPost, "/v1/leases/"+url.PathEscape(id)+"/heartbeat", heartbeatRequestBody(idleTimeout, telemetry), &res)
 	return res.Lease, err
 }
 
-func heartbeatRequestBody(idleTimeout *time.Duration) map[string]any {
+func heartbeatRequestBody(idleTimeout *time.Duration, telemetry *LeaseTelemetry) map[string]any {
 	body := map[string]any{}
 	if idleTimeout != nil && *idleTimeout > 0 {
 		body["idleTimeoutSeconds"] = int(idleTimeout.Seconds())
+	}
+	if telemetry != nil {
+		body["telemetry"] = telemetry
 	}
 	return body
 }
@@ -550,10 +564,10 @@ func (c *CoordinatorClient) CreateRun(ctx context.Context, leaseID string, cfg C
 	return res.Run, err
 }
 
-func (c *CoordinatorClient) FinishRun(ctx context.Context, runID string, exitCode int, sync, command time.Duration, log string, truncated bool, results *TestResultSummary) (CoordinatorRun, error) {
+func (c *CoordinatorClient) FinishRun(ctx context.Context, runID string, exitCode int, sync, command time.Duration, log string, truncated bool, results *TestResultSummary, telemetry *RunTelemetrySummary) (CoordinatorRun, error) {
 	var res CoordinatorRunResponse
 	logChunks := splitRunLogChunks(log)
-	err := c.do(ctx, http.MethodPost, "/v1/runs/"+url.PathEscape(runID)+"/finish", map[string]any{
+	body := map[string]any{
 		"exitCode":     exitCode,
 		"syncMs":       sync.Milliseconds(),
 		"commandMs":    command.Milliseconds(),
@@ -561,7 +575,11 @@ func (c *CoordinatorClient) FinishRun(ctx context.Context, runID string, exitCod
 		"logChunks":    logChunks,
 		"logTruncated": truncated,
 		"results":      results,
-	}, &res)
+	}
+	if telemetry != nil {
+		body["telemetry"] = telemetry
+	}
+	err := c.do(ctx, http.MethodPost, "/v1/runs/"+url.PathEscape(runID)+"/finish", body, &res)
 	return res.Run, err
 }
 

@@ -192,7 +192,7 @@ func TestRunRecorderSuppressesMissingEventEndpoint(t *testing.T) {
 	}
 	stdout.Flush()
 	rec.waitForOutputEvents(time.Second)
-	rec.Finish(0, time.Second, time.Second, "ok", false, nil)
+	rec.Finish(context.Background(), SSHTarget{TargetOS: targetWindows}, 0, time.Second, time.Second, "ok", false, nil)
 
 	if eventRequests != 1 {
 		t.Fatalf("event requests=%d, want 1", eventRequests)

@@ -130,7 +130,8 @@ func TestCoordinatorFinishRunSendsLogChunks(t *testing.T) {
 	defer server.Close()
 	client := CoordinatorClient{BaseURL: server.URL, Client: server.Client()}
 	log := strings.Repeat("x", coordinatorRunLogChunkBytes) + "tail"
-	if _, err := client.FinishRun(context.Background(), "run_123", 1, time.Second, 2*time.Second, log, false, nil); err != nil {
+	load := 0.42
+	if _, err := client.FinishRun(context.Background(), "run_123", 1, time.Second, 2*time.Second, log, false, nil, &RunTelemetrySummary{End: &LeaseTelemetry{Load1: &load}}); err != nil {
 		t.Fatal(err)
 	}
 	chunks, ok := finishBody["logChunks"].([]any)
@@ -148,6 +149,9 @@ func TestCoordinatorFinishRunSendsLogChunks(t *testing.T) {
 	}
 	if got := finishBody["log"].(string); len(got) != runLogFallbackPreviewBytes || !strings.HasSuffix(got, "tail") {
 		t.Fatalf("fallback log length=%d suffix=%q", len(got), got[len(got)-4:])
+	}
+	if got := finishBody["telemetry"].(map[string]any)["end"].(map[string]any)["load1"]; got != 0.42 {
+		t.Fatalf("telemetry=%#v", finishBody["telemetry"])
 	}
 }
 
@@ -222,13 +226,18 @@ func TestCoordinatorHTTPAddsAccessHeaders(t *testing.T) {
 }
 
 func TestHeartbeatRequestBodyOmitsIdleTimeoutForTouch(t *testing.T) {
-	if body := heartbeatRequestBody(nil); len(body) != 0 {
+	if body := heartbeatRequestBody(nil, nil); len(body) != 0 {
 		t.Fatalf("touch heartbeat body=%v, want empty", body)
 	}
 	idleTimeout := 45 * time.Minute
-	body := heartbeatRequestBody(&idleTimeout)
+	body := heartbeatRequestBody(&idleTimeout, nil)
 	if body["idleTimeoutSeconds"] != 2700 {
 		t.Fatalf("heartbeat body=%v, want idle timeout seconds", body)
+	}
+	load := 0.42
+	body = heartbeatRequestBody(nil, &LeaseTelemetry{Load1: &load})
+	if body["telemetry"] == nil {
+		t.Fatalf("heartbeat body=%v, want telemetry", body)
 	}
 }
 
@@ -248,10 +257,14 @@ func TestCoordinatorTouchAndUpdateHeartbeatBodies(t *testing.T) {
 	if _, err := client.TouchLease(context.Background(), "cbx_123"); err != nil {
 		t.Fatal(err)
 	}
+	load := 0.42
+	if _, err := client.TouchLeaseWithTelemetry(context.Background(), "cbx_123", &LeaseTelemetry{Load1: &load}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := client.UpdateLeaseIdleTimeout(context.Background(), "cbx_123", 45*time.Minute); err != nil {
 		t.Fatal(err)
 	}
-	if len(bodies) != 2 || bodies[0] != "{}" || !strings.Contains(bodies[1], `"idleTimeoutSeconds":2700`) {
+	if len(bodies) != 3 || bodies[0] != "{}" || !strings.Contains(bodies[1], `"load1":0.42`) || !strings.Contains(bodies[2], `"idleTimeoutSeconds":2700`) {
 		t.Fatalf("heartbeat bodies=%q", bodies)
 	}
 }
@@ -269,11 +282,42 @@ func TestCoordinatorHeartbeatTouchesImmediately(t *testing.T) {
 	defer server.Close()
 
 	client := CoordinatorClient{BaseURL: server.URL, Client: server.Client()}
-	stop := startCoordinatorHeartbeat(context.Background(), &client, "cbx_123", 30*time.Minute, nil, io.Discard)
+	stop := startCoordinatorHeartbeat(context.Background(), &client, "cbx_123", 30*time.Minute, nil, nil, io.Discard)
 	defer stop()
 
 	select {
 	case <-touches:
+	case <-time.After(2 * time.Second):
+		t.Fatal("heartbeat did not touch immediately")
+	}
+}
+
+func TestCoordinatorHeartbeatIncludesTelemetry(t *testing.T) {
+	bodies := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/leases/cbx_123/heartbeat" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		data, _ := io.ReadAll(r.Body)
+		bodies <- string(data)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"lease":{"id":"cbx_123","provider":"aws","state":"active","expiresAt":"2026-05-01T00:30:00Z"}}`))
+	}))
+	defer server.Close()
+
+	load := 0.77
+	collector := func(context.Context) (*LeaseTelemetry, error) {
+		return &LeaseTelemetry{Load1: &load}, nil
+	}
+	client := CoordinatorClient{BaseURL: server.URL, Client: server.Client()}
+	stop := startCoordinatorHeartbeat(context.Background(), &client, "cbx_123", 30*time.Minute, nil, collector, io.Discard)
+	defer stop()
+
+	select {
+	case body := <-bodies:
+		if !strings.Contains(body, `"load1":0.77`) {
+			t.Fatalf("heartbeat body=%s, want telemetry", body)
+		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("heartbeat did not touch immediately")
 	}

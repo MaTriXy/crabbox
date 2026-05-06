@@ -53,7 +53,8 @@ This keeps the security boundary the same as `crabbox vnc`:
 Use `--daemon` (or `--background`) to keep the bridge running without a tmux or
 foreground shell. Crabbox writes the bridge log and pid file under its local
 state directory and prints both paths. Use `--status` to print those paths
-again, and `--stop` to kill the background bridge for that lease.
+again, and `--stop` to kill the background bridge for that lease. Shutdown
+terminates both the daemon supervisor and the active child bridge process.
 
 `--network tailscale` changes only the SSH endpoint used for the local tunnel.
 The runner VNC service stays bound to loopback.

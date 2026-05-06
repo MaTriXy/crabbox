@@ -9,6 +9,7 @@ import {
   portalError,
   portalHome,
   portalLeaseDetail,
+  portalRunDetail,
   portalVNC,
   webVNCBridgeCommand,
 } from "./portal";
@@ -24,6 +25,7 @@ import type {
   Env,
   LeaseRecord,
   LeaseRequest,
+  LeaseTelemetry,
   Provider,
   ProviderImage,
   ProviderMachine,
@@ -34,6 +36,7 @@ import type {
   RunEventRequest,
   RunFinishRequest,
   RunRecord,
+  RunTelemetrySummary,
   TestFailure,
   TestResultSummary,
   TailscaleMetadata,
@@ -43,6 +46,7 @@ import { costLimits, enforceCostLimits, leaseCost, requestOrg, usageSummary } fr
 const fleetID = "default";
 const maxStoredRunLogBytes = 8 * 1024 * 1024;
 const runLogChunkBytes = 64 * 1024;
+const maxLeaseTelemetryHistory = 60;
 const webVNCTicketTTLSeconds = 120;
 const codeTicketTTLSeconds = 120;
 const maxPendingWebVNCBytes = 1024 * 1024;
@@ -532,7 +536,10 @@ export class FleetDurableObject implements DurableObject {
       if (!lease) {
         return notFound();
       }
-      const body = await optionalJson<{ idleTimeoutSeconds?: number }>(request);
+      const body = await optionalJson<{
+        idleTimeoutSeconds?: number;
+        telemetry?: Partial<LeaseTelemetry>;
+      }>(request);
       const now = new Date();
       const requestedIdleTimeoutSeconds = body.idleTimeoutSeconds;
       if (
@@ -541,6 +548,11 @@ export class FleetDurableObject implements DurableObject {
         requestedIdleTimeoutSeconds > 0
       ) {
         lease.idleTimeoutSeconds = clampLeaseSeconds(requestedIdleTimeoutSeconds, 86_400);
+      }
+      const telemetry = sanitizeLeaseTelemetry(body.telemetry, now);
+      if (telemetry) {
+        lease.telemetry = telemetry;
+        lease.telemetryHistory = appendLeaseTelemetryHistory(lease.telemetryHistory, telemetry);
       }
       lease.updatedAt = now.toISOString();
       lease.lastTouchedAt = now.toISOString();
@@ -637,7 +649,7 @@ export class FleetDurableObject implements DurableObject {
   private async portalRoute(request: Request, parts: string[]): Promise<Response> {
     const method = request.method.toUpperCase();
     if (method === "GET" && parts.length === 1) {
-      return portalHome(this.filterLeasesForRequest(await this.leaseRecords(), request), request);
+      return portalHome(await this.portalLeases(request), request);
     }
     if (method === "GET" && parts[1] === "runs" && parts[2]) {
       return await this.portalRunRoute(request, parts[2], parts[3]);
@@ -661,7 +673,7 @@ export class FleetDurableObject implements DurableObject {
       parts[3] === "vnc" &&
       parts[4] === undefined
     ) {
-      const lease = await this.resolveLease(parts[2], request, false);
+      const lease = await this.resolvePortalLease(parts[2], request);
       if (!lease) {
         return portalError(
           "Lease not found",
@@ -699,8 +711,22 @@ export class FleetDurableObject implements DurableObject {
     return json({ error: "not_found" }, { status: 404 });
   }
 
+  private async portalLeases(request: Request): Promise<LeaseRecord[]> {
+    const leases = await this.leaseRecords();
+    return isAdminRequest(request)
+      ? this.filterLeases(leases, request)
+      : this.filterLeasesForRequest(leases, request);
+  }
+
+  private async resolvePortalLease(
+    identifier: string,
+    request: Request,
+  ): Promise<LeaseRecord | undefined> {
+    return this.resolveLease(identifier, request, isAdminRequest(request));
+  }
+
   private async portalLeasePage(request: Request, identifier: string): Promise<Response> {
-    const lease = await this.resolveLease(identifier, request, false);
+    const lease = await this.resolvePortalLease(identifier, request);
     if (!lease) {
       return portalError(
         "Lease not found",
@@ -720,7 +746,7 @@ export class FleetDurableObject implements DurableObject {
   }
 
   private async portalReleaseLease(request: Request, identifier: string): Promise<Response> {
-    const lease = await this.resolveLease(identifier, request, false);
+    const lease = await this.resolvePortalLease(identifier, request);
     if (!lease) {
       return portalError(
         "Lease not found",
@@ -757,7 +783,11 @@ export class FleetDurableObject implements DurableObject {
       return json({ events: await this.runEvents(runID, after, limit) });
     }
     if (action === undefined) {
-      return json({ run });
+      const [events, log] = await Promise.all([
+        this.runEvents(runID, 0, 100),
+        this.readRunLog(runID),
+      ]);
+      return portalRunDetail(run, events, tailString(log, 12 * 1024));
     }
     return json({ error: "not_found" }, { status: 404 });
   }
@@ -826,7 +856,7 @@ export class FleetDurableObject implements DurableObject {
   }
 
   private async webVNCStatus(request: Request, identifier: string): Promise<Response> {
-    const lease = await this.resolveLease(identifier, request, false);
+    const lease = await this.resolvePortalLease(identifier, request);
     if (!lease) {
       return notFound();
     }
@@ -919,7 +949,7 @@ export class FleetDurableObject implements DurableObject {
     identifier: string,
     _rest: string[],
   ): Promise<Response> {
-    const lease = await this.resolveLease(identifier, request, false);
+    const lease = await this.resolvePortalLease(identifier, request);
     if (!lease) {
       return portalError(
         "Lease not found",
@@ -1205,7 +1235,7 @@ export class FleetDurableObject implements DurableObject {
         { status: 426 },
       );
     }
-    const lease = await this.resolveLease(identifier, request, false);
+    const lease = await this.resolvePortalLease(identifier, request);
     if (!lease) {
       return notFound();
     }
@@ -1511,6 +1541,10 @@ export class FleetDurableObject implements DurableObject {
     run.logTruncated = logInput.truncated;
     if (input.results) {
       run.results = boundedTestResults(input.results);
+    }
+    const telemetry = sanitizeRunTelemetry(input.telemetry, now);
+    if (telemetry) {
+      run.telemetry = telemetry;
     }
     await this.writeRunLog(runID, logInput.log);
     await this.putRun(run);
@@ -1937,6 +1971,13 @@ function clampLimit(value: string | null, fallback: number): number {
     return fallback;
   }
   return Math.min(Math.trunc(parsed), 500);
+}
+
+function tailString(value: string, maxChars: number): string {
+  if (value.length <= maxChars) {
+    return value;
+  }
+  return value.slice(value.length - maxChars);
 }
 
 function notFound(): Response {
@@ -2526,6 +2567,99 @@ function clampLeaseSeconds(value: number | undefined, max: number): number {
     return max;
   }
   return Math.min(Math.trunc(value), max);
+}
+
+function sanitizeLeaseTelemetry(
+  input: Partial<LeaseTelemetry> | undefined,
+  now: Date,
+): LeaseTelemetry | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const telemetry: LeaseTelemetry = {
+    capturedAt: sanitizeTelemetryTimestamp(input.capturedAt, now),
+  };
+  const source = typeof input.source === "string" ? input.source.trim() : "";
+  if (source) {
+    telemetry.source = source.slice(0, 32);
+  }
+  let hasMetric = false;
+  for (const [key, max] of [
+    ["load1", 10_000],
+    ["load5", 10_000],
+    ["load15", 10_000],
+    ["memoryPercent", 100],
+    ["diskPercent", 100],
+  ] as const) {
+    const value = sanitizeTelemetryNumber(input[key], max);
+    if (value !== undefined) {
+      telemetry[key] = value;
+      hasMetric = true;
+    }
+  }
+  for (const key of [
+    "memoryUsedBytes",
+    "memoryTotalBytes",
+    "diskUsedBytes",
+    "diskTotalBytes",
+    "uptimeSeconds",
+  ] as const) {
+    const value = sanitizeTelemetryNumber(input[key], Number.MAX_SAFE_INTEGER);
+    if (value !== undefined) {
+      telemetry[key] = Math.trunc(value);
+      hasMetric = true;
+    }
+  }
+  return hasMetric ? telemetry : undefined;
+}
+
+function sanitizeRunTelemetry(
+  input: RunTelemetrySummary | undefined,
+  now: Date,
+): RunTelemetrySummary | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const start = sanitizeLeaseTelemetry(input.start, now);
+  const end = sanitizeLeaseTelemetry(input.end, now);
+  if (!start && !end) {
+    return undefined;
+  }
+  const telemetry: RunTelemetrySummary = {};
+  if (start) {
+    telemetry.start = start;
+  }
+  if (end) {
+    telemetry.end = end;
+  }
+  return telemetry;
+}
+
+function appendLeaseTelemetryHistory(
+  history: LeaseTelemetry[] | undefined,
+  telemetry: LeaseTelemetry,
+): LeaseTelemetry[] {
+  const existing = Array.isArray(history) ? history : [];
+  const next = [
+    ...existing.filter((sample) => sample && sample.capturedAt !== telemetry.capturedAt),
+    telemetry,
+  ].toSorted((left, right) => left.capturedAt.localeCompare(right.capturedAt));
+  return next.slice(-maxLeaseTelemetryHistory);
+}
+
+function sanitizeTelemetryTimestamp(value: string | undefined, now: Date): string {
+  const parsed = Date.parse(value ?? "");
+  if (!Number.isFinite(parsed)) {
+    return now.toISOString();
+  }
+  return new Date(parsed).toISOString();
+}
+
+function sanitizeTelemetryNumber(value: unknown, max: number): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return undefined;
+  }
+  return Math.min(value, max);
 }
 
 function allocateLeaseSlug(

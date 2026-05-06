@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 )
 
 type coordinatorLeaseBackend struct {
@@ -59,7 +60,7 @@ func (b *coordinatorLeaseBackend) acquireOnce(ctx context.Context, keep bool) (L
 	}
 	waitCtx, cancelWait := context.WithCancelCause(ctx)
 	defer cancelWait(nil)
-	stopHeartbeat := startCoordinatorHeartbeat(waitCtx, b.coord, leaseID, cfg.IdleTimeout, nil, b.rt.Stderr)
+	stopHeartbeat := startCoordinatorHeartbeat(waitCtx, b.coord, leaseID, cfg.IdleTimeout, nil, leaseTelemetryCollectorForTarget(target), b.rt.Stderr)
 	defer stopHeartbeat()
 	stopLeaseWatch := startCoordinatorLeaseWatch(waitCtx, b.coord, leaseID, cancelWait, b.rt.Stderr)
 	defer stopLeaseWatch()
@@ -79,6 +80,48 @@ func (b *coordinatorLeaseBackend) Resolve(ctx context.Context, req ResolveReques
 	}
 	server, target, leaseID := leaseToServerTarget(lease, b.cfg)
 	return LeaseTarget{Server: server, SSH: target, LeaseID: leaseID, Coordinator: b.coord}, nil
+}
+
+func (b *coordinatorLeaseBackend) Status(ctx context.Context, req StatusRequest) (statusView, error) {
+	lease, err := b.coord.GetLease(ctx, req.ID)
+	if err != nil {
+		return statusView{}, err
+	}
+	server, target, _ := leaseToServerTarget(lease, b.cfg)
+	resolved, err := resolveNetworkTarget(ctx, b.cfg, server, target)
+	if err != nil {
+		return statusView{}, err
+	}
+	target = resolved.Target
+	hasHost := lease.Host != ""
+	ready := lease.State == "active" && hasHost && probeSSHReady(ctx, &target, 4*time.Second)
+	return statusView{
+		ID:               lease.ID,
+		Slug:             lease.Slug,
+		Provider:         blank(lease.Provider, b.cfg.Provider),
+		TargetOS:         blank(target.TargetOS, b.cfg.TargetOS),
+		WindowsMode:      blank(target.WindowsMode, b.cfg.WindowsMode),
+		State:            lease.State,
+		ServerID:         leaseDisplayID(lease),
+		ServerType:       lease.ServerType,
+		Host:             lease.Host,
+		Network:          resolved.Network,
+		Tailscale:        lease.Tailscale,
+		SSHHost:          target.Host,
+		SSHUser:          target.User,
+		SSHPort:          target.Port,
+		SSHFallbackPorts: target.FallbackPorts,
+		SSHKey:           target.Key,
+		LastTouchedAt:    lease.LastTouchedAt,
+		IdleFor:          idleForString(lease.LastTouchedAt, time.Now()),
+		IdleTimeout:      formatSecondsDuration(lease.IdleTimeoutSeconds),
+		ExpiresAt:        lease.ExpiresAt,
+		Labels:           map[string]string{"keep": fmt.Sprint(lease.Keep)},
+		HasHost:          hasHost,
+		Ready:            ready,
+		Telemetry:        lease.Telemetry,
+		TelemetryHistory: lease.TelemetryHistory,
+	}, nil
 }
 
 func (b *coordinatorLeaseBackend) List(ctx context.Context, req ListRequest) ([]Server, error) {

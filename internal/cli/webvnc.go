@@ -277,7 +277,7 @@ func (a App) stopWebVNCDaemon(leaseID string) error {
 	if err != nil {
 		return exit(5, "find WebVNC daemon pid %d: %v", pid, err)
 	}
-	if err := stopDaemonProcess(process); err != nil {
+	if err := stopDaemonProcess(process, pid); err != nil {
 		return exit(5, "stop WebVNC daemon pid %d: %v", pid, err)
 	}
 	_ = os.Remove(pidPath)

@@ -21,6 +21,7 @@ type runRecorder struct {
 	warned          bool
 	warnMu          sync.Mutex
 	output          *runOutputEventQueue
+	telemetryStart  *LeaseTelemetry
 }
 
 func newRunRecorder(ctx context.Context, coord *CoordinatorClient, cfg Config, command []string, stderr io.Writer) *runRecorder {
@@ -94,6 +95,13 @@ func (r *runRecorder) AttachLease(leaseID, slug string, cfg Config) {
 	})
 }
 
+func (r *runRecorder) CaptureTelemetryStart(ctx context.Context, target SSHTarget) {
+	if r == nil || r.telemetryStart != nil {
+		return
+	}
+	r.telemetryStart = collectLeaseTelemetryBestEffort(ctx, leaseTelemetryCollectorForTarget(target))
+}
+
 func (r *runRecorder) attachRun(run CoordinatorRun) {
 	r.runID = run.ID
 	r.output = newRunOutputEventQueue(r.coord, run.ID, r.handleRunEventAppendError)
@@ -107,15 +115,16 @@ func (r *runRecorder) StreamWriter(stream string) *runEventStreamWriter {
 	return &runEventStreamWriter{recorder: r, stream: stream}
 }
 
-func (r *runRecorder) Finish(exitCode int, sync, command time.Duration, log string, truncated bool, results *TestResultSummary) {
+func (r *runRecorder) Finish(ctx context.Context, target SSHTarget, exitCode int, sync, command time.Duration, log string, truncated bool, results *TestResultSummary) {
 	if r == nil || r.runID == "" || r.finished {
 		return
 	}
 	r.waitForOutputEvents(runEventOutputPostWait)
 	r.finished = true
+	telemetryEnd := collectLeaseTelemetryBestEffort(ctx, leaseTelemetryCollectorForTarget(target))
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if _, err := r.coord.FinishRun(ctx, r.runID, exitCode, sync, command, log, truncated, results); err != nil {
+	if _, err := r.coord.FinishRun(ctx, r.runID, exitCode, sync, command, log, truncated, results, runTelemetrySummary(r.telemetryStart, telemetryEnd)); err != nil {
 		r.warn("run history finish failed for %s: %v", r.runID, err)
 	}
 }

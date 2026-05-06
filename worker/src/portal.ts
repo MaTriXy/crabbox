@@ -1,6 +1,10 @@
-import type { LeaseRecord, RunRecord } from "./types";
+import type { LeaseRecord, RunEventRecord, RunRecord } from "./types";
 
 const novncModuleURL = "/portal/assets/novnc/rfb.js";
+const copyIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>`;
+const serverIcon = `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h4"/></svg>`;
+const vncIcon = `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>`;
+const codeIcon = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 8-4 4 4 4"/><path d="m15 8 4 4-4 4"/><path d="m13 5-2 14"/></svg>`;
 
 export interface PortalLeaseBridgeStatus {
   webVNCBridgeConnected: boolean;
@@ -9,13 +13,36 @@ export interface PortalLeaseBridgeStatus {
 }
 
 export function portalHome(leases: LeaseRecord[], request: Request): Response {
-  const active = leases.filter((lease) => lease.state === "active");
-  const rows = active.length
-    ? active.map((lease) => leaseRow(lease)).join("")
-    : `<tr><td colspan="7" class="empty">no active leases</td></tr>`;
+  const sortedLeases = leases.toSorted((a, b) => leaseSortTime(b).localeCompare(leaseSortTime(a)));
+  const active = sortedLeases.filter((lease) => lease.state === "active");
+  const ended = sortedLeases.length - active.length;
+  const admin = request.headers.get("x-crabbox-admin") === "true";
+  const owner = request.headers.get("x-crabbox-owner") || "";
+  const org = request.headers.get("x-crabbox-org") || "";
+  const system = admin
+    ? sortedLeases.filter((lease) => leaseOwnership(lease, owner, org) === "system").length
+    : 0;
+  const defaultFilter = active.length > 0 ? "active" : "all";
+  const filterButtons = [
+    "active:active",
+    "ended:ended",
+    ...(admin ? ["mine:mine", "system:system"] : []),
+    "aws:aws",
+    "hetzner:hetzner",
+    "linux:linux",
+    "macos:macos",
+    "windows:windows",
+    "all:all",
+  ].join(",");
+  const rows = sortedLeases.length
+    ? sortedLeases.map((lease) => leaseRow(lease, { admin, owner, org })).join("")
+    : `<tr><td colspan="8" class="empty">no leases visible</td></tr>`;
+  const summary = admin
+    ? `${active.length} active / ${ended} ended / ${system} system`
+    : `${active.length} active / ${ended} ended`;
   return html(
     "Crabbox Portal",
-    `<main>
+    `<main class="portal-shell">
       <header class="top">
         <div>
           <h1>Crabbox</h1>
@@ -23,20 +50,21 @@ export function portalHome(leases: LeaseRecord[], request: Request): Response {
         </div>
         <a class="button secondary" href="/portal/logout">log out</a>
       </header>
-      <section class="panel">
+      <section class="panel table-panel">
         <div class="section-head">
           <h2>leases</h2>
-          <span>${active.length} active</span>
+          <span>${escapeHTML(summary)}</span>
         </div>
-        <table>
+        <table class="lease-table" data-portal-table data-page-size="12" data-search-placeholder="search leases" data-filter-buttons="${escapeHTML(filterButtons)}" data-filter-default="${defaultFilter}">
           <thead>
             <tr>
               <th>lease</th>
+              <th>state</th>
               <th>provider</th>
               <th>target</th>
               <th>class</th>
               <th>access</th>
-              <th>expires</th>
+              <th>time</th>
               <th></th>
             </tr>
           </thead>
@@ -53,26 +81,31 @@ export function portalLeaseDetail(
   bridgeStatus: PortalLeaseBridgeStatus,
 ): Response {
   const slug = lease.slug || lease.id;
+  const active = lease.state === "active";
   const runRows = runs.length
     ? runs.map((run) => runRow(run)).join("")
-    : `<tr><td colspan="7" class="empty">no recorded runs for this lease</td></tr>`;
-  const vncAction = lease.desktop
-    ? `<a class="button" href="/portal/leases/${encodeURIComponent(lease.id)}/vnc">open VNC</a>`
-    : `<span class="muted">no desktop</span>`;
-  const codeAction = lease.code
-    ? `<a class="button" href="/portal/leases/${encodeURIComponent(lease.id)}/code/">open code</a>`
-    : `<span class="muted">no code</span>`;
-  const commands = [
-    commandBlock("shell", `crabbox ssh --id ${shellArg(slug)}`),
-    commandBlock("run", `crabbox run --id ${shellArg(slug)} -- <command>`),
-    lease.desktop ? commandBlock("WebVNC bridge", webVNCBridgeCommand(lease)) : "",
-    lease.code ? commandBlock("code bridge", codeBridgeCommand(lease)) : "",
-  ]
-    .filter(Boolean)
-    .join("");
+    : `<tr><td colspan="8" class="empty">no recorded runs for this lease</td></tr>`;
+  const vncAction =
+    active && lease.desktop
+      ? `<a class="button" href="/portal/leases/${encodeURIComponent(lease.id)}/vnc">open VNC</a>`
+      : `<span class="muted">no desktop</span>`;
+  const codeAction =
+    active && lease.code
+      ? `<a class="button" href="/portal/leases/${encodeURIComponent(lease.id)}/code/">open code</a>`
+      : `<span class="muted">no code</span>`;
+  const commands = active
+    ? [
+        commandBlock("shell", `crabbox ssh --id ${shellArg(slug)}`),
+        commandBlock("run", `crabbox run --id ${shellArg(slug)} -- <command>`),
+        lease.desktop ? commandBlock("WebVNC bridge", webVNCBridgeCommand(lease)) : "",
+        lease.code ? commandBlock("code bridge", codeBridgeCommand(lease)) : "",
+      ]
+        .filter(Boolean)
+        .join("")
+    : `<p class="muted">lease ${escapeHTML(lease.state)} ${escapeHTML(shortTime(lease.endedAt || lease.releasedAt || lease.updatedAt))}</p>`;
   return html(
     `${slug} lease`,
-    `<main>
+    `<main class="portal-shell lease-shell">
       <header class="top">
         <div>
           <h1>${escapeHTML(slug)}</h1>
@@ -90,54 +123,177 @@ export function portalLeaseDetail(
             <span class="pill" data-state="${escapeHTML(lease.state)}">${escapeHTML(lease.state)}</span>
           </div>
           <dl class="meta-grid">
-            ${metaRow("provider", lease.provider)}
-            ${metaRow("target", lease.windowsMode ? `${lease.target} / ${lease.windowsMode}` : lease.target)}
+            ${metaHTMLRow("provider", providerBadge(lease.provider))}
+            ${metaHTMLRow("target", targetBadge(lease.target, lease.windowsMode))}
             ${metaRow("class", lease.class)}
             ${metaRow("host", lease.host || "pending")}
             ${metaRow("ssh", lease.sshPort ? `${lease.sshUser || "crabbox"}@${lease.host || "host"}:${lease.sshPort}` : "pending")}
             ${metaRow("work root", lease.workRoot || "pending")}
+            ${leaseTelemetryRows(lease.telemetry)}
             ${metaRow("expires", shortTime(lease.expiresAt))}
           </dl>
-          <form method="post" action="/portal/leases/${encodeURIComponent(lease.id)}/release" class="stop-form">
-            <button class="button danger" type="submit">stop lease</button>
-          </form>
+          ${leaseTelemetryTimeline(lease.telemetry, lease.telemetryHistory)}
+          ${
+            active
+              ? `<form method="post" action="/portal/leases/${encodeURIComponent(lease.id)}/release" class="stop-form">
+                  <button class="button danger" type="submit">stop lease</button>
+                </form>`
+              : ""
+          }
         </div>
         <div class="panel detail-card">
           <div class="section-head">
             <h2>access</h2>
-            <span>${lease.desktop || lease.code ? "bridges" : "ssh only"}</span>
+            <span>copy locally</span>
           </div>
           <div class="bridge-grid">
-            ${bridgeRow("WebVNC", lease.desktop === true, bridgeStatus.webVNCBridgeConnected, bridgeStatus.webVNCViewerConnected, vncAction)}
-            ${bridgeRow("code", lease.code === true, bridgeStatus.codeBridgeConnected, false, codeAction)}
+            ${bridgeRow("WebVNC", active && lease.desktop === true, bridgeStatus.webVNCBridgeConnected, bridgeStatus.webVNCViewerConnected, vncAction)}
+            ${bridgeRow("code", active && lease.code === true, bridgeStatus.codeBridgeConnected, false, codeAction)}
           </div>
+          <div class="access-commands">${commands}</div>
         </div>
       </section>
-      <section class="panel">
-        <div class="section-head">
-          <h2>commands</h2>
-          <span>copy locally</span>
-        </div>
-        <div class="commands">${commands}</div>
-      </section>
-      <section class="panel">
+      <section class="panel table-panel">
         <div class="section-head">
           <h2>recent runs</h2>
           <span>${runs.length}</span>
         </div>
-        <table class="run-table">
+        <table class="run-table" data-portal-table data-page-size="8" data-search-placeholder="search runs" data-filter-buttons="succeeded:succeeded,failed:failed,running:running,all:all">
           <thead>
             <tr>
               <th>run</th>
               <th>state</th>
-              <th>phase</th>
               <th>started</th>
               <th>duration</th>
-              <th>log</th>
+              <th>box</th>
               <th></th>
             </tr>
           </thead>
           <tbody>${runRows}</tbody>
+        </table>
+      </section>
+    </main>`,
+  );
+}
+
+export function portalRunDetail(
+  run: RunRecord,
+  events: RunEventRecord[],
+  logTail: string,
+): Response {
+  const stateTone = run.state === "succeeded" ? "ok" : run.state === "failed" ? "bad" : "warn";
+  const eventRows = events.length
+    ? events.map((event) => eventRow(event)).join("")
+    : `<tr><td colspan="5" class="empty">no events recorded</td></tr>`;
+  const failureRows = run.results?.failed.length
+    ? run.results.failed
+        .slice(0, 8)
+        .map(
+          (failure) => `<li>
+            <strong>${escapeHTML(failure.name)}</strong>
+            <small>${escapeHTML([failure.suite, failure.file].filter(Boolean).join(" / "))}</small>
+            ${failure.message ? `<p>${escapeHTML(truncate(failure.message, 240))}</p>` : ""}
+          </li>`,
+        )
+        .join("")
+    : "";
+  const logBlock = logTail
+    ? `<pre id="run-log-tail" class="log-preview">${escapeHTML(logTail)}</pre>`
+    : `<p class="empty">no retained log output</p>`;
+  return html(
+    `${run.id} run`,
+    `<main class="portal-shell run-shell">
+      <header class="top">
+        <div>
+          <h1>${escapeHTML(run.id)}</h1>
+          <p>${escapeHTML(run.slug || run.leaseID)} <span class="mono">${escapeHTML(run.command.join(" "))}</span></p>
+        </div>
+        <div class="vnc-actions">
+          <a class="button secondary" href="/portal/leases/${encodeURIComponent(run.leaseID)}">lease</a>
+          <a class="button secondary" href="/portal">leases</a>
+          <a class="button secondary" href="/portal/logout">log out</a>
+        </div>
+      </header>
+      <section class="detail-grid">
+        <div class="panel detail-card">
+          <div class="section-head">
+            <h2>run</h2>
+            <span class="pill" data-tone="${stateTone}">${escapeHTML(run.state)}</span>
+          </div>
+          <dl class="meta-grid">
+            ${metaRow("lease", run.slug ? `${run.slug} / ${run.leaseID}` : run.leaseID)}
+            ${metaHTMLRow("provider", providerBadge(run.provider))}
+            ${metaHTMLRow("target", targetBadge(run.target || "linux", run.windowsMode))}
+            ${metaRow("class", run.class)}
+            ${metaRow("server type", run.serverType)}
+            ${metaRow("phase", run.phase || run.state)}
+            ${metaRow("exit", formatExitCode(run.exitCode))}
+            ${metaRow("started", shortTime(run.startedAt))}
+            ${metaRow("duration", formatDuration(run.durationMs))}
+            ${metaRow("log", run.logBytes > 0 ? formatBytes(run.logBytes) : "empty")}
+            ${runTelemetryRows(run.telemetry)}
+          </dl>
+        </div>
+        <div class="panel detail-card">
+          <div class="section-head">
+            <h2>artifacts</h2>
+            <span>${run.results ? "junit" : "logs"}</span>
+          </div>
+          <div class="run-artifacts">
+            <a class="button" href="/portal/runs/${encodeURIComponent(run.id)}/logs">raw logs</a>
+            <a class="button secondary" href="/portal/runs/${encodeURIComponent(run.id)}/events">events json</a>
+            ${resultsSummary(run)}
+          </div>
+        </div>
+      </section>
+      <section class="panel command-panel">
+        <div class="section-head">
+          <h2>command</h2>
+          <span>${escapeHTML(run.owner)}</span>
+        </div>
+        <div class="commands">${commandBlock("remote command", run.command.join(" "))}</div>
+      </section>
+      ${
+        failureRows
+          ? `<section class="panel">
+              <div class="section-head">
+                <h2>failures</h2>
+                <span>${run.results?.failed.length ?? 0}</span>
+              </div>
+              <ul class="failure-list">${failureRows}</ul>
+            </section>`
+          : ""
+      }
+      <section class="panel log-panel">
+        <div class="section-head">
+          <h2>log tail</h2>
+          <div class="section-actions">
+            <span>${run.logTruncated ? "truncated" : "retained"}</span>
+            ${
+              logTail
+                ? `<button class="icon-btn" type="button" title="copy log tail" aria-label="copy log tail" data-copy-target="#run-log-tail">${copyIcon}</button>`
+                : ""
+            }
+          </div>
+        </div>
+        ${logBlock}
+      </section>
+      <section class="panel table-panel">
+        <div class="section-head">
+          <h2>events</h2>
+          <span>${events.length}</span>
+        </div>
+        <table class="event-table" data-portal-table data-page-size="12" data-search-placeholder="search events" data-filter-buttons="run:run,command:command,sync:sync,stdout:stdout,stderr:stderr,all:all">
+          <thead>
+            <tr>
+              <th>seq</th>
+              <th>type</th>
+              <th>phase</th>
+              <th>time</th>
+              <th>message</th>
+            </tr>
+          </thead>
+          <tbody>${eventRows}</tbody>
         </table>
       </section>
     </main>`,
@@ -152,7 +308,6 @@ export function portalVNC(lease: LeaseRecord): Response {
   const statusPath = `/portal/leases/${encodeURIComponent(lease.id)}/vnc/status`;
   const bridgeCmd = webVNCBridgeCommand(lease);
   const fullscreenIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/></svg>`;
-  const copyIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>`;
   const reconnectIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>`;
   return html(
     title,
@@ -160,7 +315,7 @@ export function portalVNC(lease: LeaseRecord): Response {
       <header class="vnc-bar">
         <div class="vnc-meta">
           <h1>${escapeHTML(slug)}</h1>
-          <p><span>${escapeHTML(lease.provider)}</span><span class="vnc-dot"></span><span>${escapeHTML(lease.target)}</span><span class="vnc-dot"></span><span class="vnc-id">${escapeHTML(lease.id)}</span></p>
+          <p>${providerBadge(lease.provider)}<span class="vnc-dot"></span>${targetBadge(lease.target, lease.windowsMode)}<span class="vnc-dot"></span><span class="vnc-id">${escapeHTML(lease.id)}</span></p>
         </div>
         <div class="vnc-actions">
           <span id="status" class="status-pill">waiting for bridge</span>
@@ -330,27 +485,96 @@ export function portalError(title: string, message: string, status = 400): Respo
 }
 
 export function portalCode(lease: LeaseRecord): Response {
+  const nonce = scriptNonce();
   const slug = lease.slug || lease.id;
   const bridgeCmd = codeBridgeCommand(lease);
+  const statusPath = `/portal/leases/${encodeURIComponent(lease.id)}/code/health`;
+  const reloadIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>`;
   return html(
     `Code ${slug}`,
-    `<main>
-      <header class="top">
-        <div>
+    `<main class="vnc-page code-wait-page">
+      <header class="vnc-bar">
+        <div class="vnc-meta">
           <h1>${escapeHTML(slug)}</h1>
-          <p>${escapeHTML(lease.provider)} code workspace</p>
+          <p>${providerBadge(lease.provider)}<span class="vnc-dot"></span><span>code workspace</span><span class="vnc-dot"></span><span class="vnc-id">${escapeHTML(lease.id)}</span></p>
         </div>
         <div class="vnc-actions">
+          <span id="code-status" class="status-pill">checking bridge</span>
+          <button id="code-reload" class="icon-btn" type="button" title="reload" aria-label="reload">${reloadIcon}</button>
           <a class="button secondary" href="/portal">leases</a>
           <a class="button secondary" href="/portal/logout">log out</a>
         </div>
       </header>
-      <section class="panel error">
-        <h2>code bridge</h2>
-        <p class="muted">start the local bridge, then reload this page.</p>
-        <code>${escapeHTML(bridgeCmd)}</code>
+      <section class="screen code-wait-screen" aria-label="Code bridge waiting state">
+        <div class="code-wait-card">
+          <span class="code-wait-kicker">code bridge</span>
+          <h2>waiting for local bridge</h2>
+          <p id="code-hint">Run the command below. This page will open VS Code when the bridge connects.</p>
+        </div>
       </section>
+      <footer class="vnc-bridge">
+        <span class="vnc-bridge-label">bridge</span>
+        <code id="code-bridge-cmd" class="vnc-bridge-cmd">${escapeHTML(bridgeCmd)}</code>
+        <button id="code-copy" class="icon-btn" type="button" title="copy command" aria-label="copy bridge command">${copyIcon}</button>
+      </footer>
+      <script nonce="${nonce}">
+        const status = document.getElementById("code-status");
+        const hint = document.getElementById("code-hint");
+        const statusURL = new URL(${JSON.stringify(statusPath)}, window.location.href);
+        let pollTimer;
+        function setStatus(value, tone = "") {
+          status.textContent = value;
+          status.dataset.tone = tone;
+        }
+        async function pollBridge() {
+          window.clearTimeout(pollTimer);
+          try {
+            const response = await fetch(statusURL, { cache: "no-store" });
+            if (!response.ok) throw new Error("status " + response.status);
+            const state = await response.json();
+            if (state?.code?.agentConnected) {
+              setStatus("bridge connected; opening", "ok");
+              hint.textContent = "Bridge connected. Opening workspace...";
+              window.setTimeout(() => window.location.reload(), 250);
+              return;
+            }
+            setStatus("waiting for bridge", "warn");
+            hint.textContent = "Start the local bridge below. This page checks again automatically.";
+          } catch (error) {
+            setStatus("status unavailable", "bad");
+            hint.textContent = "Could not read bridge status. Reload or use the command below.";
+          }
+          pollTimer = window.setTimeout(pollBridge, 2000);
+        }
+        document.getElementById("code-reload")?.addEventListener("click", () => {
+          window.location.reload();
+        });
+        const copyBtn = document.getElementById("code-copy");
+        const cmdEl = document.getElementById("code-bridge-cmd");
+        let copyResetTimer;
+        copyBtn?.addEventListener("click", async () => {
+          const text = cmdEl?.textContent || "";
+          try {
+            await navigator.clipboard.writeText(text);
+          } catch (_) {
+            const range = document.createRange();
+            if (cmdEl) {
+              range.selectNodeContents(cmdEl);
+              const sel = window.getSelection();
+              sel?.removeAllRanges();
+              sel?.addRange(range);
+            }
+          }
+          copyBtn.dataset.state = "ok";
+          window.clearTimeout(copyResetTimer);
+          copyResetTimer = window.setTimeout(() => { delete copyBtn.dataset.state; }, 1200);
+        });
+        pollBridge();
+        window.addEventListener("beforeunload", () => window.clearTimeout(pollTimer));
+      </script>
     </main>`,
+    200,
+    nonce,
   );
 }
 
@@ -384,42 +608,370 @@ function shellArg(value: string): string {
   return `'${value.replaceAll("'", "'\"'\"'")}'`;
 }
 
-function leaseRow(lease: LeaseRecord): string {
+function leaseRow(
+  lease: LeaseRecord,
+  context: { admin: boolean; owner: string; org: string },
+): string {
   const label = lease.slug || lease.id;
   const detailPath = `/portal/leases/${encodeURIComponent(lease.id)}`;
-  const vnc = lease.desktop
-    ? `<a class="button" href="/portal/leases/${encodeURIComponent(lease.id)}/vnc">open</a>`
-    : `<span class="muted">no desktop</span>`;
-  const code = lease.code
-    ? `<a class="button secondary" href="/portal/leases/${encodeURIComponent(lease.id)}/code/">code</a>`
-    : `<span class="muted">no code</span>`;
-  return `<tr>
-    <td><a class="lease-link" href="${detailPath}"><strong>${escapeHTML(label)}</strong><small>${escapeHTML(lease.id)}</small></a></td>
-    <td>${escapeHTML(lease.provider)}</td>
-    <td>${escapeHTML(lease.target)}</td>
+  const active = lease.state === "active";
+  const filterValue = active ? "active" : "ended";
+  const target = lease.target || "linux";
+  const ownership = context.admin ? leaseOwnership(lease, context.owner, context.org) : "mine";
+  const subline =
+    context.admin && ownership === "system"
+      ? `${lease.id} · ${lease.owner || "unknown"}`
+      : lease.id;
+  const timeLabel = active
+    ? lease.lastTouchedAt || lease.updatedAt || lease.createdAt
+    : lease.endedAt || lease.releasedAt || lease.updatedAt;
+  return `<tr data-filter-tags="${escapeHTML([filterValue, ownership, lease.provider, target].join(" "))}">
+    <td><a class="lease-link" href="${detailPath}"><strong>${escapeHTML(label)}</strong><small>${escapeHTML(subline)}</small></a></td>
+    <td><span class="pill" data-state="${escapeHTML(lease.state)}">${escapeHTML(lease.state)}</span></td>
+    <td>${providerBadge(lease.provider)}</td>
+    <td>${targetBadge(target, lease.windowsMode)}</td>
     <td>${escapeHTML(lease.class)}</td>
-    <td><div class="actions-cell">${vnc}${code}</div></td>
-    <td>${escapeHTML(shortTime(lease.expiresAt))}</td>
+    <td>${accessCell(lease, detailPath)}</td>
+    ${timeCell(timeLabel)}
     <td></td>
   </tr>`;
 }
 
+function leaseOwnership(lease: LeaseRecord, owner: string, org: string): "mine" | "system" {
+  return lease.owner === owner && lease.org === org ? "mine" : "system";
+}
+
 function runRow(run: RunRecord): string {
   const stateTone = run.state === "succeeded" ? "ok" : run.state === "failed" ? "bad" : "warn";
-  const logLabel = run.logBytes > 0 ? formatBytes(run.logBytes) : "empty";
-  return `<tr>
-    <td><strong>${escapeHTML(run.id)}</strong><small>${escapeHTML(run.command.join(" "))}</small></td>
+  return `<tr data-filter-tags="${escapeHTML([run.state, run.provider, run.target || "linux"].filter(Boolean).join(" "))}">
+    <td><a class="lease-link" href="/portal/runs/${encodeURIComponent(run.id)}"><strong>${escapeHTML(run.id)}</strong><small>${escapeHTML(run.command.join(" "))}</small></a></td>
     <td><span class="pill" data-tone="${stateTone}">${escapeHTML(run.state)}</span></td>
-    <td>${escapeHTML(run.phase || "-")}</td>
-    <td>${escapeHTML(shortTime(run.startedAt))}</td>
+    ${elapsedTimeCell(run.startedAt)}
     <td>${escapeHTML(formatDuration(run.durationMs))}</td>
-    <td>${escapeHTML(logLabel)}</td>
+    <td>${escapeHTML(runTelemetryCell(run.telemetry))}</td>
     <td><div class="actions-cell"><a class="button secondary" href="/portal/runs/${encodeURIComponent(run.id)}/logs">logs</a><a class="button secondary" href="/portal/runs/${encodeURIComponent(run.id)}/events">events</a></div></td>
   </tr>`;
 }
 
+function eventRow(event: RunEventRecord): string {
+  const eventGroup = event.type.split(".")[0] || event.type;
+  return `<tr data-filter-tags="${escapeHTML([eventGroup, event.phase, event.stream].filter(Boolean).join(" "))}">
+    <td>${event.seq}</td>
+    <td><strong>${escapeHTML(event.type)}</strong><small>${escapeHTML(event.stream || "")}</small></td>
+    <td>${escapeHTML(event.phase || "-")}</td>
+    ${timeCell(event.createdAt)}
+    <td>${escapeHTML(truncate(event.message || event.data || "", 220))}</td>
+  </tr>`;
+}
+
+function accessCell(lease: LeaseRecord, detailPath: string): string {
+  const active = lease.state === "active";
+  const pieces = [
+    `<a class="access-icon" href="${detailPath}" title="server" aria-label="server">${serverIcon}</a>`,
+  ];
+  if (active && lease.code) {
+    pieces.push(
+      `<a class="access-icon" data-access="vscode" href="/portal/leases/${encodeURIComponent(lease.id)}/code/" title="VS Code" aria-label="open VS Code">${codeIcon}</a>`,
+    );
+  }
+  if (active && lease.desktop) {
+    pieces.push(
+      `<a class="access-icon" data-access="vnc" href="/portal/leases/${encodeURIComponent(lease.id)}/vnc" title="VNC" aria-label="open VNC">${vncIcon}</a>`,
+    );
+  }
+  return `<div class="access-cell">${pieces.join("")}</div>`;
+}
+
+function timeCell(value: string | undefined): string {
+  const date = value ? new Date(value) : undefined;
+  const valid = !!date && !Number.isNaN(date.getTime());
+  const time = valid ? date.getTime() : 0;
+  const iso = valid ? date.toISOString().replace(".000Z", "Z") : value || "-";
+  return `<td data-sort="${time}" title="${escapeHTML(iso)}"><time datetime="${escapeHTML(iso)}">${escapeHTML(relativeTime(value))}</time></td>`;
+}
+
+function elapsedTimeCell(value: string | undefined): string {
+  const date = value ? new Date(value) : undefined;
+  const valid = !!date && !Number.isNaN(date.getTime());
+  const time = valid ? date.getTime() : 0;
+  const iso = valid ? date.toISOString().replace(".000Z", "Z") : value || "-";
+  const label = valid ? formatDuration(Date.now() - time) : "-";
+  return `<td data-sort="${time}" title="${escapeHTML(iso)}"><time datetime="${escapeHTML(iso)}">${escapeHTML(label)}</time></td>`;
+}
+
 function metaRow(label: string, value: string | undefined): string {
   return `<div><dt>${escapeHTML(label)}</dt><dd>${escapeHTML(value || "-")}</dd></div>`;
+}
+
+function metaHTMLRow(label: string, value: string): string {
+  return `<div><dt>${escapeHTML(label)}</dt><dd>${value}</dd></div>`;
+}
+
+function providerBadge(provider: string | undefined): string {
+  const value = provider || "-";
+  return `<span class="icon-label" data-provider="${escapeHTML(value)}">${providerIcon(value)}<span>${escapeHTML(value)}</span></span>`;
+}
+
+function targetBadge(target: string | undefined, windowsMode?: string): string {
+  const value = target || "linux";
+  const label =
+    value === "windows"
+      ? windowsMode && windowsMode !== "normal"
+        ? `win (${windowsMode})`
+        : "win"
+      : value;
+  return `<span class="icon-label" data-target="${escapeHTML(value)}">${targetIcon(value)}<span>${escapeHTML(label)}</span></span>`;
+}
+
+function leaseTelemetryRows(telemetry: LeaseRecord["telemetry"]): string {
+  if (!telemetry) {
+    return "";
+  }
+  return [
+    metaRow("load", telemetryLoad(telemetry)),
+    metaRow(
+      "memory",
+      telemetryStorage(
+        telemetry.memoryUsedBytes,
+        telemetry.memoryTotalBytes,
+        telemetry.memoryPercent,
+      ),
+    ),
+    metaRow(
+      "disk",
+      telemetryStorage(telemetry.diskUsedBytes, telemetry.diskTotalBytes, telemetry.diskPercent),
+    ),
+    metaRow(
+      "uptime",
+      telemetry.uptimeSeconds !== undefined ? formatSeconds(telemetry.uptimeSeconds) : undefined,
+    ),
+    metaRow("seen", telemetry.capturedAt ? relativeTime(telemetry.capturedAt) : undefined),
+  ].join("");
+}
+
+function leaseTelemetryTimeline(
+  telemetry: LeaseRecord["telemetry"],
+  history: LeaseRecord["telemetryHistory"],
+): string {
+  const samples = telemetrySamples(telemetry, history);
+  if (!telemetry && samples.length === 0) {
+    return "";
+  }
+  const health = telemetryHealthPills(telemetry);
+  return `<div class="telemetry-strip">
+    <div class="telemetry-strip-head">
+      <span>box telemetry</span>
+      <div>${health}</div>
+    </div>
+    ${telemetrySparkline(
+      "load",
+      samples.map((sample) => sample.load1),
+      "load",
+    )}
+    ${telemetrySparkline(
+      "memory",
+      samples.map((sample) => sample.memoryPercent),
+      "%",
+    )}
+    ${telemetrySparkline(
+      "disk",
+      samples.map((sample) => sample.diskPercent),
+      "%",
+    )}
+  </div>`;
+}
+
+function telemetrySamples(
+  telemetry: LeaseRecord["telemetry"],
+  history: LeaseRecord["telemetryHistory"],
+): LeaseTelemetrySample[] {
+  const byTime = new Map<string, LeaseTelemetrySample>();
+  for (const sample of Array.isArray(history) ? history : []) {
+    if (sample?.capturedAt) {
+      byTime.set(sample.capturedAt, sample);
+    }
+  }
+  if (telemetry?.capturedAt) {
+    byTime.set(telemetry.capturedAt, telemetry);
+  }
+  return [...byTime.values()].toSorted((left, right) =>
+    left.capturedAt.localeCompare(right.capturedAt),
+  );
+}
+
+type LeaseTelemetrySample = NonNullable<LeaseRecord["telemetry"]>;
+
+function telemetryHealthPills(telemetry: LeaseRecord["telemetry"]): string {
+  if (!telemetry?.capturedAt) {
+    return `<span class="pill" data-tone="warn">no signal</span>`;
+  }
+  const pills = [];
+  const ageMs = Date.now() - Date.parse(telemetry.capturedAt);
+  if (!Number.isFinite(ageMs) || ageMs > 10 * 60 * 1000) {
+    pills.push(
+      `<span class="pill" data-tone="warn">stale ${escapeHTML(relativeTime(telemetry.capturedAt))}</span>`,
+    );
+  } else {
+    pills.push(`<span class="pill" data-tone="ok">live</span>`);
+  }
+  if ((telemetry.memoryPercent ?? 0) >= 85) {
+    pills.push(
+      `<span class="pill" data-tone="bad">memory ${Math.round(telemetry.memoryPercent ?? 0)}%</span>`,
+    );
+  }
+  if ((telemetry.diskPercent ?? 0) >= 85) {
+    pills.push(
+      `<span class="pill" data-tone="bad">disk ${Math.round(telemetry.diskPercent ?? 0)}%</span>`,
+    );
+  }
+  if ((telemetry.load1 ?? 0) >= 16) {
+    pills.push(`<span class="pill" data-tone="warn">load ${telemetry.load1?.toFixed(1)}</span>`);
+  }
+  return pills.join("");
+}
+
+function telemetrySparkline(
+  label: string,
+  rawValues: Array<number | undefined>,
+  unit: string,
+): string {
+  const values = rawValues.filter((value): value is number => Number.isFinite(value));
+  const latest = values.at(-1);
+  if (values.length < 2 || latest === undefined) {
+    return `<div class="telemetry-line"><span>${escapeHTML(label)}</span><span class="muted">waiting for samples</span></div>`;
+  }
+  const max = unit === "%" ? 100 : Math.max(1, ...values);
+  const points = telemetryPolylinePoints(values, max);
+  return `<div class="telemetry-line">
+    <span>${escapeHTML(label)}</span>
+    <svg class="telemetry-chart" viewBox="0 0 100 28" preserveAspectRatio="none" aria-label="${escapeHTML(label)} telemetry trend">
+      <polyline points="${points}" />
+    </svg>
+    <span>${escapeHTML(formatTelemetryValue(latest, unit))}</span>
+  </div>`;
+}
+
+function telemetryPolylinePoints(values: number[], max: number): string {
+  const lastIndex = Math.max(1, values.length - 1);
+  return values
+    .map((value, index) => {
+      const x = (index / lastIndex) * 100;
+      const y = 26 - (Math.max(0, Math.min(value, max)) / max) * 24;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+}
+
+function formatTelemetryValue(value: number, unit: string): string {
+  if (unit === "%") {
+    return `${Math.round(value)}%`;
+  }
+  return value.toFixed(2);
+}
+
+function runTelemetryRows(telemetry: RunRecord["telemetry"]): string {
+  if (!telemetry) {
+    return "";
+  }
+  const current = telemetry.end || telemetry.start;
+  if (!current) {
+    return "";
+  }
+  return [
+    metaRow("box load", telemetryLoad(current)),
+    metaRow(
+      "box memory",
+      telemetryStorage(current.memoryUsedBytes, current.memoryTotalBytes, current.memoryPercent),
+    ),
+    metaRow(
+      "box disk",
+      telemetryStorage(current.diskUsedBytes, current.diskTotalBytes, current.diskPercent),
+    ),
+    metaRow(
+      "memory delta",
+      telemetryDelta(telemetry.start?.memoryUsedBytes, telemetry.end?.memoryUsedBytes),
+    ),
+    metaRow(
+      "disk delta",
+      telemetryDelta(telemetry.start?.diskUsedBytes, telemetry.end?.diskUsedBytes),
+    ),
+    metaRow("sampled", current.capturedAt ? relativeTime(current.capturedAt) : undefined),
+  ].join("");
+}
+
+function runTelemetryCell(telemetry: RunRecord["telemetry"]): string {
+  if (!telemetry) {
+    return "-";
+  }
+  const current = telemetry.end || telemetry.start;
+  if (!current) {
+    return "-";
+  }
+  const parts = [];
+  if (current.load1 !== undefined) {
+    parts.push(`load ${current.load1.toFixed(2)}`);
+  }
+  if (current.memoryPercent !== undefined) {
+    parts.push(`mem ${Math.round(current.memoryPercent)}%`);
+  }
+  const delta = telemetryDelta(telemetry.start?.memoryUsedBytes, telemetry.end?.memoryUsedBytes);
+  if (delta) {
+    parts.push(delta);
+  }
+  return parts.length ? parts.join(" · ") : "-";
+}
+
+function telemetryDelta(start: number | undefined, end: number | undefined): string | undefined {
+  if (start === undefined || end === undefined) {
+    return undefined;
+  }
+  const delta = end - start;
+  if (delta === 0) {
+    return "0 B";
+  }
+  const prefix = delta > 0 ? "+" : "-";
+  return `${prefix}${formatBytes(Math.abs(delta))}`;
+}
+
+function telemetryLoad(telemetry: LeaseRecord["telemetry"]): string | undefined {
+  if (!telemetry || telemetry.load1 === undefined) {
+    return undefined;
+  }
+  const load5 = telemetry.load5 === undefined ? "" : ` / ${telemetry.load5.toFixed(2)}`;
+  const load15 = telemetry.load15 === undefined ? "" : ` / ${telemetry.load15.toFixed(2)}`;
+  return `${telemetry.load1.toFixed(2)}${load5}${load15}`;
+}
+
+function telemetryStorage(
+  used: number | undefined,
+  total: number | undefined,
+  percent: number | undefined,
+): string | undefined {
+  if (used !== undefined && total !== undefined) {
+    const percentLabel = percent === undefined ? "" : ` (${Math.round(percent)}%)`;
+    return `${formatBytes(used)} / ${formatBytes(total)}${percentLabel}`;
+  }
+  return percent === undefined ? undefined : `${Math.round(percent)}%`;
+}
+
+function providerIcon(provider: string): string {
+  if (provider === "aws") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15.5c3.8 2.2 9.1 2.5 14.8.9"/><path d="M17.5 13.2 20 16l-3.7.7"/><path d="M7 8.5h10l1.8 4H5.2z"/></svg>`;
+  }
+  if (provider === "hetzner") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 20 7.5v9L12 21l-8-4.5v-9z"/><path d="M8 8v8M16 8v8M8 12h8"/></svg>`;
+  }
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4z"/><path d="m7 10 3 2-3 2M12 15h5"/></svg>`;
+}
+
+function targetIcon(target: string): string {
+  if (target === "windows") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5 11 4v7H4z"/><path d="m13 3.7 7-1.5V11h-7z"/><path d="M4 13h7v7l-7-1.5z"/><path d="M13 13h7v8.8l-7-1.5z"/></svg>`;
+  }
+  if (target === "macos") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 4.5c-.7.8-1.5 1.3-2.5 1.2-.1-1 .4-1.9 1.1-2.5.7-.7 1.7-1.1 2.4-1.2.1.9-.3 1.8-1 2.5z"/><path d="M18.7 16.2c-.5 1.1-.8 1.5-1.4 2.4-.9 1.3-2.1 2.9-3.6 2.9-1.3 0-1.7-.8-3.5-.8s-2.2.8-3.6.8c-1.5 0-2.6-1.4-3.5-2.7-2.4-3.7-2.7-8 .1-10.3 1-.8 2.4-1.3 3.7-1.3 1.4 0 2.6.9 3.5.9.8 0 2.3-1.1 4-1 1.8.1 3.1.8 4 2.1-3.5 1.9-2.9 6.1.3 7z"/></svg>`;
+  }
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M7 9h10M7 12h10M7 15h6"/></svg>`;
 }
 
 function bridgeRow(
@@ -445,11 +997,26 @@ function bridgeRow(
 }
 
 function commandBlock(label: string, command: string): string {
-  return `<div class="command-row"><div><small>${escapeHTML(label)}</small><code>${escapeHTML(command)}</code></div></div>`;
+  return `<div class="command-row"><div><small>${escapeHTML(label)}</small><code>${escapeHTML(command)}</code></div><button class="icon-btn" type="button" title="copy command" aria-label="copy ${escapeHTML(label)} command" data-copy-command>${copyIcon}</button></div>`;
+}
+
+function resultsSummary(run: RunRecord): string {
+  if (!run.results) {
+    return `<p class="muted">no test result summary</p>`;
+  }
+  const result = run.results;
+  return `<dl class="result-grid">
+    ${metaRow("tests", String(result.tests))}
+    ${metaRow("failures", String(result.failures))}
+    ${metaRow("errors", String(result.errors))}
+    ${metaRow("skipped", String(result.skipped))}
+    ${metaRow("time", `${result.timeSeconds}s`)}
+  </dl>`;
 }
 
 function html(title: string, body: string, status = 200, nonce = ""): Response {
-  const scriptSource = nonce ? `'self' 'nonce-${nonce}'` : "'self'";
+  const pageNonce = nonce || scriptNonce();
+  const scriptSource = `'self' 'nonce-${pageNonce}'`;
   return new Response(
     `<!doctype html>
 <html lang="en">
@@ -462,53 +1029,131 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
   <style>
     :root { color-scheme: dark; --bg:#0b0d0f; --fg:#f3f5f7; --muted:#9ca3af; --line:#262b31; --line-soft:#1d2126; --panel:#15181c; --panel-2:#0f1215; --accent:#38bdf8; --bad:#f87171; --warn:#fbbf24; --ok:#34d399; --mono: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
     * { box-sizing: border-box; }
-    html { background:var(--bg); }
+    html { min-height:100%; background:var(--bg); }
     body { margin:0; min-height:100vh; background:var(--bg); color:var(--fg); font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
-    main { width:min(1180px, calc(100vw - 32px)); margin:0 auto; padding:24px 0; }
+    main { width:min(1180px, calc(100vw - 32px)); margin:0 auto; padding:10px 0 22px; }
+    .portal-shell { width:min(1240px, calc(100vw - 16px)); height:100dvh; display:grid; grid-template-rows:auto minmax(0,1fr); gap:8px; padding:6px 0 8px; overflow:hidden; }
+    .lease-shell { grid-template-rows:auto auto minmax(0,1fr); }
+    .run-shell { height:auto; min-height:100dvh; overflow:visible; grid-template-rows:auto; }
     h1,h2,p { margin:0; }
-    h1 { font-size:22px; font-weight:700; }
-    h2 { font-size:14px; text-transform:uppercase; color:var(--muted); }
+    h1 { font-size:20px; font-weight:700; }
+    h2 { font-size:12px; text-transform:uppercase; color:var(--muted); letter-spacing:0.04em; }
     a { color:inherit; }
     form { margin:0; }
     button { font:inherit; }
-    code { display:block; overflow:auto; padding:12px; border:1px solid var(--line); border-radius:6px; background:#0c0e10; color:#d1fae5; font-family:var(--mono); }
+    code { display:block; overflow:auto; padding:9px 10px; border:1px solid var(--line); border-radius:6px; background:#0c0e10; color:#d1fae5; font-family:var(--mono); }
     table { width:100%; border-collapse:collapse; table-layout:fixed; }
-    th,td { padding:12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:middle; }
-    th { color:var(--muted); font-weight:600; }
-    td small { display:block; color:var(--muted); margin-top:2px; }
-    .top { display:flex; justify-content:space-between; gap:16px; align-items:center; margin-bottom:20px; }
+    th,td { padding:7px 10px; border-bottom:1px solid var(--line); text-align:left; vertical-align:middle; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.25; }
+    th { position:sticky; top:0; z-index:2; color:var(--muted); font-size:11px; font-weight:700; text-transform:uppercase; background:var(--panel); box-shadow:0 1px 0 var(--line); }
+    th[data-sortable] { cursor:pointer; user-select:none; }
+    th[data-sortable]::after { content:""; display:inline-block; width:0; height:0; margin-left:6px; vertical-align:middle; border-left:3px solid transparent; border-right:3px solid transparent; border-top:4px solid #4b5563; opacity:0.75; }
+    th[aria-sort="ascending"]::after { border-top:0; border-bottom:4px solid var(--accent); opacity:1; }
+    th[aria-sort="descending"]::after { border-top-color:var(--accent); opacity:1; }
+    td { font-size:13px; }
+    td small { display:block; color:var(--muted); margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .top { position:sticky; top:0; z-index:20; display:flex; justify-content:space-between; gap:12px; align-items:center; min-height:38px; margin:0; padding:4px 0; background:linear-gradient(180deg, var(--bg) 72%, color-mix(in srgb, var(--bg) 0%, transparent)); backdrop-filter:blur(10px); }
+    .top p { font-size:12px; }
     .top p,.muted,.empty { color:var(--muted); }
     .panel { border:1px solid var(--line); border-radius:8px; background:var(--panel); overflow:hidden; }
-    .section-head { display:flex; justify-content:space-between; align-items:center; padding:14px 16px; border-bottom:1px solid var(--line); }
-    .button { display:inline-flex; align-items:center; justify-content:center; min-height:32px; padding:0 12px; border-radius:8px; background:var(--accent); color:#001018; text-decoration:none; font-weight:700; }
+    .section-head { display:flex; justify-content:space-between; align-items:center; min-height:34px; padding:7px 10px; border-bottom:1px solid var(--line); }
+    .section-actions { display:flex; align-items:center; justify-content:flex-end; gap:8px; color:var(--muted); }
+    .button { display:inline-flex; align-items:center; justify-content:center; min-height:28px; padding:0 10px; border-radius:7px; background:var(--accent); color:#001018; text-decoration:none; font-size:12px; font-weight:700; white-space:nowrap; }
     .button.secondary { background:transparent; color:var(--fg); border:1px solid var(--line); font-weight:500; }
     .button.secondary:hover { background:#1b1f24; border-color:#3a4046; }
+    .button:disabled { opacity:0.45; cursor:not-allowed; }
     .button.danger { border:1px solid color-mix(in srgb, var(--bad) 42%, var(--line)); background:color-mix(in srgb, var(--bad) 18%, transparent); color:#fecaca; cursor:pointer; }
-    .lease-link { display:block; text-decoration:none; }
+    .lease-link { display:block; min-width:0; text-decoration:none; overflow:hidden; text-overflow:ellipsis; }
+    .lease-link strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .mono { font-family:var(--mono); }
-    .detail-grid { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(280px,0.9fr); gap:12px; margin-bottom:12px; }
+    .detail-grid { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(280px,0.9fr); gap:8px; min-height:0; }
     .detail-card { min-width:0; }
     .meta-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0; margin:0; }
-    .meta-grid div { padding:12px 14px; border-bottom:1px solid var(--line-soft); }
+    .meta-grid div { padding:8px 10px; border-bottom:1px solid var(--line-soft); }
     .meta-grid dt { color:var(--muted); font-size:11px; text-transform:uppercase; margin-bottom:3px; }
     .meta-grid dd { margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .stop-form { padding:14px; }
+    .telemetry-strip { display:grid; gap:7px; padding:9px 10px; border-top:1px solid var(--line-soft); background:var(--panel-2); }
+    .telemetry-strip-head { display:flex; justify-content:space-between; align-items:center; gap:8px; color:var(--muted); font-size:11px; text-transform:uppercase; }
+    .telemetry-strip-head div { display:flex; gap:4px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
+    .telemetry-line { display:grid; grid-template-columns:58px minmax(0,1fr) 52px; gap:8px; align-items:center; min-height:24px; font-size:12px; }
+    .telemetry-line > span:first-child { color:var(--muted); text-transform:uppercase; font-size:10px; }
+    .telemetry-line > span:last-child { text-align:right; font-family:var(--mono); color:#d1fae5; }
+    .telemetry-chart { width:100%; height:24px; display:block; overflow:visible; }
+    .telemetry-chart polyline { fill:none; stroke:var(--accent); stroke-width:1.8; vector-effect:non-scaling-stroke; }
+    .stop-form { padding:10px; }
     .bridge-grid { display:grid; gap:0; }
-    .bridge-row { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:10px; align-items:center; padding:14px; border-bottom:1px solid var(--line-soft); }
+    .bridge-row { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:8px; align-items:center; padding:9px 10px; border-bottom:1px solid var(--line-soft); }
     .bridge-row small { display:block; color:var(--muted); margin-top:2px; }
-    .pill { display:inline-flex; align-items:center; justify-content:center; min-height:24px; padding:0 8px; border-radius:999px; border:1px solid var(--line); color:var(--muted); background:var(--panel-2); font-size:12px; white-space:nowrap; }
+    .access-commands { display:grid; gap:8px; padding:10px; border-top:1px solid var(--line-soft); }
+    .run-artifacts { display:grid; gap:8px; padding:10px; }
+    .result-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0; margin:4px -14px -14px; border-top:1px solid var(--line-soft); }
+    .result-grid div { padding:8px 10px; border-bottom:1px solid var(--line-soft); }
+    .result-grid dt { color:var(--muted); font-size:11px; text-transform:uppercase; margin-bottom:3px; }
+    .result-grid dd { margin:0; }
+    .log-preview { margin:0; height:100%; min-height:0; overflow:auto; padding:10px; background:#080a0c; color:#d1fae5; border:0; border-radius:0; font-family:var(--mono); font-size:12px; line-height:1.4; white-space:pre-wrap; overflow-wrap:anywhere; }
+    .failure-list { display:grid; gap:0; margin:0; padding:0; list-style:none; }
+    .failure-list li { padding:10px; border-bottom:1px solid var(--line-soft); }
+    .failure-list small { display:block; color:var(--muted); margin-top:2px; }
+    .failure-list p { margin-top:8px; color:#fecaca; }
+    .pill { display:inline-flex; align-items:center; justify-content:center; min-height:22px; padding:0 7px; border-radius:999px; border:1px solid var(--line); color:var(--muted); background:var(--panel-2); font-size:11px; white-space:nowrap; }
     .pill[data-tone="ok"],.pill[data-state="active"] { color:var(--ok); border-color:color-mix(in srgb, var(--ok) 35%, var(--line)); }
     .pill[data-tone="warn"] { color:var(--warn); border-color:color-mix(in srgb, var(--warn) 35%, var(--line)); }
     .pill[data-tone="bad"],.pill[data-state="released"],.pill[data-state="expired"] { color:var(--bad); border-color:color-mix(in srgb, var(--bad) 45%, var(--line)); }
-    .actions-cell { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-    .vnc-page { width:100vw; height:100vh; padding:10px 12px 10px; display:grid; grid-template-rows:auto 1fr auto; gap:10px; }
-    .vnc-bar { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:44px; padding:0 4px; }
+    .icon-label { display:inline-flex; align-items:center; gap:7px; min-width:0; }
+    .icon-label svg { width:14px; height:14px; flex:0 0 14px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; color:#cbd5e1; }
+    .icon-label span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .icon-label[data-provider="aws"] svg { color:#fbbf24; }
+    .icon-label[data-provider="hetzner"] svg { color:#ef4444; }
+    .icon-label[data-target="linux"] svg { color:#34d399; }
+    .icon-label[data-target="windows"] svg { color:#38bdf8; }
+    .icon-label[data-target="macos"] svg { color:#d8b4fe; }
+    .actions-cell { display:flex; align-items:center; gap:5px; flex-wrap:nowrap; }
+    .access-cell { display:flex; align-items:center; gap:5px; min-width:0; }
+    .access-icon { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:6px; border:1px solid var(--line); color:#cbd5e1; background:#0c0e10; text-decoration:none; }
+    .access-icon svg { width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+    .access-icon[data-access="vscode"] { color:#d8b4fe; }
+    .access-icon[data-access="vnc"] { color:#38bdf8; }
+    .access-icon:hover { border-color:#3a4046; background:#1b1f24; }
+    .table-panel { min-height:0; display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; overflow:hidden; }
+    .command-panel,.log-panel { min-height:0; overflow:hidden; }
+    .run-shell .table-panel { max-height:55dvh; }
+    .run-shell .log-panel { max-height:34dvh; }
+    .table-scroll { min-height:0; overflow:auto; }
+    .table-tools { display:grid; grid-template-columns:minmax(180px,320px) minmax(0,1fr) auto; align-items:center; gap:8px; padding:6px 8px; border-bottom:1px solid var(--line-soft); background:var(--panel-2); }
+    .table-search { width:100%; height:28px; padding:0 9px; border:1px solid var(--line); border-radius:7px; background:#0c0e10; color:var(--fg); font:inherit; font-size:12px; }
+    .table-search::placeholder { color:#6b7280; }
+    .table-search:focus { outline:2px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset:1px; border-color:color-mix(in srgb, var(--accent) 55%, var(--line)); }
+    .table-filters { display:flex; align-items:center; gap:3px; min-width:0; overflow-x:auto; padding:2px; border:1px solid var(--line); border-radius:7px; background:#0c0e10; scrollbar-width:none; }
+    .table-filters::-webkit-scrollbar { display:none; }
+    .table-filter { flex:0 0 auto; min-height:22px; padding:0 7px; border:0; border-radius:5px; background:transparent; color:var(--muted); cursor:pointer; font:inherit; font-size:11px; }
+    .table-filter[aria-pressed="true"] { background:var(--panel); color:var(--fg); }
+    .table-count { color:var(--muted); font-size:12px; white-space:nowrap; }
+    .table-footer { display:flex; justify-content:flex-end; align-items:center; gap:6px; min-height:36px; padding:5px 8px; background:var(--panel-2); }
+    .table-page { min-width:64px; color:var(--muted); font-size:12px; text-align:center; }
+    tr[hidden] { display:none; }
+    .lease-table th:nth-child(1) { width:25%; }
+    .lease-table th:nth-child(2) { width:86px; }
+    .lease-table th:nth-child(3),.lease-table th:nth-child(4) { width:104px; }
+    .lease-table th:nth-child(5) { width:82px; }
+    .lease-table th:nth-child(6) { width:118px; }
+    .lease-table th:nth-child(7) { width:148px; }
+    .lease-table th:nth-child(8) { width:24px; }
+    .run-table th:nth-child(2) { width:104px; }
+    .run-table th:nth-child(3) { width:112px; }
+    .run-table th:nth-child(4) { width:92px; }
+    .run-table th:nth-child(5) { width:190px; }
+    .run-table th:nth-child(6) { width:154px; }
+    .event-table th:nth-child(1) { width:58px; }
+    .event-table th:nth-child(2) { width:24%; }
+    .event-table th:nth-child(3) { width:96px; }
+    .event-table th:nth-child(4) { width:150px; }
+    .vnc-page { width:100vw; height:100vh; padding:0 12px 10px; display:grid; grid-template-rows:auto minmax(0,1fr) auto; gap:10px; overflow:auto; }
+    .vnc-bar { position:sticky; top:0; z-index:10; display:flex; align-items:center; justify-content:space-between; gap:14px; min-height:42px; margin:0 -12px; padding:6px 16px; border-bottom:1px solid var(--line); background:color-mix(in srgb, var(--panel) 92%, transparent); box-shadow:0 8px 24px rgba(0,0,0,0.25); }
     .vnc-meta { display:flex; align-items:baseline; gap:12px; min-width:0; }
     .vnc-meta h1 { font-size:18px; font-weight:700; letter-spacing:-0.01em; white-space:nowrap; }
     .vnc-meta p { display:inline-flex; align-items:center; gap:8px; color:var(--muted); font-size:12px; min-width:0; overflow:hidden; }
     .vnc-meta .vnc-id { font-family:var(--mono); font-size:11px; opacity:0.85; }
     .vnc-meta .vnc-dot { width:3px; height:3px; border-radius:50%; background:#3a4046; flex-shrink:0; }
-    .vnc-actions { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+    .vnc-actions { display:flex; align-items:center; gap:6px; flex-shrink:0; }
     .status-pill { display:inline-flex; align-items:center; gap:8px; height:32px; padding:0 12px 0 11px; border-radius:8px; background:var(--panel-2); border:1px solid var(--line); font-size:12px; color:var(--muted); white-space:nowrap; transition:color 0.2s, border-color 0.2s; }
     .status-pill::before { content:""; width:8px; height:8px; border-radius:50%; background:currentColor; box-shadow:0 0 0 3px color-mix(in srgb, currentColor 18%, transparent); flex-shrink:0; }
     .status-pill[data-tone="ok"] { color:var(--ok); border-color:color-mix(in srgb, var(--ok) 35%, var(--line)); }
@@ -520,22 +1165,36 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .icon-btn[data-state="ok"] { color:var(--ok); border-color:color-mix(in srgb, var(--ok) 45%, var(--line)); }
     .screen { min-height:0; border:1px solid var(--line); border-radius:8px; background:var(--bg); overflow:hidden; box-shadow:inset 0 0 0 1px rgba(255,255,255,0.02); }
     .screen div { margin:0 auto; }
+    .code-wait-screen { display:grid; place-items:center; padding:clamp(18px,5vw,64px); }
+    .code-wait-card { width:min(720px,100%); display:grid; gap:9px; }
+    .code-wait-kicker { color:var(--muted); font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; }
+    .code-wait-card h2 { margin:0; font-size:22px; letter-spacing:0; }
+    .code-wait-card p { max-width:62ch; color:var(--muted); font-size:14px; line-height:1.55; }
     .vnc-bridge { display:flex; align-items:center; gap:10px; padding:6px 10px; border:1px solid var(--line); border-radius:8px; background:var(--panel); }
     .vnc-bridge-label { font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); flex-shrink:0; padding-left:4px; }
     .vnc-bridge-cmd { display:block; flex:1; min-width:0; padding:6px 10px; border:none; border-radius:5px; background:transparent; color:#d1fae5; font-family:var(--mono); font-size:13px; overflow-x:auto; white-space:nowrap; }
     .commands { padding:12px; display:grid; gap:8px; }
-    .command-row { display:grid; grid-template-columns:minmax(0,1fr); gap:8px; align-items:stretch; }
+    .command-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:end; }
     .command-row small { display:block; color:var(--muted); margin-bottom:4px; text-transform:uppercase; font-size:11px; }
     .command-row code { min-width:0; }
     .error { margin-top:20vh; padding:24px; display:grid; gap:12px; }
     @media (max-width: 760px) {
       main { width:min(100vw - 20px, 1180px); padding:10px 0; }
+      .portal-shell { width:min(100vw - 12px, 1180px); height:auto; min-height:100dvh; overflow:visible; }
+      .lease-shell,.run-shell { grid-template-rows:auto; }
       th:nth-child(4),td:nth-child(4),th:nth-child(6),td:nth-child(6){ display:none; }
       .detail-grid { grid-template-columns:1fr; }
       .meta-grid { grid-template-columns:1fr; }
+      .result-grid { grid-template-columns:1fr; }
       .bridge-row { grid-template-columns:1fr; align-items:start; }
+      .table-panel { max-height:none; }
+      .table-scroll { max-height:65dvh; }
+      .table-tools { grid-template-columns:1fr; align-items:stretch; }
+      .table-filters { justify-content:stretch; }
+      .table-filter { flex:1; }
+      .table-footer { justify-content:space-between; }
       .top{align-items:flex-start;}
-      .vnc-bar { flex-wrap:wrap; gap:8px; min-height:0; padding:4px 0; }
+      .vnc-bar { flex-wrap:wrap; gap:8px; min-height:0; padding:6px 10px; margin:0 -12px; }
       .vnc-meta { flex-wrap:wrap; gap:4px 10px; }
       .vnc-meta p .vnc-id { display:none; }
       .vnc-actions { gap:6px; }
@@ -544,7 +1203,7 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     }
   </style>
 </head>
-<body>${body}</body>
+<body>${body}<script nonce="${pageNonce}">${portalEnhancementsScript()}</script></body>
 </html>`,
     {
       status,
@@ -564,16 +1223,243 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
   );
 }
 
+function portalEnhancementsScript(): string {
+  return `
+(() => {
+  function copyText(text, source) {
+    const finish = () => {
+      source.dataset.state = "ok";
+      window.setTimeout(() => { delete source.dataset.state; }, 1200);
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(finish).catch(() => fallbackCopy(text, source, finish));
+      return;
+    }
+    fallbackCopy(text, source, finish);
+  }
+  function fallbackCopy(text, source, finish) {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.append(area);
+    area.select();
+    try { document.execCommand("copy"); } catch (_) {}
+    area.remove();
+    finish();
+  }
+  document.querySelectorAll("[data-copy-target]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const selector = button.getAttribute("data-copy-target");
+      if (!selector) return;
+      const target = document.querySelector(selector);
+      copyText(target?.textContent || "", button);
+    });
+  });
+  document.querySelectorAll("[data-copy-command]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = button.closest(".command-row")?.querySelector("code");
+      copyText(target?.textContent || "", button);
+    });
+  });
+  document.querySelectorAll("table[data-portal-table]").forEach((table, index) => {
+    const body = table.tBodies[0];
+    if (!body) return;
+    const rows = Array.from(body.rows);
+    const dataRows = rows.filter((row) => !row.querySelector(".empty"));
+    const originalEmpty = rows.find((row) => row.querySelector(".empty"));
+    const generatedEmpty = document.createElement("tr");
+    const emptyCell = document.createElement("td");
+    emptyCell.className = "empty";
+    emptyCell.colSpan = table.tHead?.rows[0]?.cells.length || table.rows[0]?.cells.length || 1;
+    emptyCell.textContent = "no matches";
+    generatedEmpty.append(emptyCell);
+    generatedEmpty.hidden = true;
+    body.append(generatedEmpty);
+    const pageSize = Math.max(1, Number.parseInt(table.dataset.pageSize || "10", 10) || 10);
+    let query = "";
+    let page = 1;
+    let selectedFilter = table.dataset.filterDefault || "all";
+    let sortColumn = -1;
+    let sortDirection = "descending";
+    const tools = document.createElement("div");
+    tools.className = "table-tools";
+    const input = document.createElement("input");
+    input.className = "table-search";
+    input.type = "search";
+    input.placeholder = table.dataset.searchPlaceholder || "search table";
+    input.setAttribute("aria-label", input.placeholder);
+    input.disabled = dataRows.length === 0;
+    const filterButtons = (table.dataset.filterButtons || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((item) => {
+        const parts = item.split(":");
+        return { value: parts[0], label: parts[1] || parts[0] };
+      });
+    const filters = document.createElement("div");
+    filters.className = "table-filters";
+    filters.hidden = filterButtons.length === 0;
+    const filterControls = filterButtons.map((filter) => {
+      const button = document.createElement("button");
+      button.className = "table-filter";
+      button.type = "button";
+      button.textContent = filter.label;
+      button.addEventListener("click", () => {
+        selectedFilter = filter.value;
+        page = 1;
+        apply();
+      });
+      filters.append(button);
+      return { ...filter, button };
+    });
+    const count = document.createElement("span");
+    count.className = "table-count";
+    tools.append(input, filters, count);
+    const footer = document.createElement("div");
+    footer.className = "table-footer";
+    const prev = document.createElement("button");
+    prev.className = "button secondary";
+    prev.type = "button";
+    prev.textContent = "prev";
+    const pageLabel = document.createElement("span");
+    pageLabel.className = "table-page";
+    const next = document.createElement("button");
+    next.className = "button secondary";
+    next.type = "button";
+    next.textContent = "next";
+    footer.append(prev, pageLabel, next);
+    const tableScroll = document.createElement("div");
+    tableScroll.className = "table-scroll";
+    table.before(tools);
+    tools.after(tableScroll);
+    tableScroll.append(table);
+    tableScroll.after(footer);
+    table.dataset.enhancedIndex = String(index);
+    const headers = Array.from(table.tHead?.rows[0]?.cells || []);
+    headers.forEach((header, headerIndex) => {
+      if (!header.textContent.trim()) return;
+      header.dataset.sortable = "true";
+      header.tabIndex = 0;
+      header.addEventListener("click", () => {
+        if (sortColumn === headerIndex) {
+          sortDirection = sortDirection === "ascending" ? "descending" : "ascending";
+        } else {
+          sortColumn = headerIndex;
+          sortDirection = "ascending";
+        }
+        page = 1;
+        apply();
+      });
+      header.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        header.click();
+      });
+    });
+    function sortValue(row, column) {
+      const cell = row.cells[column];
+      const value = cell?.dataset.sort || cell?.textContent.trim() || "";
+      const number = Number(value);
+      return value !== "" && Number.isFinite(number) ? number : value.toLowerCase();
+    }
+    function sorted(rows) {
+      if (sortColumn < 0) return rows;
+      return rows.toSorted((a, b) => {
+        const left = sortValue(a, sortColumn);
+        const right = sortValue(b, sortColumn);
+        const result = typeof left === "number" && typeof right === "number"
+          ? left - right
+          : String(left).localeCompare(String(right));
+        return sortDirection === "ascending" ? result : -result;
+      });
+    }
+    function apply() {
+      const filtered = sorted(dataRows.filter(
+        (row) => {
+          const tags = (row.dataset.filterTags || row.dataset.filterValue || "").split(/\\s+/);
+          return (
+            (selectedFilter === "all" || tags.includes(selectedFilter)) &&
+            row.textContent.toLowerCase().includes(query)
+          );
+        },
+      ));
+      const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
+      page = Math.min(page, pages);
+      const start = (page - 1) * pageSize;
+      const visible = new Set(filtered.slice(start, start + pageSize));
+      sorted(dataRows).forEach((row) => body.append(row));
+      body.append(generatedEmpty);
+      if (originalEmpty) body.append(originalEmpty);
+      dataRows.forEach((row) => { row.hidden = !visible.has(row); });
+      generatedEmpty.hidden = dataRows.length === 0 || filtered.length > 0;
+      if (originalEmpty) originalEmpty.hidden = dataRows.length > 0;
+      filterControls.forEach((filter) => {
+        filter.button.setAttribute("aria-pressed", String(filter.value === selectedFilter));
+      });
+      count.textContent = dataRows.length ? filtered.length + " of " + dataRows.length : "0";
+      pageLabel.textContent = page + " / " + pages;
+      prev.disabled = page <= 1;
+      next.disabled = page >= pages;
+      footer.hidden = dataRows.length <= pageSize && query === "";
+      headers.forEach((header, headerIndex) => {
+        if (!header.dataset.sortable) return;
+        header.setAttribute("aria-sort", headerIndex === sortColumn ? sortDirection : "none");
+      });
+    }
+    input.addEventListener("input", () => {
+      query = input.value.trim().toLowerCase();
+      page = 1;
+      apply();
+    });
+    prev.addEventListener("click", () => {
+      page = Math.max(1, page - 1);
+      apply();
+    });
+    next.addEventListener("click", () => {
+      page += 1;
+      apply();
+    });
+    apply();
+  });
+})();
+`;
+}
+
 function scriptNonce(): string {
   return crypto.randomUUID().replaceAll("-", "");
 }
 
 function shortTime(value: string): string {
+  return relativeTime(value);
+}
+
+function relativeTime(value: string | undefined): string {
+  if (!value) {
+    return "-";
+  }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
     return value;
   }
-  return date.toISOString().replace(".000Z", "Z");
+  const deltaSeconds = Math.round((date.getTime() - Date.now()) / 1000);
+  const absSeconds = Math.abs(deltaSeconds);
+  const units: Array<[number, string]> = [
+    [60 * 60 * 24 * 30, "mo"],
+    [60 * 60 * 24, "d"],
+    [60 * 60, "h"],
+    [60, "m"],
+  ];
+  const unit = units.find(([seconds]) => absSeconds >= seconds);
+  const amount = unit ? Math.max(1, Math.round(absSeconds / unit[0])) : Math.max(0, absSeconds);
+  const suffix = deltaSeconds >= 0 ? "from now" : "ago";
+  return `${amount}${unit ? unit[1] : "s"} ${suffix}`;
+}
+
+function leaseSortTime(lease: LeaseRecord): string {
+  return lease.endedAt || lease.releasedAt || lease.updatedAt || lease.expiresAt || lease.createdAt;
 }
 
 function formatDuration(value: number | undefined): string {
@@ -589,6 +1475,26 @@ function formatDuration(value: number | undefined): string {
   return `${minutes}m ${rest}s`;
 }
 
+function formatSeconds(value: number): string {
+  const seconds = Math.max(0, Math.round(value));
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes}m`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) {
+    return `${hours}h`;
+  }
+  return `${Math.floor(hours / 24)}d`;
+}
+
+function formatExitCode(value: number | undefined): string {
+  return Number.isFinite(value) ? String(value) : "-";
+}
+
 function formatBytes(value: number): string {
   if (value < 1024) {
     return `${value} B`;
@@ -596,7 +1502,14 @@ function formatBytes(value: number): string {
   if (value < 1024 * 1024) {
     return `${(value / 1024).toFixed(1)} KiB`;
   }
-  return `${(value / 1024 / 1024).toFixed(1)} MiB`;
+  if (value < 1024 * 1024 * 1024) {
+    return `${(value / 1024 / 1024).toFixed(1)} MiB`;
+  }
+  return `${(value / 1024 / 1024 / 1024).toFixed(1)} GiB`;
+}
+
+function truncate(value: string, maxLength: number): string {
+  return value.length > maxLength ? `${value.slice(0, maxLength - 1)}...` : value;
 }
 
 function escapeHTML(value: string | undefined): string {

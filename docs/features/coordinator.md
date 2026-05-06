@@ -54,12 +54,28 @@ GET  /portal/runs/{run-id}/logs
 GET  /portal/runs/{run-id}/events
 ```
 
+`/portal` renders a searchable/paginated/sortable lease data grid with compact
+provider/target badges, icon-only access capabilities, relative time cells,
+dense rows, sticky column headers, and active, ended, provider, target, and all
+filters. Normal browser sessions are owner/org scoped. Admin/operator sessions
+can also see non-owned runner leases, with `mine` and `system` filters so
+Blacksmith/Testbox-style coordinator leases are visible without leaking them to
+normal users. It defaults to active leases when any are active, and falls back to
+all visible leases when the active list is empty.
+
 `/portal/leases/{id-or-slug}` is the authenticated lease detail page. It shows
-the lease state, bridge status, pasteable `ssh`, `run`, WebVNC, and code
-commands, recent run links, and a stop action for the owner-scoped lease.
+the lease state, bridge status, compact provider/target badges, latest Linux
+telemetry, access-panel copy commands for `ssh`, `run`, WebVNC, and code, a
+viewport-fitted recent runs grid with state filters, and a stop action for the
+visible lease. When multiple telemetry samples are present, the detail page
+adds load, memory, and disk sparklines plus stale/high-resource status pills.
 Portal run links mirror the `/v1/runs/...` resources but use the browser
 session cookie, so users can inspect logs and events without copying a bearer
-token into the browser.
+token into the browser. The run detail page at `/portal/runs/{run-id}` renders
+the command, owner, lease, provider metadata, exit status, JUnit summary when
+present, a searchable/paginated event table with event-type filters, and a
+copyable retained log tail; `/logs` and `/events` remain raw/plain resources for
+copying and automation.
 
 GitHub browser-login tokens are owner/org scoped for lease, run, log, and usage routes. Shared-token admin auth is required for `GET /v1/pool`, admin lease routes, and fleet-wide usage/listing.
 

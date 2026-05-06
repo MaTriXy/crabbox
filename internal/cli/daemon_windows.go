@@ -9,9 +9,6 @@ import (
 
 func configureDaemonCommand(_ *exec.Cmd) {}
 
-func stopDaemonProcess(process *os.Process) error {
-	if process == nil {
-		return nil
-	}
+func stopDaemonProcess(process *os.Process, _ int) error {
 	return process.Kill()
 }

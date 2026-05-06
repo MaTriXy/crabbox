@@ -8,7 +8,12 @@
 - Added `crabbox webvnc --daemon`/`--background` plus `--status`/`--stop` for background WebVNC bridges without tmux.
 - Added `crabbox media preview` for creating motion-trimmed GIF previews and optional trimmed MP4 clips from desktop recordings.
 - Added `crabbox code` and per-lease `/code/` portal URLs for authenticated code-server access on `--code` Linux leases.
-- Added per-lease portal detail pages with bridge status, pasteable commands, recent run links, and a stop action.
+- Added per-lease portal detail pages with bridge status, access-panel copy commands, recent run links, and a stop action.
+- Added portal run detail pages with command metadata, result summaries, dense viewport-fitted portal tables, provider/OS badges, active/ended/provider/target filters, sticky portal chrome, and copyable retained log previews.
+- Added admin portal visibility for non-owned runner leases, including `mine`/`system` filters and matching detail/code/VNC drilldowns for operator sessions.
+- Added latest lease telemetry snapshots for coordinator-backed Linux leases, including load, memory, disk, and uptime in `status --json` and the portal detail view.
+- Added bounded lease telemetry history with portal sparklines and stale/high-resource badges on lease detail pages.
+- Added run-level telemetry summaries with start/end Linux resource snapshots in run history JSON, human history output, and portal run tables/details.
 - Added `.crabboxignore` for repo-local sync-only exclude patterns shared by `run` and `sync-plan`.
 - Documented the prebaked runner image boundary: provider-owned AMIs/snapshots hold machine capabilities while repo/runtime caches stay in QA workflows or warm leases.
 - Added a provider backend registry and authoring guide so delegated and SSH-backed providers can live in provider-owned packages while core keeps command parsing, rendering, and capability validation.
@@ -24,6 +29,12 @@
 - Fixed brokered cloud server names so friendly-slug collisions with stale provider VMs do not block new leases.
 - Fixed human WebVNC desktop launches to keep browser windows windowed by default and reserve fullscreen for explicit capture/video workflows.
 - Fixed WebVNC portal status text and bridge commands so waiting/reset states explain the exact local bridge command to run.
+- Fixed the Code portal waiting state so it shows bridge status, copy/reload controls, and automatically opens the workspace once the local bridge connects.
+- Fixed `crabbox webvnc --stop` so daemon shutdown terminates the active child bridge, not only the supervisor.
+- Fixed portal command rows so their copy affordance copies the matching local command instead of only labelling the section.
+- Fixed portal Windows target badges to show compact `win` and `win (wsl2)` labels instead of `windows / normal`.
+- Fixed portal access and time columns to use compact capability icons, relative time labels, and sortable time metadata instead of wide action buttons and Zulu timestamps.
+- Fixed lease detail layout so local commands live inside the access panel instead of forcing a separate full-width commands section above recent runs.
 - Fixed Windows WebVNC credential handling so generated portal links preserve special characters and managed TightVNC sessions copy service passwords into the logged-in user's registry profile.
 - Fixed managed Linux browser setup so Chrome/Chromium launches skip first-run and default-browser prompts.
 - Fixed managed Linux browser cloud-init setup so Chrome/Chromium policy and wrapper generation cannot break YAML parsing.
