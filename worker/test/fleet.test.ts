@@ -958,6 +958,8 @@ describe("fleet lease identity and idle", () => {
       ".portal-header-meta { flex:1 1 auto; min-width:0; overflow:hidden; }",
     );
     expect(runBody).toContain(".command-row > div { min-width:0; overflow:hidden; }");
+    expect(runBody).toContain("run_000000000001 · cbx_000000000001 · failed");
+    expect(runBody).not.toContain('<span class="mono">go test ./...</span>');
     expect(runBody).toContain("run_000000000001");
     expect(runBody).toContain("go test ./...");
     expect(runBody).toContain("data-copy-command");

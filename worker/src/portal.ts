@@ -206,7 +206,7 @@ export function portalRunDetail(
     `${run.id} run`,
     `<main class="portal-shell run-shell">
       ${portalHeader({
-        meta: `${escapeHTML(run.id)} · ${escapeHTML(run.slug || run.leaseID)} <span class="mono">${escapeHTML(run.command.join(" "))}</span>`,
+        meta: `${escapeHTML(run.id)} · ${escapeHTML(run.slug || run.leaseID)} · ${escapeHTML(run.state)}`,
         actions: `
           <a class="button secondary" href="/portal/leases/${encodeURIComponent(run.leaseID)}">lease</a>
           <a class="button secondary" href="/portal">leases</a>
