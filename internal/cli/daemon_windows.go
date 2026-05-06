@@ -2,6 +2,13 @@
 
 package cli
 
-import "os/exec"
+import (
+	"os"
+	"os/exec"
+)
 
 func configureDaemonCommand(_ *exec.Cmd) {}
+
+func stopDaemonProcess(process *os.Process, _ int) error {
+	return process.Kill()
+}
