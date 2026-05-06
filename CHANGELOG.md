@@ -41,6 +41,7 @@
 - Fixed portal Windows target badges to show compact `win` and `win (wsl2)` labels instead of `windows / normal`.
 - Fixed portal access and time columns to use compact capability icons, relative time labels, and sortable time metadata instead of wide action buttons and Zulu timestamps.
 - Fixed lease detail layout so local commands live inside the access panel instead of forcing a separate full-width commands section above recent runs.
+- Fixed portal run detail layout density, responsive action alignment, and run telemetry readability so long-lived run pages fit operator viewports cleanly.
 - Fixed Windows WebVNC credential handling so generated portal links preserve special characters and managed TightVNC sessions copy service passwords into the logged-in user's registry profile.
 - Fixed managed Linux browser setup so Chrome/Chromium launches skip first-run and default-browser prompts.
 - Fixed managed Linux browser cloud-init setup so Chrome/Chromium policy and wrapper generation cannot break YAML parsing.
