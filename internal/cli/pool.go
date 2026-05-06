@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -44,6 +45,7 @@ func (a App) list(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	a.syncExternalRunnersBestEffort(ctx, cfg, backend)
 	if *jsonOut {
 		if jsonBackend, ok := backend.(JSONListBackend); ok {
 			view, err := jsonBackend.ListJSON(ctx, ListRequest{Options: leaseOptionsFromConfig(cfg)})
@@ -56,6 +58,51 @@ func (a App) list(ctx context.Context, args []string) error {
 	}
 	renderServerList(a.Stdout, servers)
 	return nil
+}
+
+func (a App) syncExternalRunnersBestEffort(ctx context.Context, cfg Config, backend Backend) {
+	if !isBlacksmithProvider(cfg.Provider) {
+		return
+	}
+	client, ok, err := newCoordinatorClient(cfg)
+	if err != nil || !ok {
+		return
+	}
+	jsonBackend, ok := backend.(JSONListBackend)
+	if !ok {
+		return
+	}
+	view, err := jsonBackend.ListJSON(ctx, ListRequest{Options: leaseOptionsFromConfig(cfg)})
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "warning: external runner portal sync skipped: %v\n", err)
+		return
+	}
+	runners, err := coordinatorExternalRunnersFromListView(view)
+	if err != nil {
+		fmt.Fprintf(a.Stderr, "warning: external runner portal sync skipped: %v\n", err)
+		return
+	}
+	if _, err := client.SyncExternalRunners(ctx, "blacksmith-testbox", runners); err != nil {
+		fmt.Fprintf(a.Stderr, "warning: external runner portal sync failed: %v\n", err)
+	}
+}
+
+func coordinatorExternalRunnersFromListView(view any) ([]CoordinatorExternalRunner, error) {
+	data, err := json.Marshal(view)
+	if err != nil {
+		return nil, err
+	}
+	var runners []CoordinatorExternalRunner
+	if err := json.Unmarshal(data, &runners); err != nil {
+		return nil, err
+	}
+	for i := range runners {
+		runners[i].Provider = "blacksmith-testbox"
+		if runners[i].CreatedAt == "" {
+			runners[i].CreatedAt = runners[i].Created
+		}
+	}
+	return runners, nil
 }
 
 func activeCoordinatorLeaseIDs(leases []CoordinatorLease) map[string]struct{} {

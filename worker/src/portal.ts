@@ -1,4 +1,4 @@
-import type { LeaseRecord, RunEventRecord, RunRecord } from "./types";
+import type { ExternalRunnerRecord, LeaseRecord, RunEventRecord, RunRecord } from "./types";
 
 const novncModuleURL = "/portal/assets/novnc/rfb.js";
 const copyIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>`;
@@ -19,10 +19,18 @@ export interface PortalLeaseBridgeStatus {
   codeBridgeConnected: boolean;
 }
 
-export function portalHome(leases: LeaseRecord[], request: Request): Response {
+export function portalHome(
+  leases: LeaseRecord[],
+  runners: ExternalRunnerRecord[],
+  request: Request,
+): Response {
   const sortedLeases = leases.toSorted((a, b) => leaseSortTime(b).localeCompare(leaseSortTime(a)));
   const active = sortedLeases.filter((lease) => lease.state === "active");
   const ended = sortedLeases.length - active.length;
+  const sortedRunners = runners.toSorted((a, b) =>
+    runnerSortTime(b).localeCompare(runnerSortTime(a)),
+  );
+  const activeRunners = sortedRunners.filter((runner) => !runner.stale);
   const admin = request.headers.get("x-crabbox-admin") === "true";
   const owner = request.headers.get("x-crabbox-owner") || "";
   const org = request.headers.get("x-crabbox-org") || "";
@@ -44,9 +52,16 @@ export function portalHome(leases: LeaseRecord[], request: Request): Response {
   const rows = sortedLeases.length
     ? sortedLeases.map((lease) => leaseRow(lease, { admin, owner, org })).join("")
     : `<tr><td colspan="8" class="empty">no leases visible</td></tr>`;
+  const runnerRows = sortedRunners.length
+    ? sortedRunners.map((runner) => runnerRow(runner, { admin, owner, org })).join("")
+    : `<tr><td colspan="8" class="empty">no external runners synced</td></tr>`;
   const summary = admin
     ? `${active.length} active / ${ended} ended / ${system} system`
     : `${active.length} active / ${ended} ended`;
+  const runnerSummary =
+    sortedRunners.length > 0
+      ? `${activeRunners.length} active / ${sortedRunners.length - activeRunners.length} stale`
+      : "sync with crabbox list --provider blacksmith-testbox";
   return html(
     "Crabbox Portal",
     `<main class="portal-shell">
@@ -73,6 +88,27 @@ export function portalHome(leases: LeaseRecord[], request: Request): Response {
             </tr>
           </thead>
           <tbody>${rows}</tbody>
+        </table>
+      </section>
+      <section class="panel table-panel runner-panel">
+        <div class="section-head">
+          <h2>external runners</h2>
+          <span>${escapeHTML(runnerSummary)}</span>
+        </div>
+        <table class="runner-table" data-portal-table data-page-size="8" data-search-placeholder="search runners" data-filter-buttons="active:active,stale:stale,blacksmith-testbox:blacksmith,all:all" data-filter-default="${activeRunners.length > 0 ? "active" : "all"}">
+          <thead>
+            <tr>
+              <th>runner</th>
+              <th>status</th>
+              <th>provider</th>
+              <th>repo</th>
+              <th>workflow</th>
+              <th>job/ref</th>
+              <th>seen</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>${runnerRows}</tbody>
         </table>
       </section>
     </main>`,
@@ -634,6 +670,32 @@ function leaseRow(
   </tr>`;
 }
 
+function runnerRow(
+  runner: ExternalRunnerRecord,
+  context: { admin: boolean; owner: string; org: string },
+): string {
+  const ownership =
+    context.admin && (runner.owner !== context.owner || runner.org !== context.org)
+      ? "system"
+      : "mine";
+  const state = runner.stale ? "stale" : "active";
+  const subline =
+    context.admin && ownership === "system"
+      ? `${runner.owner || "unknown"} · ${runner.org || "unknown"}`
+      : runner.id;
+  const jobRef = [runner.job, runner.ref].filter(Boolean).join(" / ") || "-";
+  return `<tr data-filter-tags="${escapeHTML([state, ownership, runner.provider, runner.status, runner.repo, runner.workflow, runner.job, runner.ref].filter(Boolean).join(" "))}">
+    <td><span class="lease-link"><strong>${escapeHTML(runner.id)}</strong><small>${escapeHTML(subline)}</small></span></td>
+    <td><span class="pill" data-tone="${runner.stale ? "warn" : runnerStatusTone(runner.status)}">${escapeHTML(runner.status || "-")}</span></td>
+    <td>${providerBadge(runner.provider)}</td>
+    <td>${escapeHTML(runner.repo || "-")}</td>
+    <td>${escapeHTML(runner.workflow || "-")}</td>
+    <td>${escapeHTML(jobRef)}</td>
+    ${timeCell(runnerSortTime(runner))}
+    <td></td>
+  </tr>`;
+}
+
 function portalHeader(options: PortalHeaderOptions): string {
   const variant = options.variant || "top";
   const headerClass = variant === "bar" ? "vnc-bar" : "top";
@@ -652,6 +714,10 @@ function portalHeader(options: PortalHeaderOptions): string {
 
 function leaseOwnership(lease: LeaseRecord, owner: string, org: string): "mine" | "system" {
   return lease.owner === owner && lease.org === org ? "mine" : "system";
+}
+
+function runnerSortTime(runner: ExternalRunnerRecord): string {
+  return runner.lastSeenAt || runner.updatedAt || runner.createdAt || runner.firstSeenAt;
 }
 
 function runRow(run: RunRecord): string {
@@ -1018,6 +1084,9 @@ function telemetryStorage(
 }
 
 function providerIcon(provider: string): string {
+  if (provider === "blacksmith-testbox") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v5H4z"/><path d="M4 13h16v5H4z"/><path d="M8 8.5h.01M8 15.5h.01M12 8.5h5M12 15.5h5"/></svg>`;
+  }
   if (provider === "aws") {
     return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15.5c3.8 2.2 9.1 2.5 14.8.9"/><path d="M17.5 13.2 20 16l-3.7.7"/><path d="M7 8.5h10l1.8 4H5.2z"/></svg>`;
   }
@@ -1025,6 +1094,19 @@ function providerIcon(provider: string): string {
     return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 20 7.5v9L12 21l-8-4.5v-9z"/><path d="M8 8v8M16 8v8M8 12h8"/></svg>`;
   }
   return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4z"/><path d="m7 10 3 2-3 2M12 15h5"/></svg>`;
+}
+
+function runnerStatusTone(status: string): string {
+  if (status === "ready" || status === "running") {
+    return "ok";
+  }
+  if (status === "queued" || status === "starting" || status === "pending") {
+    return "warn";
+  }
+  if (status === "failed" || status === "error") {
+    return "bad";
+  }
+  return "";
 }
 
 function targetIcon(target: string): string {
@@ -1095,7 +1177,7 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     html { min-height:100%; background:var(--bg); }
     body { margin:0; min-height:100vh; overflow-x:hidden; background:var(--bg); color:var(--fg); font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
     main { width:min(1180px, calc(100vw - 32px)); max-width:100%; margin:0 auto; padding:10px 0 22px; }
-    .portal-shell { width:min(1240px, calc(100vw - 16px)); max-width:100%; height:100dvh; display:grid; grid-template-rows:auto minmax(0,1fr); gap:8px; padding:6px 0 8px; overflow:hidden; }
+    .portal-shell { width:min(1240px, calc(100vw - 16px)); max-width:100%; height:100dvh; display:grid; grid-template-rows:auto minmax(0,1.1fr) minmax(220px,0.9fr); gap:8px; padding:6px 0 8px; overflow:hidden; }
     .lease-shell { grid-template-rows:auto auto minmax(0,1fr); }
     .run-shell { height:auto; min-height:100dvh; overflow:visible; grid-template-rows:auto; }
     h1,h2,p { margin:0; }
@@ -1188,6 +1270,7 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .icon-label span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .icon-label[data-provider="aws"] svg { color:#fbbf24; }
     .icon-label[data-provider="hetzner"] svg { color:#ef4444; }
+    .icon-label[data-provider="blacksmith-testbox"] svg { color:#a78bfa; }
     .icon-label[data-target="linux"] svg { color:#34d399; }
     .icon-label[data-target="windows"] svg { color:#38bdf8; }
     .icon-label[data-target="macos"] svg { color:#d8b4fe; }
@@ -1222,6 +1305,14 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .lease-table th:nth-child(6) { width:118px; }
     .lease-table th:nth-child(7) { width:148px; }
     .lease-table th:nth-child(8) { width:24px; }
+    .runner-table th:nth-child(1) { width:22%; }
+    .runner-table th:nth-child(2) { width:88px; }
+    .runner-table th:nth-child(3) { width:148px; }
+    .runner-table th:nth-child(4) { width:118px; }
+    .runner-table th:nth-child(5) { width:28%; }
+    .runner-table th:nth-child(6) { width:120px; }
+    .runner-table th:nth-child(7) { width:138px; }
+    .runner-table th:nth-child(8) { width:24px; }
     .run-table th:nth-child(2) { width:104px; }
     .run-table th:nth-child(3) { width:112px; }
     .run-table th:nth-child(4) { width:92px; }

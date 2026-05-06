@@ -160,6 +160,23 @@ type CoordinatorRunEventsResponse struct {
 	Events []CoordinatorRunEvent `json:"events"`
 }
 
+type CoordinatorExternalRunner struct {
+	ID        string `json:"id"`
+	Provider  string `json:"provider,omitempty"`
+	Status    string `json:"status,omitempty"`
+	Repo      string `json:"repo,omitempty"`
+	Workflow  string `json:"workflow,omitempty"`
+	Job       string `json:"job,omitempty"`
+	Ref       string `json:"ref,omitempty"`
+	CreatedAt string `json:"createdAt,omitempty"`
+	Created   string `json:"created,omitempty"`
+}
+
+type CoordinatorExternalRunnerSyncResponse struct {
+	Runners []CoordinatorExternalRunner `json:"runners"`
+	Stale   []CoordinatorExternalRunner `json:"stale"`
+}
+
 type CoordinatorRunEventResponse struct {
 	Event CoordinatorRunEvent `json:"event"`
 }
@@ -597,6 +614,15 @@ func (c *CoordinatorClient) AppendRunEvent(ctx context.Context, runID string, in
 	var res CoordinatorRunEventResponse
 	err := c.do(ctx, http.MethodPost, "/v1/runs/"+url.PathEscape(runID)+"/events", input, &res)
 	return res.Event, err
+}
+
+func (c *CoordinatorClient) SyncExternalRunners(ctx context.Context, provider string, runners []CoordinatorExternalRunner) (CoordinatorExternalRunnerSyncResponse, error) {
+	var res CoordinatorExternalRunnerSyncResponse
+	err := c.do(ctx, http.MethodPost, "/v1/runners/sync", map[string]any{
+		"provider": provider,
+		"runners":  runners,
+	}, &res)
+	return res, err
 }
 
 func (c *CoordinatorClient) RunEvents(ctx context.Context, runID string, after, limit int) ([]CoordinatorRunEvent, error) {

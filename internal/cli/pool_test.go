@@ -110,6 +110,35 @@ func TestCoordinatorMachineOrphanField(t *testing.T) {
 	}
 }
 
+func TestCoordinatorExternalRunnersFromBlacksmithListView(t *testing.T) {
+	view := []map[string]string{
+		{
+			"id":       "tbx_01kqyahxh67z6qtwtsdkt5xcst",
+			"status":   "ready",
+			"repo":     "openclaw",
+			"workflow": ".github/workflows/ci-check-testbox.yml",
+			"job":      "check",
+			"ref":      "main",
+			"created":  "2026-05-06T09:45:16.000000Z",
+		},
+	}
+
+	runners, err := coordinatorExternalRunnersFromListView(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runners) != 1 {
+		t.Fatalf("len=%d, want 1", len(runners))
+	}
+	got := runners[0]
+	if got.Provider != "blacksmith-testbox" {
+		t.Fatalf("provider=%q", got.Provider)
+	}
+	if got.ID != "tbx_01kqyahxh67z6qtwtsdkt5xcst" || got.CreatedAt != "2026-05-06T09:45:16.000000Z" {
+		t.Fatalf("unexpected runner: %#v", got)
+	}
+}
+
 func TestHeartbeatInterval(t *testing.T) {
 	tests := map[time.Duration]time.Duration{
 		0:                time.Minute,

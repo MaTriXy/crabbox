@@ -239,6 +239,39 @@ export interface RunTelemetryRequest {
   telemetry?: Partial<LeaseTelemetry>;
 }
 
+export interface ExternalRunnerInput {
+  id?: string;
+  provider?: string;
+  status?: string;
+  repo?: string;
+  workflow?: string;
+  job?: string;
+  ref?: string;
+  createdAt?: string;
+}
+
+export interface ExternalRunnerSyncRequest {
+  provider?: string;
+  runners?: ExternalRunnerInput[];
+}
+
+export interface ExternalRunnerRecord {
+  id: string;
+  provider: string;
+  owner: string;
+  org: string;
+  status: string;
+  repo?: string;
+  workflow?: string;
+  job?: string;
+  ref?: string;
+  createdAt?: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  updatedAt: string;
+  stale?: boolean;
+}
+
 export interface RunEventRecord {
   runID: string;
   seq: number;

@@ -23,6 +23,9 @@ import {
 } from "./tailscale";
 import type {
   Env,
+  ExternalRunnerInput,
+  ExternalRunnerRecord,
+  ExternalRunnerSyncRequest,
   LeaseRecord,
   LeaseRequest,
   LeaseTelemetry,
@@ -49,6 +52,7 @@ const maxStoredRunLogBytes = 8 * 1024 * 1024;
 const runLogChunkBytes = 64 * 1024;
 const maxLeaseTelemetryHistory = 60;
 const maxRunTelemetrySamples = 60;
+const maxExternalRunnerSyncItems = 200;
 const webVNCTicketTTLSeconds = 120;
 const codeTicketTTLSeconds = 120;
 const maxPendingWebVNCBytes = 1024 * 1024;
@@ -210,6 +214,12 @@ export class FleetDurableObject implements DurableObject {
       }
       if (method === "GET" && parts.join("/") === "v1/runs") {
         return await this.listRuns(request);
+      }
+      if (method === "GET" && parts.join("/") === "v1/runners") {
+        return await this.listExternalRunners(request);
+      }
+      if (method === "POST" && parts.join("/") === "v1/runners/sync") {
+        return await this.syncExternalRunners(request);
       }
       if (method === "POST" && parts.join("/") === "v1/runs") {
         return await this.createRun(request);
@@ -662,7 +672,11 @@ export class FleetDurableObject implements DurableObject {
   private async portalRoute(request: Request, parts: string[]): Promise<Response> {
     const method = request.method.toUpperCase();
     if (method === "GET" && parts.length === 1) {
-      return portalHome(await this.portalLeases(request), request);
+      const [leases, runners] = await Promise.all([
+        this.portalLeases(request),
+        this.visibleExternalRunners(request),
+      ]);
+      return portalHome(leases, runners, request);
     }
     if (method === "GET" && parts[1] === "runs" && parts[2]) {
       return await this.portalRunRoute(request, parts[2], parts[3]);
@@ -1638,6 +1652,97 @@ export class FleetDurableObject implements DurableObject {
     });
   }
 
+  private async listExternalRunners(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const provider = url.searchParams.get("provider") ?? "";
+    const status = url.searchParams.get("status") ?? "";
+    const stale = url.searchParams.get("stale") ?? "";
+    const limit = clampLimit(url.searchParams.get("limit"), 100);
+    return json({
+      runners: (await this.visibleExternalRunners(request))
+        .filter((runner) => !provider || runner.provider === provider)
+        .filter((runner) => !status || runner.status === status)
+        .filter((runner) => {
+          if (stale === "true") {
+            return runner.stale === true;
+          }
+          if (stale === "false") {
+            return runner.stale !== true;
+          }
+          return true;
+        })
+        .toSorted((a, b) => runnerSortTime(b).localeCompare(runnerSortTime(a)))
+        .slice(0, limit),
+    });
+  }
+
+  private async syncExternalRunners(request: Request): Promise<Response> {
+    const owner = requestOwner(request);
+    const org = requestOrg(request, this.env);
+    const input = await readJson<ExternalRunnerSyncRequest>(request);
+    const provider = sanitizeRunnerProvider(input.provider);
+    if (!provider) {
+      return json({ error: "invalid_provider" }, { status: 400 });
+    }
+    const rawRunners = Array.isArray(input.runners) ? input.runners : [];
+    if (rawRunners.length > maxExternalRunnerSyncItems) {
+      return json({ error: "too_many_runners" }, { status: 400 });
+    }
+    const now = new Date();
+    const nowISO = now.toISOString();
+    const existing = await this.externalRunnerRecords();
+    const seenIDs = new Set<string>();
+    const synced: ExternalRunnerRecord[] = [];
+    for (const raw of rawRunners) {
+      const sanitized = sanitizeExternalRunner(raw, provider, now);
+      if (!sanitized || seenIDs.has(sanitized.id)) {
+        continue;
+      }
+      seenIDs.add(sanitized.id);
+      const previous = existing.find(
+        (runner) =>
+          runner.provider === provider &&
+          runner.id === sanitized.id &&
+          runner.owner === owner &&
+          runner.org === org,
+      );
+      const runner: ExternalRunnerRecord = {
+        ...previous,
+        ...sanitized,
+        owner,
+        org,
+        provider,
+        firstSeenAt: previous?.firstSeenAt || nowISO,
+        lastSeenAt: nowISO,
+        updatedAt: nowISO,
+      };
+      delete runner.stale;
+      await this.putExternalRunner(runner);
+      synced.push(runner);
+    }
+    const stale: ExternalRunnerRecord[] = [];
+    for (const runner of existing) {
+      if (
+        runner.provider !== provider ||
+        runner.owner !== owner ||
+        runner.org !== org ||
+        seenIDs.has(runner.id) ||
+        runner.stale
+      ) {
+        continue;
+      }
+      const next: ExternalRunnerRecord = {
+        ...runner,
+        status: "missing",
+        stale: true,
+        updatedAt: nowISO,
+      };
+      await this.putExternalRunner(next);
+      stale.push(next);
+    }
+    return json({ runners: synced, stale });
+  }
+
   private async usage(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const requestedScope = url.searchParams.get("scope") ?? "user";
@@ -1792,6 +1897,21 @@ export class FleetDurableObject implements DurableObject {
     return [...runs.values()];
   }
 
+  private async externalRunnerRecords(): Promise<ExternalRunnerRecord[]> {
+    const runners = await this.state.storage.list<ExternalRunnerRecord>({
+      prefix: externalRunnerPrefix(),
+    });
+    return [...runners.values()];
+  }
+
+  private async visibleExternalRunners(request: Request): Promise<ExternalRunnerRecord[]> {
+    const runners = await this.externalRunnerRecords();
+    const admin = isAdminRequest(request);
+    const owner = requestOwner(request);
+    const org = requestOrg(request, this.env);
+    return runners.filter((runner) => admin || (runner.owner === owner && runner.org === org));
+  }
+
   private async runEvents(runID: string, after = 0, limit = 500): Promise<RunEventRecord[]> {
     const events = await this.state.storage.list<RunEventRecord>({
       prefix: runEventPrefix(runID),
@@ -1838,6 +1958,13 @@ export class FleetDurableObject implements DurableObject {
 
   private async putRun(run: RunRecord): Promise<void> {
     await this.state.storage.put(runKey(run.id), run);
+  }
+
+  private async putExternalRunner(runner: ExternalRunnerRecord): Promise<void> {
+    await this.state.storage.put(
+      externalRunnerKey(runner.provider, runner.id, runner.owner, runner.org),
+      runner,
+    );
   }
 
   private async appendRunEventRecord(
@@ -1906,6 +2033,14 @@ function leaseKey(leaseID: string): string {
 
 function runKey(runID: string): string {
   return `run:${runID}`;
+}
+
+function externalRunnerPrefix(): string {
+  return "runner:";
+}
+
+function externalRunnerKey(provider: string, runnerID: string, owner: string, org: string): string {
+  return `${externalRunnerPrefix()}${provider}:${runnerID}:${org}:${owner}`;
 }
 
 function runLogKey(runID: string): string {
@@ -1996,6 +2131,10 @@ function validCrabboxProviderKey(value: string | undefined): value is string {
   return typeof value === "string" && /^crabbox-cbx-[a-f0-9]{12}$/.test(value);
 }
 
+function validExternalRunnerID(value: string | undefined): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9_.:-]{2,128}$/.test(value);
+}
+
 function clampLimit(value: string | null, fallback: number): number {
   const parsed = Number(value ?? "");
   if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -2083,6 +2222,59 @@ function mergeTailscaleMetadata(
 
 function nonSecretString(value: unknown): string {
   return typeof value === "string" ? value.trim().slice(0, 256) : "";
+}
+
+function sanitizeRunnerProvider(value: unknown): string {
+  const provider = nonSecretString(value).toLowerCase();
+  return /^[a-z0-9][a-z0-9-]{1,63}$/.test(provider) ? provider : "";
+}
+
+function sanitizeExternalRunner(
+  input: ExternalRunnerInput,
+  provider: string,
+  now: Date,
+):
+  | Omit<ExternalRunnerRecord, "owner" | "org" | "firstSeenAt" | "lastSeenAt" | "updatedAt">
+  | undefined {
+  const id = nonSecretString(input.id);
+  if (!validExternalRunnerID(id)) {
+    return undefined;
+  }
+  const createdAt = sanitizeRunnerTimestamp(input.createdAt, now);
+  const runner: Omit<
+    ExternalRunnerRecord,
+    "owner" | "org" | "firstSeenAt" | "lastSeenAt" | "updatedAt"
+  > = {
+    id,
+    provider,
+    status: nonSecretString(input.status).toLowerCase() || "unknown",
+  };
+  for (const key of ["repo", "workflow", "job", "ref"] as const) {
+    const value = nonSecretString(input[key]);
+    if (value) {
+      runner[key] = value;
+    }
+  }
+  if (createdAt) {
+    runner.createdAt = createdAt;
+  }
+  return runner;
+}
+
+function sanitizeRunnerTimestamp(value: string | undefined, now: Date): string | undefined {
+  const parsed = Date.parse(value ?? "");
+  if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+  const date = new Date(parsed);
+  if (date.getTime() > now.getTime() + 5 * 60 * 1000) {
+    return undefined;
+  }
+  return date.toISOString();
+}
+
+function runnerSortTime(runner: ExternalRunnerRecord): string {
+  return runner.lastSeenAt || runner.updatedAt || runner.createdAt || runner.firstSeenAt;
 }
 
 function webVNCLeaseError(lease: LeaseRecord): string {

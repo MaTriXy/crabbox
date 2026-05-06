@@ -9,7 +9,13 @@ import {
   resetWebVNCBridge,
   type WebVNCBuffer,
 } from "../src/fleet";
-import type { Env, LeaseRecord, ProvisioningAttempt, RunRecord } from "../src/types";
+import type {
+  Env,
+  ExternalRunnerRecord,
+  LeaseRecord,
+  ProvisioningAttempt,
+  RunRecord,
+} from "../src/types";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -646,6 +652,49 @@ describe("fleet lease identity and idle", () => {
         windowsMode: "wsl2",
       }),
     );
+    await fleet.fetch(
+      request("POST", "/v1/runners/sync", {
+        headers: {
+          "x-crabbox-owner": "peter@example.com",
+          "x-crabbox-org": "openclaw",
+        },
+        body: {
+          provider: "blacksmith-testbox",
+          runners: [
+            {
+              id: "tbx_01testbox",
+              status: "ready",
+              repo: "openclaw",
+              workflow: ".github/workflows/ci-check-testbox.yml",
+              job: "check",
+              ref: "main",
+              createdAt: "2026-05-05T10:00:00.000Z",
+            },
+          ],
+        },
+      }),
+    );
+    await fleet.fetch(
+      request("POST", "/v1/runners/sync", {
+        headers: {
+          "x-crabbox-owner": "friend@example.com",
+          "x-crabbox-org": "openclaw",
+        },
+        body: {
+          provider: "blacksmith-testbox",
+          runners: [
+            {
+              id: "tbx_friendbox",
+              status: "ready",
+              repo: "openclaw",
+              workflow: ".github/workflows/ci-check-testbox.yml",
+              job: "check",
+              ref: "main",
+            },
+          ],
+        },
+      }),
+    );
 
     const response = await fleet.fetch(
       request("GET", "/portal", {
@@ -666,6 +715,11 @@ describe("fleet lease identity and idle", () => {
       'data-filter-buttons="active:active,ended:ended,aws:aws,hetzner:hetzner,linux:linux,macos:macos,windows:windows,all:all"',
     );
     expect(body).toContain('data-filter-default="active"');
+    expect(body).toContain("external runners");
+    expect(body).toContain("tbx_01testbox");
+    expect(body).toContain("blacksmith-testbox");
+    expect(body).toContain("ci-check-testbox.yml");
+    expect(body).not.toContain("tbx_friendbox");
     expect(body).toContain('data-provider="hetzner"');
     expect(body).toContain('data-target="linux"');
     expect(body).toContain('data-target="windows"');
@@ -686,6 +740,75 @@ describe("fleet lease identity and idle", () => {
     expect(body).toContain("/portal/leases/cbx_000000000001/vnc");
     expect(body).toContain("/portal/leases/cbx_000000000001/code/");
     expect(body).not.toContain("amber-krill");
+  });
+
+  it("syncs external runner visibility and marks missing runners stale", async () => {
+    const storage = new MemoryStorage();
+    const fleet = testFleet(storage);
+    const headers = {
+      "x-crabbox-owner": "peter@example.com",
+      "x-crabbox-org": "openclaw",
+    };
+
+    const sync = await fleet.fetch(
+      request("POST", "/v1/runners/sync", {
+        headers,
+        body: {
+          provider: "blacksmith-testbox",
+          runners: [
+            {
+              id: "tbx_01kqyahxh67z6qtwtsdkt5xcst",
+              status: "ready",
+              repo: "openclaw",
+              workflow: ".github/workflows/ci-check-testbox.yml",
+              job: "check",
+              ref: "main",
+              createdAt: "2026-05-06T09:45:16.000000Z",
+            },
+          ],
+        },
+      }),
+    );
+    expect(sync.status).toBe(200);
+    const synced = (await sync.json()) as { runners: ExternalRunnerRecord[] };
+    expect(synced.runners).toHaveLength(1);
+    expect(synced.runners[0]).toMatchObject({
+      id: "tbx_01kqyahxh67z6qtwtsdkt5xcst",
+      provider: "blacksmith-testbox",
+      status: "ready",
+      repo: "openclaw",
+      owner: "peter@example.com",
+      org: "openclaw",
+    });
+
+    const friendList = await fleet.fetch(
+      request("GET", "/v1/runners", {
+        headers: {
+          "x-crabbox-owner": "friend@example.com",
+          "x-crabbox-org": "openclaw",
+        },
+      }),
+    );
+    const friendBody = (await friendList.json()) as { runners: ExternalRunnerRecord[] };
+    expect(friendBody.runners).toHaveLength(0);
+
+    const staleSync = await fleet.fetch(
+      request("POST", "/v1/runners/sync", {
+        headers,
+        body: {
+          provider: "blacksmith-testbox",
+          runners: [],
+        },
+      }),
+    );
+    expect(staleSync.status).toBe(200);
+    const staleBody = (await staleSync.json()) as { stale: ExternalRunnerRecord[] };
+    expect(staleBody.stale).toHaveLength(1);
+    expect(staleBody.stale[0]).toMatchObject({
+      id: "tbx_01kqyahxh67z6qtwtsdkt5xcst",
+      status: "missing",
+      stale: true,
+    });
   });
 
   it("shows non-owned runner leases only in the admin portal", async () => {
