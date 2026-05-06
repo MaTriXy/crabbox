@@ -12,6 +12,8 @@ export interface Env {
   CRABBOX_AWS_ROOT_GB?: string;
   CRABBOX_AWS_SSH_CIDRS?: string;
   CRABBOX_AWS_MAC_HOST_ID?: string;
+  CRABBOX_CAPACITY_REGIONS?: string;
+  CRABBOX_CAPACITY_AVAILABILITY_ZONES?: string;
   CRABBOX_SHARED_TOKEN?: string;
   CRABBOX_ADMIN_TOKEN?: string;
   CRABBOX_SESSION_SECRET?: string;
@@ -380,6 +382,7 @@ export interface ProviderMachine {
   provider: Provider;
   id: number;
   cloudID: string;
+  region?: string;
   name: string;
   status: string;
   serverType: string;

@@ -1,5 +1,10 @@
 import { isAdminRequest } from "./auth";
-import { EC2SpotClient } from "./aws";
+import {
+  EC2SpotClient,
+  awsProvisioningErrorCategory,
+  awsRegionCandidates,
+  isRetryableAWSProvisioningError,
+} from "./aws";
 import { leaseConfig, validCIDRs } from "./config";
 import { HetznerClient } from "./hetzner";
 import { errorMessage, json, pathParts, readJson, requestOwner } from "./http";
@@ -516,6 +521,9 @@ export class FleetDurableObject implements DurableObject {
     );
     record.cloudID = server.cloudID;
     record.serverType = serverType;
+    if (config.provider === "aws" && server.region) {
+      config.awsRegion = server.region;
+    }
     if (attempts && attempts.length > 0) {
       record.provisioningAttempts = attempts;
     }
@@ -535,7 +543,7 @@ export class FleetDurableObject implements DurableObject {
     record.estimatedHourlyUSD = finalCost.hourlyUSD;
     record.maxEstimatedUSD = finalCost.maxUSD;
     if (config.provider === "aws") {
-      record.region = config.awsRegion;
+      record.region = server.region ?? config.awsRegion;
     }
     await this.putLease(record);
     await this.scheduleAlarm();
@@ -3124,8 +3132,13 @@ class HetznerProvider implements CloudProvider {
 
 class AWSProvider implements CloudProvider {
   private readonly client: EC2SpotClient;
+  private readonly region: string;
 
-  constructor(env: Env, region: string) {
+  constructor(
+    private readonly env: Env,
+    region: string,
+  ) {
+    this.region = region;
     this.client = new EC2SpotClient(env, region);
   }
 
@@ -3139,21 +3152,46 @@ class AWSProvider implements CloudProvider {
     slug: string,
     owner: string,
   ): Promise<{ server: ProviderMachine; serverType: string; attempts?: ProvisioningAttempt[] }> {
-    const { server, serverType, attempts } = await this.client.createServerWithFallback(
-      config,
-      leaseID,
-      slug,
-      owner,
-    );
-    const result: {
-      server: ProviderMachine;
-      serverType: string;
-      attempts?: ProvisioningAttempt[];
-    } = { server: await this.client.waitForServerIP(server.cloudID), serverType };
-    if (attempts && attempts.length > 0) {
-      result.attempts = attempts;
+    const regions = awsRegionCandidates(config, this.env, this.region);
+    const failures: string[] = [];
+    const regionAttempts: ProvisioningAttempt[] = [];
+    for (const region of regions) {
+      const client = region === this.region ? this.client : new EC2SpotClient(this.env, region);
+      try {
+        // oxlint-disable-next-line eslint/no-await-in-loop -- region fallback must preserve ordered capacity preference.
+        const { server, serverType, attempts } = await client.createServerWithFallback(
+          { ...config, awsRegion: region },
+          leaseID,
+          slug,
+          owner,
+        );
+        // oxlint-disable-next-line eslint/no-await-in-loop -- wait on the region that created the instance.
+        const readyServer = await client.waitForServerIP(server.cloudID);
+        const result: {
+          server: ProviderMachine;
+          serverType: string;
+          attempts?: ProvisioningAttempt[];
+        } = { server: { ...readyServer, region }, serverType };
+        const allAttempts = [...regionAttempts, ...(attempts ?? [])];
+        if (allAttempts.length > 0) {
+          result.attempts = allAttempts;
+        }
+        return result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        regionAttempts.push({
+          serverType: config.serverType,
+          market: config.capacityMarket,
+          category: awsProvisioningErrorCategory(message) || "region",
+          message: `region ${region}: ${message}`,
+        });
+        failures.push(`${region}: ${message}`);
+        if (!isRetryableAWSRegionProvisioningError(message)) {
+          break;
+        }
+      }
     }
-    return result;
+    throw new Error(failures.join("; "));
   }
 
   async deleteServer(id: string): Promise<void> {
@@ -3172,7 +3210,20 @@ class AWSProvider implements CloudProvider {
     await this.client.deleteSSHKey(name);
   }
 
-  hourlyPriceUSD(serverType: string): Promise<number | undefined> {
-    return this.client.hourlySpotPriceUSD(serverType);
+  hourlyPriceUSD(
+    serverType: string,
+    config: ReturnType<typeof leaseConfig>,
+  ): Promise<number | undefined> {
+    const region = config.awsRegion || this.region;
+    const client = region === this.region ? this.client : new EC2SpotClient(this.env, region);
+    return client.hourlySpotPriceUSD(serverType);
   }
+}
+
+function isRetryableAWSRegionProvisioningError(message: string): boolean {
+  return (
+    isRetryableAWSProvisioningError(message) ||
+    message.includes("quota ") ||
+    message.includes("capacity")
+  );
 }

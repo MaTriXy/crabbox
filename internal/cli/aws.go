@@ -26,11 +26,15 @@ func newAWSClient(ctx context.Context, cfg Config) (*AWSClient, error) {
 	if cfg.AWSRegion == "" {
 		return nil, exit(3, "CRABBOX_AWS_REGION or AWS_REGION is required")
 	}
-	awsCfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(cfg.AWSRegion))
+	return newAWSClientForRegion(ctx, cfg, cfg.AWSRegion)
+}
+
+func newAWSClientForRegion(ctx context.Context, cfg Config, region string) (*AWSClient, error) {
+	awsCfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
 	if err != nil {
 		return nil, err
 	}
-	return &AWSClient{ec2: ec2.NewFromConfig(awsCfg), region: cfg.AWSRegion}, nil
+	return &AWSClient{ec2: ec2.NewFromConfig(awsCfg), region: region}, nil
 }
 
 func NewAWSClient(ctx context.Context, cfg Config) (*AWSClient, error) {
@@ -128,6 +132,39 @@ func (c *AWSClient) DeleteSSHKey(ctx context.Context, name string) error {
 }
 
 func (c *AWSClient) CreateServerWithFallback(ctx context.Context, cfg Config, publicKey, leaseID, slug string, keep bool, logf func(string, ...any)) (Server, Config, error) {
+	regions := awsRegionCandidates(cfg, c.region)
+	if len(regions) > 1 {
+		var errs []error
+		for _, region := range regions {
+			next := cfg
+			next.AWSRegion = region
+			client := c
+			if region != c.region {
+				var err error
+				client, err = newAWSClientForRegion(ctx, next, region)
+				if err != nil {
+					errs = append(errs, fmt.Errorf("%s: %w", region, err))
+					continue
+				}
+			}
+			if logf != nil && region != c.region {
+				logf("fallback provisioning region=%s after capacity/quota rejection\n", region)
+			}
+			server, resolved, err := client.createServerWithFallbackInRegion(ctx, next, publicKey, leaseID, slug, keep, logf)
+			if err == nil {
+				return server, resolved, nil
+			}
+			errs = append(errs, fmt.Errorf("%s: %w", region, err))
+			if !isRetryableAWSRegionProvisioningError(err) {
+				return Server{}, resolved, joinErrors(errs)
+			}
+		}
+		return Server{}, cfg, joinErrors(errs)
+	}
+	return c.createServerWithFallbackInRegion(ctx, cfg, publicKey, leaseID, slug, keep, logf)
+}
+
+func (c *AWSClient) createServerWithFallbackInRegion(ctx context.Context, cfg Config, publicKey, leaseID, slug string, keep bool, logf func(string, ...any)) (Server, Config, error) {
 	if cfg.ProviderKey == "" {
 		cfg.ProviderKey = "crabbox-steipete"
 	}
@@ -254,6 +291,10 @@ func (c *AWSClient) createServer(ctx context.Context, cfg Config, publicKey, lea
 	applyAWSRunInstanceTargetOptions(input, cfg)
 	if cfg.TargetOS == targetMacOS {
 		input.Placement = &types.Placement{HostId: aws.String(cfg.AWSMacHostID), Tenancy: types.TenancyHost}
+	} else if cfg.AWSSubnetID == "" {
+		if zone := awsAvailabilityZoneForRegion(cfg, cfg.AWSRegion); zone != "" {
+			input.Placement = &types.Placement{AvailabilityZone: aws.String(zone)}
+		}
 	}
 	out, err := c.ec2.RunInstances(ctx, input)
 	if err != nil {
@@ -538,6 +579,26 @@ func isRetryableAWSProvisioningError(err error) bool {
 				strings.Contains(s, "eligible") ||
 				strings.Contains(s, "InstanceType") ||
 				strings.Contains(s, "instance type")))
+}
+
+func isRetryableAWSRegionProvisioningError(err error) bool {
+	s := err.Error()
+	return isRetryableAWSProvisioningError(err) ||
+		strings.Contains(s, "quota ") ||
+		strings.Contains(s, "capacity")
+}
+
+func awsRegionCandidates(cfg Config, preferredRegion string) []string {
+	return appendUniqueStrings([]string{preferredRegion, cfg.AWSRegion}, cfg.Capacity.Regions...)
+}
+
+func awsAvailabilityZoneForRegion(cfg Config, region string) string {
+	for _, zone := range cfg.Capacity.AvailabilityZones {
+		if strings.HasPrefix(zone, region) {
+			return zone
+		}
+	}
+	return ""
 }
 
 func awsLaunchCandidates(cfg Config) []string {

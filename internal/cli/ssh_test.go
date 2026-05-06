@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -722,6 +723,24 @@ func TestAWSLaunchCandidatesAddsPolicyFallbackUnlessExact(t *testing.T) {
 	exact := awsLaunchCandidates(Config{Provider: "aws", Class: "beast", ServerType: "t3.small", ServerTypeExplicit: true})
 	if len(exact) != 1 || exact[0] != "t3.small" {
 		t.Fatalf("exact candidates=%v", exact)
+	}
+}
+
+func TestAWSRegionAndAvailabilityZoneCandidates(t *testing.T) {
+	cfg := Config{
+		AWSRegion: "eu-west-1",
+		Capacity: CapacityConfig{
+			Regions:           []string{"us-east-1", "eu-west-1"},
+			AvailabilityZones: []string{"us-east-1a", "eu-west-1b"},
+		},
+	}
+	got := awsRegionCandidates(cfg, "eu-west-2")
+	want := []string{"eu-west-2", "eu-west-1", "us-east-1"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("awsRegionCandidates=%v want %v", got, want)
+	}
+	if zone := awsAvailabilityZoneForRegion(cfg, "eu-west-1"); zone != "eu-west-1b" {
+		t.Fatalf("awsAvailabilityZoneForRegion=%q want eu-west-1b", zone)
 	}
 }
 

@@ -3,11 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   addRunInstancesTagSpecifications,
   applyAWSRunInstanceTargetOptions,
+  awsAvailabilityZoneForRegion,
   awsInstanceTypeVCPUs,
   awsLaunchCandidates,
   awsProvisioningErrorCategory,
   awsQuotaCodeForMarket,
   awsQuotaPreflightAttempt,
+  awsRegionCandidates,
   createSecurityGroupParams,
 } from "../src/aws";
 
@@ -95,6 +97,23 @@ describe("aws provider", () => {
         serverTypeExplicit: false,
       }),
     ).not.toContain("t3.large");
+  });
+
+  it("builds ordered AWS region and availability-zone candidates", () => {
+    expect(
+      awsRegionCandidates(
+        { awsRegion: "eu-west-1", capacityRegions: ["us-east-1", "eu-west-1"] },
+        { CRABBOX_AWS_REGION: "eu-central-1", CRABBOX_CAPACITY_REGIONS: "us-west-2, us-east-1" },
+        "eu-west-2",
+      ),
+    ).toEqual(["eu-west-2", "eu-west-1", "eu-central-1", "us-west-2", "us-east-1"]);
+    expect(
+      awsAvailabilityZoneForRegion(
+        { capacityAvailabilityZones: ["us-east-1a", "eu-west-1b"] },
+        { CRABBOX_CAPACITY_AVAILABILITY_ZONES: "eu-west-2a,eu-west-1c" },
+        "eu-west-1",
+      ),
+    ).toBe("eu-west-1b");
   });
 
   it("maps AWS instance types to vCPU quota units", () => {

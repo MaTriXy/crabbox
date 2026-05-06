@@ -76,7 +76,9 @@ export class EC2SpotClient {
       "Filter.2.Value.4": "stopped",
     });
     return reservations(root).flatMap((reservation) =>
-      items(record(record(reservation)["instancesSet"])["item"]).map(instanceToMachine),
+      items(record(record(reservation)["instancesSet"])["item"]).map((instance) =>
+        this.withRegion(instanceToMachine(instance)),
+      ),
     );
   }
 
@@ -195,7 +197,7 @@ export class EC2SpotClient {
     });
     for (const reservation of reservations(root)) {
       for (const instance of items(record(record(reservation)["instancesSet"])["item"])) {
-        return instanceToMachine(instance);
+        return this.withRegion(instanceToMachine(instance));
       }
     }
     throw new Error(`aws instance not found: ${instanceID}`);
@@ -359,6 +361,11 @@ export class EC2SpotClient {
       }
       params["Placement.HostId"] = hostID;
       params["Placement.Tenancy"] = "host";
+    } else if (!subnetID) {
+      const availabilityZone = awsAvailabilityZoneForRegion(config, this.env, this.region);
+      if (availabilityZone) {
+        params["Placement.AvailabilityZone"] = availabilityZone;
+      }
     }
     addRunInstancesTagSpecifications(params, { ...labels, Name: name }, config.capacityMarket);
     const root = await this.ec2("RunInstances", params);
@@ -366,7 +373,7 @@ export class EC2SpotClient {
     if (!instance) {
       throw new Error("aws returned no instances");
     }
-    return instanceToMachine(instance);
+    return this.withRegion(instanceToMachine(instance));
   }
 
   private async resolveAMI(config: LeaseConfig): Promise<string> {
@@ -574,6 +581,10 @@ export class EC2SpotClient {
       return undefined;
     }
   }
+
+  private withRegion(server: ProviderMachine): ProviderMachine {
+    return { ...server, region: this.region };
+  }
 }
 
 function awsSSHCIDRs(config: LeaseConfig, env: Env): string[] {
@@ -699,6 +710,33 @@ export function awsLaunchCandidates(
   ]);
 }
 
+export function awsRegionCandidates(
+  config: Pick<LeaseConfig, "awsRegion" | "capacityRegions">,
+  env: Pick<Env, "CRABBOX_AWS_REGION" | "CRABBOX_CAPACITY_REGIONS">,
+  preferredRegion = "eu-west-1",
+): string[] {
+  return uniqueStrings([
+    preferredRegion,
+    config.awsRegion,
+    env.CRABBOX_AWS_REGION ?? "",
+    ...splitCommaList(env.CRABBOX_CAPACITY_REGIONS ?? ""),
+    ...config.capacityRegions,
+  ]);
+}
+
+export function awsAvailabilityZoneForRegion(
+  config: Pick<LeaseConfig, "capacityAvailabilityZones">,
+  env: Pick<Env, "CRABBOX_CAPACITY_AVAILABILITY_ZONES">,
+  region: string,
+): string {
+  return (
+    uniqueStrings([
+      ...config.capacityAvailabilityZones,
+      ...splitCommaList(env.CRABBOX_CAPACITY_AVAILABILITY_ZONES ?? ""),
+    ]).find((zone) => zone.startsWith(region)) ?? ""
+  );
+}
+
 export function applyAWSRunInstanceTargetOptions(
   params: Record<string, string>,
   config: Pick<LeaseConfig, "target" | "windowsMode">,
@@ -746,7 +784,23 @@ export function awsQuotaPreflightAttempt(
 }
 
 function uniqueStrings(values: string[]): string[] {
-  return [...new Set(values.filter(Boolean))];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    const normalized = value.trim();
+    if (normalized && !seen.has(normalized)) {
+      seen.add(normalized);
+      out.push(normalized);
+    }
+  }
+  return out;
+}
+
+function splitCommaList(value: string): string[] {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function positiveInt(value: string | undefined): number {
@@ -789,7 +843,7 @@ export function awsProvisioningErrorCategory(message: string): string {
   return "";
 }
 
-function isRetryableAWSProvisioningError(message: string): boolean {
+export function isRetryableAWSProvisioningError(message: string): boolean {
   return awsProvisioningErrorCategory(message) !== "";
 }
 
