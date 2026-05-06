@@ -206,6 +206,87 @@ export function portalLeaseDetail(
   );
 }
 
+export function portalExternalRunnerDetail(
+  runner: ExternalRunnerRecord,
+  context: { admin: boolean },
+): Response {
+  const actionState = externalRunnerActionState(runner);
+  const actionsLinks = externalRunnerActionsLinks(runner);
+  const stopCommand = externalRunnerStopCommand(runner);
+  const ownerLabel = context.admin ? `${runner.owner} / ${runner.org}` : runner.org;
+  const actionSummary = [
+    runner.actionsRepo,
+    runner.actionsRunID ? `run ${runner.actionsRunID}` : undefined,
+    runner.actionsRunStatus,
+    runner.actionsRunConclusion,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return html(
+    `${runner.id} runner`,
+    `<main class="portal-shell runner-shell">
+      ${portalHeader({
+        meta: `${escapeHTML(runner.id)} · ${escapeHTML(runner.provider)} external runner`,
+        actions: `
+          <a class="button secondary" href="/portal">leases</a>
+          <a class="button secondary" href="/portal/logout">log out</a>
+        `,
+      })}
+      <section class="detail-grid">
+        <div class="panel detail-card">
+          <div class="section-head">
+            <h2>runner</h2>
+            <div class="state-stack">
+              <span class="pill" data-tone="${runner.stale ? "warn" : runnerStatusTone(runner.status)}">${escapeHTML(runner.status || "-")}</span>
+              ${externalRunnerActionBadge(actionState)}
+            </div>
+          </div>
+          <dl class="meta-grid">
+            ${metaRow("id", runner.id)}
+            ${metaHTMLRow("provider", providerBadge(runner.provider))}
+            ${metaRow("owner", ownerLabel)}
+            ${metaRow("visibility", "external")}
+            ${metaRow("first seen", shortTime(runner.firstSeenAt))}
+            ${metaRow("last seen", shortTime(runner.lastSeenAt))}
+            ${metaRow("updated", shortTime(runner.updatedAt))}
+            ${metaRow("created", runner.createdAt ? shortTime(runner.createdAt) : undefined)}
+          </dl>
+        </div>
+        <div class="panel detail-card">
+          <div class="section-head">
+            <h2>actions owner</h2>
+            <span>${actionsLinks || "not inferred"}</span>
+          </div>
+          <dl class="meta-grid">
+            ${metaRow("repo", runner.actionsRepo || runner.repo)}
+            ${metaRow("workflow", runner.actionsWorkflowName || workflowBasename(runner.workflow))}
+            ${metaRow("job", runner.job)}
+            ${metaRow("ref", runner.ref)}
+            ${metaRow("run", runner.actionsRunID)}
+            ${metaRow("state", actionSummary || runner.actionsRunStatus || runner.actionsRunConclusion)}
+          </dl>
+        </div>
+      </section>
+      <section class="panel command-panel">
+        <div class="section-head">
+          <h2>operator action</h2>
+          <span>local only</span>
+        </div>
+        <div class="commands">
+          ${stopCommand ? commandBlock("stop runner", stopCommand) : `<p class="empty">no local stop command available</p>`}
+        </div>
+      </section>
+      <section class="panel detail-card">
+        <div class="section-head">
+          <h2>boundary</h2>
+          <span>visibility only</span>
+        </div>
+        <p class="detail-note">Blacksmith owns the machine, workspace, logs, and lifecycle. Crabbox stores this row so the portal can show who owns the runner and whether the backing workflow looks stuck. There is no Crabbox SSH, VNC, code, telemetry, cost, or expiry control for this row.</p>
+      </section>
+    </main>`,
+  );
+}
+
 export function portalRunDetail(
   run: RunRecord,
   events: RunEventRecord[],
@@ -675,6 +756,7 @@ function externalRunnerLeaseRow(
   const jobRef = [runner.job, runner.ref].filter(Boolean).join(" / ") || "-";
   const actionState = externalRunnerActionState(runner);
   const actionsLinks = externalRunnerActionsLinks(runner);
+  const detailPath = externalRunnerDetailPath(runner, context);
   const filterTags = [
     state,
     actionState?.stuck ? "stuck" : undefined,
@@ -690,8 +772,8 @@ function externalRunnerLeaseRow(
     runner.job,
     runner.ref,
   ];
-  return `<tr class="external-row" aria-disabled="true" data-filter-tags="${escapeHTML(filterTags.filter(Boolean).join(" "))}">
-    <td><span class="lease-link"><strong>${escapeHTML(runner.id)}</strong><small>${escapeHTML(subline)}</small></span></td>
+  return `<tr class="external-row" data-filter-tags="${escapeHTML(filterTags.filter(Boolean).join(" "))}">
+    <td><a class="lease-link" href="${escapeHTML(detailPath)}"><strong>${escapeHTML(runner.id)}</strong><small>${escapeHTML(subline)}</small></a></td>
     <td><div class="state-stack"><span class="pill" data-tone="${runner.stale ? "warn" : runnerStatusTone(runner.status)}">${escapeHTML(runner.status || "-")}</span>${externalRunnerActionBadge(actionState)}</div></td>
     <td>${providerBadge(runner.provider)}</td>
     <td><span class="muted" title="Blacksmith owns runner host details">-</span></td>
@@ -700,6 +782,20 @@ function externalRunnerLeaseRow(
     ${timeCell(runnerSortTime(runner))}
     <td></td>
   </tr>`;
+}
+
+function externalRunnerDetailPath(
+  runner: ExternalRunnerRecord,
+  context?: { admin: boolean; owner: string; org: string },
+): string {
+  const path = `/portal/runners/${encodeURIComponent(runner.provider)}/${encodeURIComponent(runner.id)}`;
+  if (!context?.admin) {
+    return path;
+  }
+  const params = new URLSearchParams();
+  params.set("owner", runner.owner);
+  params.set("org", runner.org);
+  return `${path}?${params.toString()}`;
 }
 
 type ExternalRunnerActionState = {
@@ -790,12 +886,17 @@ function externalRunnerActionsCell(runner: ExternalRunnerRecord, actionsLinks: s
 
 function externalRunnerAccessCell(runner: ExternalRunnerRecord, hasActions: boolean): string {
   const label = hasActions ? "no box access" : "no access";
-  const command =
-    runner.provider && runner.id ? `crabbox stop --provider ${runner.provider} ${runner.id}` : "";
+  const command = externalRunnerStopCommand(runner);
   const copy = command
     ? `<button class="icon-btn mini" type="button" title="copy stop command" aria-label="copy stop command" data-copy-value="${escapeHTML(command)}">${copyIcon}</button>`
     : "";
   return `<div class="access-cell disabled-cell external-access" title="external runner; no Crabbox access data"><span>${label}</span>${copy}</div>`;
+}
+
+function externalRunnerStopCommand(runner: ExternalRunnerRecord): string {
+  return runner.provider && runner.id
+    ? `crabbox stop --provider ${shellArg(runner.provider)} ${shellArg(runner.id)}`
+    : "";
 }
 
 function externalRunnerActionsLinks(runner: ExternalRunnerRecord): string {
@@ -1378,6 +1479,8 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .run-shell .meta-grid div { padding:6px 10px; }
     .run-shell .meta-grid dt { margin-bottom:2px; font-size:10px; }
     .run-shell .meta-grid dd { font-size:13px; }
+    .runner-shell .detail-grid { grid-template-columns:minmax(0,1fr) minmax(260px,0.64fr); }
+    .detail-note { margin:0; padding:12px 14px; color:var(--muted); line-height:1.45; }
     .run-artifact-card .run-artifacts { gap:6px; padding:8px; }
     .run-artifact-card .button { width:100%; }
     .run-artifact-card .result-grid { grid-column:1 / -1; }

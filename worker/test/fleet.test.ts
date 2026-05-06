@@ -725,13 +725,13 @@ describe("fleet lease identity and idle", () => {
     expect(body).not.toContain("external runners");
     expect(body).toContain("1 external");
     expect(body).toContain('class="external-row"');
-    expect(body).toContain('aria-disabled="true"');
     expect(body).toContain("no box access");
     expect(body).toContain("stuck");
     expect(body).toContain(
       'data-filter-tags="active stuck actions mine external blacksmith-testbox ready in_progress',
     );
     expect(body).toContain("tbx_01testbox");
+    expect(body).toContain("/portal/runners/blacksmith-testbox/tbx_01testbox");
     expect(body).toContain("blacksmith-testbox");
     expect(body).toContain("ci-check-testbox.yml");
     expect(body).toContain("https://github.com/openclaw/openclaw/actions/runs/123456");
@@ -836,6 +836,64 @@ describe("fleet lease identity and idle", () => {
       status: "missing",
       stale: true,
     });
+  });
+
+  it("renders external runner detail pages for visible runners", async () => {
+    const storage = new MemoryStorage();
+    const fleet = testFleet(storage);
+    const headers = {
+      "x-crabbox-owner": "peter@example.com",
+      "x-crabbox-org": "openclaw",
+    };
+    const sync = await fleet.fetch(
+      request("POST", "/v1/runners/sync", {
+        headers,
+        body: {
+          provider: "blacksmith-testbox",
+          runners: [
+            {
+              id: "tbx_detail",
+              status: "ready",
+              repo: "openclaw",
+              workflow: ".github/workflows/ci-check-testbox.yml",
+              job: "check",
+              ref: "main",
+              createdAt: "2026-05-06T09:45:16.000000Z",
+              actionsRepo: "openclaw/openclaw",
+              actionsRunID: "123456",
+              actionsRunURL: "https://github.com/openclaw/openclaw/actions/runs/123456",
+              actionsRunStatus: "queued",
+              actionsWorkflowName: "Blacksmith Testbox",
+              actionsWorkflowURL:
+                "https://github.com/openclaw/openclaw/actions/workflows/ci-check-testbox.yml",
+            },
+          ],
+        },
+      }),
+    );
+    expect(sync.status).toBe(200);
+
+    const detail = await fleet.fetch(
+      request("GET", "/portal/runners/blacksmith-testbox/tbx_detail", { headers }),
+    );
+    expect(detail.status).toBe(200);
+    const body = await detail.text();
+    expect(body).toContain("tbx_detail");
+    expect(body).toContain("actions owner");
+    expect(body).toContain("Blacksmith Testbox");
+    expect(body).toContain("https://github.com/openclaw/openclaw/actions/runs/123456");
+    expect(body).toContain("crabbox stop --provider blacksmith-testbox tbx_detail");
+    expect(body).toContain("visibility only");
+
+    const hidden = await fleet.fetch(
+      request("GET", "/portal/runners/blacksmith-testbox/tbx_detail", {
+        headers: {
+          "x-crabbox-owner": "friend@example.com",
+          "x-crabbox-org": "openclaw",
+        },
+      }),
+    );
+    expect(hidden.status).toBe(404);
   });
 
   it("shows non-owned runner leases only in the admin portal", async () => {

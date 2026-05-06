@@ -7,6 +7,7 @@ import { githubAuthRoute, githubPortalLogin, githubPortalLogout } from "./oauth"
 import {
   portalCode,
   portalError,
+  portalExternalRunnerDetail,
   portalHome,
   portalLeaseDetail,
   portalRunDetail,
@@ -680,6 +681,15 @@ export class FleetDurableObject implements DurableObject {
     }
     if (method === "GET" && parts[1] === "runs" && parts[2]) {
       return await this.portalRunRoute(request, parts[2], parts[3]);
+    }
+    if (
+      method === "GET" &&
+      parts[1] === "runners" &&
+      parts[2] &&
+      parts[3] &&
+      parts[4] === undefined
+    ) {
+      return await this.portalExternalRunnerPage(request, parts[2], parts[3]);
     }
     if (method === "GET" && parts[1] === "leases" && parts[2] && parts[3] === undefined) {
       return await this.portalLeasePage(request, parts[2]);
@@ -1674,6 +1684,32 @@ export class FleetDurableObject implements DurableObject {
         .toSorted((a, b) => runnerSortTime(b).localeCompare(runnerSortTime(a)))
         .slice(0, limit),
     });
+  }
+
+  private async portalExternalRunnerPage(
+    request: Request,
+    provider: string,
+    runnerID: string,
+  ): Promise<Response> {
+    const admin = isAdminRequest(request);
+    const url = new URL(request.url);
+    const owner = admin ? url.searchParams.get("owner") : requestOwner(request);
+    const org = admin ? url.searchParams.get("org") : requestOrg(request, this.env);
+    const runner = (await this.visibleExternalRunners(request)).find(
+      (candidate) =>
+        candidate.provider === provider &&
+        candidate.id === runnerID &&
+        (!owner || candidate.owner === owner) &&
+        (!org || candidate.org === org),
+    );
+    if (!runner) {
+      return portalError(
+        "Runner not found",
+        "That external runner is not visible to you or has not been synced yet.",
+        404,
+      );
+    }
+    return portalExternalRunnerDetail(runner, { admin });
   }
 
   private async syncExternalRunners(request: Request): Promise<Response> {
