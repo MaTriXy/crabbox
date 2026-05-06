@@ -514,6 +514,9 @@ describe("fleet lease identity and idle", () => {
     );
     expect(response.status).toBe(200);
     const body = await response.text();
+    expect(body).toContain('class="portal-shell"');
+    expect(body).toContain("table-scroll");
+    expect(body).toContain(".lease-table th:nth-child(1)");
     expect(body).toContain(
       'data-filter-buttons="active:active,ended:ended,aws:aws,hetzner:hetzner,linux:linux,macos:macos,windows:windows,all:all"',
     );
@@ -640,6 +643,7 @@ describe("fleet lease identity and idle", () => {
       "crabbox webvnc --provider hetzner --target linux --id blue-lobster --open",
     );
     expect(body).toContain("crabbox code --id blue-lobster --open");
+    expect(body).toContain('class="portal-shell lease-shell"');
     expect(body).toContain('data-search-placeholder="search runs"');
     expect(body).toContain(
       'data-filter-buttons="succeeded:succeeded,failed:failed,running:running,all:all"',
@@ -664,6 +668,7 @@ describe("fleet lease identity and idle", () => {
     expect(runPage.status).toBe(200);
     expect(runPage.headers.get("content-type")).toBe("text/html; charset=utf-8");
     const runBody = await runPage.text();
+    expect(runBody).toContain('class="portal-shell run-shell"');
     expect(runBody).toContain("run_000000000001");
     expect(runBody).toContain("go test ./...");
     expect(runBody).toContain("portal log");
