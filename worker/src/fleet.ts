@@ -1693,6 +1693,7 @@ export class FleetDurableObject implements DurableObject {
     const existing = await this.externalRunnerRecords();
     const seenIDs = new Set<string>();
     const synced: ExternalRunnerRecord[] = [];
+    const writes: Promise<void>[] = [];
     for (const raw of rawRunners) {
       const sanitized = sanitizeExternalRunner(raw, provider, now);
       if (!sanitized || seenIDs.has(sanitized.id)) {
@@ -1717,7 +1718,7 @@ export class FleetDurableObject implements DurableObject {
         updatedAt: nowISO,
       };
       delete runner.stale;
-      await this.putExternalRunner(runner);
+      writes.push(this.putExternalRunner(runner));
       synced.push(runner);
     }
     const stale: ExternalRunnerRecord[] = [];
@@ -1737,9 +1738,10 @@ export class FleetDurableObject implements DurableObject {
         stale: true,
         updatedAt: nowISO,
       };
-      await this.putExternalRunner(next);
+      writes.push(this.putExternalRunner(next));
       stale.push(next);
     }
+    await Promise.all(writes);
     return json({ runners: synced, stale });
   }
 
