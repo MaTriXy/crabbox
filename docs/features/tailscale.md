@@ -85,7 +85,10 @@ Brokered mode does not require a local Tailscale key.
 `tailscale.exitNode` asks the lease to route outbound internet through a
 tailnet exit node after it joins Tailscale. Use a MagicDNS name or 100.x address
 for an approved exit node. `tailscale.exitNodeAllowLanAccess` maps to
-Tailscale's LAN-access flag and requires `tailscale.exitNode`.
+Tailscale's LAN-access flag and requires `tailscale.exitNode`. In `network:
+auto`, exit-node leases bootstrap over the tailnet host once it appears because
+the public/provider SSH path can become asymmetric after the lease selects the
+exit node.
 
 ## Brokered Mode
 
@@ -129,6 +132,13 @@ crabbox run --tailscale --tailscale-exit-node 100.100.100.100 -- curl -4 https:/
 The exit node must already advertise exit-node capability and be approved in
 Tailscale admin. ACLs/grants must allow the lease's tags, such as
 `tag:crabbox`, to access `autogroup:internet` through exit nodes.
+
+After the lease is reachable, Crabbox verifies that the selected exit node can
+reach the public internet. If that check fails, the run stops before sync or the
+remote command and reports the exit-node egress failure. This usually means the
+exit node is not approved for internet routing, the tailnet policy does not
+grant `autogroup:internet` to the lease tag, or the exit-node machine itself is
+not forwarding traffic.
 
 ## VNC And SSH
 

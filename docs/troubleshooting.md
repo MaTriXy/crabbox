@@ -178,7 +178,8 @@ Symptoms:
   `tailscale_disabled`, or `invalid_tailscale_tags`;
 - `--network tailscale` says the lease has no tailnet address;
 - `--network tailscale` says the tailnet host is unreachable over SSH;
-- `--network auto` falls back to `public`.
+- `--network auto` falls back to `public`;
+- `tailscale exit node ... joined but remote internet egress failed`.
 
 Checks:
 
@@ -200,6 +201,12 @@ Fixes:
 - ensure requested tags are in the Worker `CRABBOX_TAILSCALE_TAGS` allowlist;
 - ensure the local client is joined to the same tailnet and ACLs allow SSH to
   the tagged node;
+- for exit nodes, ensure the exit node is approved and that tailnet grants or
+  ACLs allow the lease tag, for example `tag:crabbox`, to reach
+  `autogroup:internet`;
+- if the exit node is a personal Mac, verify Tailscale still advertises it as
+  an exit node and that the Mac can actually forward internet traffic for
+  clients;
 - use `--network public` to prove the provider SSH path independently;
 - use `--network auto` when fallback to public is acceptable;
 - use `--network tailscale` when a missing or unreachable tailnet path should
