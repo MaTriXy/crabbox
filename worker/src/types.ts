@@ -148,6 +148,7 @@ export interface LeaseRecord {
   lastTouchedAt?: string;
   expiresAt: string;
   telemetry?: LeaseTelemetry;
+  telemetryHistory?: LeaseTelemetry[];
   releasedAt?: string;
   endedAt?: string;
 }

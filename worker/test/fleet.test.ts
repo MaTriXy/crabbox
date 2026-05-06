@@ -435,7 +435,83 @@ describe("fleet lease identity and idle", () => {
       memoryTotalBytes: 2048,
       memoryPercent: 50,
     });
+    expect(lease.telemetryHistory).toHaveLength(1);
+    expect(lease.telemetryHistory?.[0]).toMatchObject({ load1: 0.42, memoryPercent: 50 });
     expect(Date.parse(lease.expiresAt)).toBeGreaterThan(expiresAt.getTime());
+
+    const secondHeartbeat = await fleet.fetch(
+      request("POST", "/v1/leases/cbx_000000000001/heartbeat", {
+        headers: {
+          "x-crabbox-owner": "peter@example.com",
+          "x-crabbox-org": "openclaw",
+        },
+        body: {
+          telemetry: {
+            capturedAt: "2026-05-05T01:03:03Z",
+            source: "ssh-linux",
+            load1: 0.84,
+            memoryPercent: 55,
+          },
+        },
+      }),
+    );
+    expect(secondHeartbeat.status).toBe(200);
+    const second = (await secondHeartbeat.json()) as { lease: LeaseRecord };
+    expect(second.lease.telemetry).toMatchObject({
+      capturedAt: "2026-05-05T01:03:03.000Z",
+      load1: 0.84,
+      memoryPercent: 55,
+    });
+    expect(second.lease.telemetryHistory?.map((sample) => sample.load1)).toEqual([0.42, 0.84]);
+    expect(second.lease.telemetryHistory?.map((sample) => sample.capturedAt)).toEqual([
+      "2026-05-05T01:02:03.000Z",
+      "2026-05-05T01:03:03.000Z",
+    ]);
+  });
+
+  it("keeps lease telemetry history bounded to the latest samples", async () => {
+    const storage = new MemoryStorage();
+    const fleet = testFleet(storage);
+    storage.seed(
+      "lease:cbx_000000000001",
+      testLease({
+        id: "cbx_000000000001",
+        slug: "blue-lobster",
+        owner: "peter@example.com",
+        org: "openclaw",
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        telemetryHistory: Array.from({ length: 60 }, (_, index) => ({
+          capturedAt: new Date(Date.UTC(2026, 4, 5, 1, index, 0)).toISOString(),
+          source: "ssh-linux",
+          load1: index,
+        })),
+      }),
+    );
+
+    const heartbeat = await fleet.fetch(
+      request("POST", "/v1/leases/blue-lobster/heartbeat", {
+        headers: {
+          "x-crabbox-owner": "peter@example.com",
+          "x-crabbox-org": "openclaw",
+        },
+        body: {
+          telemetry: {
+            capturedAt: "2026-05-05T02:00:00Z",
+            source: "ssh-linux",
+            load1: 61,
+          },
+        },
+      }),
+    );
+
+    expect(heartbeat.status).toBe(200);
+    const { lease } = (await heartbeat.json()) as { lease: LeaseRecord };
+    expect(lease.telemetryHistory).toHaveLength(60);
+    expect(lease.telemetryHistory?.[0]?.capturedAt).toBe("2026-05-05T01:01:00.000Z");
+    expect(lease.telemetryHistory?.at(-1)).toMatchObject({
+      capturedAt: "2026-05-05T02:00:00.000Z",
+      load1: 61,
+    });
   });
 
   it("hides exact lease IDs and lists from other non-admin users", async () => {
@@ -728,6 +804,22 @@ describe("fleet lease identity and idle", () => {
           diskPercent: 25,
           uptimeSeconds: 3600,
         },
+        telemetryHistory: [
+          {
+            capturedAt: new Date(Date.now() - 45_000).toISOString(),
+            source: "ssh-linux",
+            load1: 0.22,
+            memoryPercent: 42,
+            diskPercent: 24,
+          },
+          {
+            capturedAt: new Date(Date.now() - 30_000).toISOString(),
+            source: "ssh-linux",
+            load1: 0.32,
+            memoryPercent: 47,
+            diskPercent: 25,
+          },
+        ],
         expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       }),
     );
@@ -830,6 +922,10 @@ describe("fleet lease identity and idle", () => {
     expect(body).toContain("<dt>memory</dt><dd>1.0 KiB / 2.0 KiB (50%)</dd>");
     expect(body).toContain("<dt>disk</dt><dd>1.0 GiB / 4.0 GiB (25%)</dd>");
     expect(body).toContain("<dt>uptime</dt><dd>1h</dd>");
+    expect(body).toContain("box telemetry");
+    expect(body).toContain('class="telemetry-chart"');
+    expect(body).toContain("<span>0.42</span>");
+    expect(body).toContain("<span>50%</span>");
     expect(body).toContain("load 0.42 · mem 75% · +512 B");
     expect(body).toContain("table-search");
     expect(body).toContain("/portal/runs/run_000000000001");

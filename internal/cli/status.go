@@ -90,6 +90,7 @@ type statusView struct {
 	HasHost          bool               `json:"hasHost"`
 	Ready            bool               `json:"ready"`
 	Telemetry        *LeaseTelemetry    `json:"telemetry,omitempty"`
+	TelemetryHistory []*LeaseTelemetry  `json:"telemetryHistory,omitempty"`
 }
 
 func (a App) leaseStatus(ctx context.Context, cfg Config, id string) (statusView, error) {
@@ -133,6 +134,7 @@ func (a App) leaseStatus(ctx context.Context, cfg Config, id string) (statusView
 			HasHost:          hasHost,
 			Ready:            ready,
 			Telemetry:        lease.Telemetry,
+			TelemetryHistory: lease.TelemetryHistory,
 		}, nil
 	}
 	server, target, leaseID, err := a.findLease(ctx, cfg, id)

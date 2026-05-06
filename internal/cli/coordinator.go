@@ -58,6 +58,7 @@ type CoordinatorLease struct {
 	LastTouchedAt        string                `json:"lastTouchedAt,omitempty"`
 	ExpiresAt            string                `json:"expiresAt"`
 	Telemetry            *LeaseTelemetry       `json:"telemetry,omitempty"`
+	TelemetryHistory     []*LeaseTelemetry     `json:"telemetryHistory,omitempty"`
 }
 
 type ProvisioningAttempt struct {

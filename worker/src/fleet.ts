@@ -46,6 +46,7 @@ import { costLimits, enforceCostLimits, leaseCost, requestOrg, usageSummary } fr
 const fleetID = "default";
 const maxStoredRunLogBytes = 8 * 1024 * 1024;
 const runLogChunkBytes = 64 * 1024;
+const maxLeaseTelemetryHistory = 60;
 const webVNCTicketTTLSeconds = 120;
 const codeTicketTTLSeconds = 120;
 const maxPendingWebVNCBytes = 1024 * 1024;
@@ -551,6 +552,7 @@ export class FleetDurableObject implements DurableObject {
       const telemetry = sanitizeLeaseTelemetry(body.telemetry, now);
       if (telemetry) {
         lease.telemetry = telemetry;
+        lease.telemetryHistory = appendLeaseTelemetryHistory(lease.telemetryHistory, telemetry);
       }
       lease.updatedAt = now.toISOString();
       lease.lastTouchedAt = now.toISOString();
@@ -2633,6 +2635,18 @@ function sanitizeRunTelemetry(
     telemetry.end = end;
   }
   return telemetry;
+}
+
+function appendLeaseTelemetryHistory(
+  history: LeaseTelemetry[] | undefined,
+  telemetry: LeaseTelemetry,
+): LeaseTelemetry[] {
+  const existing = Array.isArray(history) ? history : [];
+  const next = [
+    ...existing.filter((sample) => sample && sample.capturedAt !== telemetry.capturedAt),
+    telemetry,
+  ].toSorted((left, right) => left.capturedAt.localeCompare(right.capturedAt));
+  return next.slice(-maxLeaseTelemetryHistory);
 }
 
 function sanitizeTelemetryTimestamp(value: string | undefined, now: Date): string {

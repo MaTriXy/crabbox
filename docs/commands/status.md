@@ -33,3 +33,5 @@ Human and JSON output include the selected network. With Tailscale metadata,
 status also prints the tailnet host/state. For coordinator-backed Linux leases
 that have received a recent heartbeat, status also includes the latest
 best-effort telemetry snapshot: load, memory, disk, uptime, and capture age.
+JSON status includes `telemetryHistory` when the coordinator has retained recent
+samples for portal trend charts.

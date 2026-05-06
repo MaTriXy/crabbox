@@ -132,6 +132,7 @@ export function portalLeaseDetail(
             ${leaseTelemetryRows(lease.telemetry)}
             ${metaRow("expires", shortTime(lease.expiresAt))}
           </dl>
+          ${leaseTelemetryTimeline(lease.telemetry, lease.telemetryHistory)}
           ${
             active
               ? `<form method="post" action="/portal/leases/${encodeURIComponent(lease.id)}/release" class="stop-form">
@@ -750,6 +751,126 @@ function leaseTelemetryRows(telemetry: LeaseRecord["telemetry"]): string {
   ].join("");
 }
 
+function leaseTelemetryTimeline(
+  telemetry: LeaseRecord["telemetry"],
+  history: LeaseRecord["telemetryHistory"],
+): string {
+  const samples = telemetrySamples(telemetry, history);
+  if (!telemetry && samples.length === 0) {
+    return "";
+  }
+  const health = telemetryHealthPills(telemetry);
+  return `<div class="telemetry-strip">
+    <div class="telemetry-strip-head">
+      <span>box telemetry</span>
+      <div>${health}</div>
+    </div>
+    ${telemetrySparkline(
+      "load",
+      samples.map((sample) => sample.load1),
+      "load",
+    )}
+    ${telemetrySparkline(
+      "memory",
+      samples.map((sample) => sample.memoryPercent),
+      "%",
+    )}
+    ${telemetrySparkline(
+      "disk",
+      samples.map((sample) => sample.diskPercent),
+      "%",
+    )}
+  </div>`;
+}
+
+function telemetrySamples(
+  telemetry: LeaseRecord["telemetry"],
+  history: LeaseRecord["telemetryHistory"],
+): LeaseTelemetrySample[] {
+  const byTime = new Map<string, LeaseTelemetrySample>();
+  for (const sample of Array.isArray(history) ? history : []) {
+    if (sample?.capturedAt) {
+      byTime.set(sample.capturedAt, sample);
+    }
+  }
+  if (telemetry?.capturedAt) {
+    byTime.set(telemetry.capturedAt, telemetry);
+  }
+  return [...byTime.values()].toSorted((left, right) =>
+    left.capturedAt.localeCompare(right.capturedAt),
+  );
+}
+
+type LeaseTelemetrySample = NonNullable<LeaseRecord["telemetry"]>;
+
+function telemetryHealthPills(telemetry: LeaseRecord["telemetry"]): string {
+  if (!telemetry?.capturedAt) {
+    return `<span class="pill" data-tone="warn">no signal</span>`;
+  }
+  const pills = [];
+  const ageMs = Date.now() - Date.parse(telemetry.capturedAt);
+  if (!Number.isFinite(ageMs) || ageMs > 10 * 60 * 1000) {
+    pills.push(
+      `<span class="pill" data-tone="warn">stale ${escapeHTML(relativeTime(telemetry.capturedAt))}</span>`,
+    );
+  } else {
+    pills.push(`<span class="pill" data-tone="ok">live</span>`);
+  }
+  if ((telemetry.memoryPercent ?? 0) >= 85) {
+    pills.push(
+      `<span class="pill" data-tone="bad">memory ${Math.round(telemetry.memoryPercent ?? 0)}%</span>`,
+    );
+  }
+  if ((telemetry.diskPercent ?? 0) >= 85) {
+    pills.push(
+      `<span class="pill" data-tone="bad">disk ${Math.round(telemetry.diskPercent ?? 0)}%</span>`,
+    );
+  }
+  if ((telemetry.load1 ?? 0) >= 16) {
+    pills.push(`<span class="pill" data-tone="warn">load ${telemetry.load1?.toFixed(1)}</span>`);
+  }
+  return pills.join("");
+}
+
+function telemetrySparkline(
+  label: string,
+  rawValues: Array<number | undefined>,
+  unit: string,
+): string {
+  const values = rawValues.filter((value): value is number => Number.isFinite(value));
+  const latest = values.at(-1);
+  if (values.length < 2 || latest === undefined) {
+    return `<div class="telemetry-line"><span>${escapeHTML(label)}</span><span class="muted">waiting for samples</span></div>`;
+  }
+  const max = unit === "%" ? 100 : Math.max(1, ...values);
+  const points = telemetryPolylinePoints(values, max);
+  return `<div class="telemetry-line">
+    <span>${escapeHTML(label)}</span>
+    <svg class="telemetry-chart" viewBox="0 0 100 28" preserveAspectRatio="none" aria-label="${escapeHTML(label)} telemetry trend">
+      <polyline points="${points}" />
+    </svg>
+    <span>${escapeHTML(formatTelemetryValue(latest, unit))}</span>
+  </div>`;
+}
+
+function telemetryPolylinePoints(values: number[], max: number): string {
+  const lastIndex = Math.max(1, values.length - 1);
+  return values
+    .map((value, index) => {
+      const x = (index / lastIndex) * 100;
+      const y = 26 - (Math.max(0, Math.min(value, max)) / max) * 24;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+}
+
+function formatTelemetryValue(value: number, unit: string): string {
+  if (unit === "%") {
+    return `${Math.round(value)}%`;
+  }
+  return value.toFixed(2);
+}
+
 function runTelemetryRows(telemetry: RunRecord["telemetry"]): string {
   if (!telemetry) {
     return "";
@@ -952,6 +1073,14 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .meta-grid div { padding:8px 10px; border-bottom:1px solid var(--line-soft); }
     .meta-grid dt { color:var(--muted); font-size:11px; text-transform:uppercase; margin-bottom:3px; }
     .meta-grid dd { margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .telemetry-strip { display:grid; gap:7px; padding:9px 10px; border-top:1px solid var(--line-soft); background:var(--panel-2); }
+    .telemetry-strip-head { display:flex; justify-content:space-between; align-items:center; gap:8px; color:var(--muted); font-size:11px; text-transform:uppercase; }
+    .telemetry-strip-head div { display:flex; gap:4px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
+    .telemetry-line { display:grid; grid-template-columns:58px minmax(0,1fr) 52px; gap:8px; align-items:center; min-height:24px; font-size:12px; }
+    .telemetry-line > span:first-child { color:var(--muted); text-transform:uppercase; font-size:10px; }
+    .telemetry-line > span:last-child { text-align:right; font-family:var(--mono); color:#d1fae5; }
+    .telemetry-chart { width:100%; height:24px; display:block; overflow:visible; }
+    .telemetry-chart polyline { fill:none; stroke:var(--accent); stroke-width:1.8; vector-effect:non-scaling-stroke; }
     .stop-form { padding:10px; }
     .bridge-grid { display:grid; gap:0; }
     .bridge-row { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:8px; align-items:center; padding:9px 10px; border-bottom:1px solid var(--line-soft); }
