@@ -144,20 +144,14 @@ export function portalLeaseDetail(
         <div class="panel detail-card">
           <div class="section-head">
             <h2>access</h2>
-            <span>${active && (lease.desktop || lease.code) ? "bridges" : "ssh only"}</span>
+            <span>copy locally</span>
           </div>
           <div class="bridge-grid">
             ${bridgeRow("WebVNC", active && lease.desktop === true, bridgeStatus.webVNCBridgeConnected, bridgeStatus.webVNCViewerConnected, vncAction)}
             ${bridgeRow("code", active && lease.code === true, bridgeStatus.codeBridgeConnected, false, codeAction)}
           </div>
+          <div class="access-commands">${commands}</div>
         </div>
-      </section>
-      <section class="panel command-panel">
-        <div class="section-head">
-          <h2>commands</h2>
-          <span>copy locally</span>
-        </div>
-        <div class="commands">${commands}</div>
       </section>
       <section class="panel table-panel">
         <div class="section-head">
@@ -1035,7 +1029,7 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     body { margin:0; min-height:100vh; background:var(--bg); color:var(--fg); font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
     main { width:min(1180px, calc(100vw - 32px)); margin:0 auto; padding:10px 0 22px; }
     .portal-shell { width:min(1240px, calc(100vw - 16px)); height:100dvh; display:grid; grid-template-rows:auto minmax(0,1fr); gap:8px; padding:6px 0 8px; overflow:hidden; }
-    .lease-shell { grid-template-rows:auto auto auto minmax(0,1fr); }
+    .lease-shell { grid-template-rows:auto auto minmax(0,1fr); }
     .run-shell { height:auto; min-height:100dvh; overflow:visible; grid-template-rows:auto; }
     h1,h2,p { margin:0; }
     h1 { font-size:20px; font-weight:700; }
@@ -1085,6 +1079,7 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .bridge-grid { display:grid; gap:0; }
     .bridge-row { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:8px; align-items:center; padding:9px 10px; border-bottom:1px solid var(--line-soft); }
     .bridge-row small { display:block; color:var(--muted); margin-top:2px; }
+    .access-commands { display:grid; gap:8px; padding:10px; border-top:1px solid var(--line-soft); }
     .run-artifacts { display:grid; gap:8px; padding:10px; }
     .result-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0; margin:4px -14px -14px; border-top:1px solid var(--line-soft); }
     .result-grid div { padding:8px 10px; border-bottom:1px solid var(--line-soft); }
