@@ -34,6 +34,7 @@ type CoordinatorLease struct {
 	Browser              bool                  `json:"browser,omitempty"`
 	Code                 bool                  `json:"code,omitempty"`
 	Tailscale            *TailscaleMetadata    `json:"tailscale,omitempty"`
+	Region               string                `json:"region,omitempty"`
 	Owner                string                `json:"owner"`
 	Org                  string                `json:"org"`
 	Profile              string                `json:"profile"`

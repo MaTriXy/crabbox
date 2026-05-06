@@ -3087,7 +3087,8 @@ function capacityHints(
     hints.push({
       code: "aws_capacity_routed",
       message: `AWS launch routed to ${selectedRegion} after failed attempts in ${failedRegions.join(", ")}`,
-      action: "Keep multiple capacity regions configured and avoid pinning a single AWS region during capacity pressure.",
+      action:
+        "Keep multiple capacity regions configured and avoid pinning a single AWS region during capacity pressure.",
       region: selectedRegion,
       market: selectedMarket,
       class: config.class,
@@ -3099,7 +3100,8 @@ function capacityHints(
     hints.push({
       code: "aws_quota_pressure",
       message: `AWS quota rejected at least one ${config.class} candidate before selecting ${lease.serverType}`,
-      action: "Use a smaller class or request more EC2 Standard Spot/On-Demand vCPU quota for the affected regions.",
+      action:
+        "Use a smaller class or request more EC2 Standard Spot/On-Demand vCPU quota for the affected regions.",
       region: selectedRegion,
       market: selectedMarket,
       class: config.class,
@@ -3114,7 +3116,8 @@ function capacityHints(
     hints.push({
       code: "aws_on_demand_fallback",
       message: `AWS launch used on-demand after spot capacity attempts for ${config.class}`,
-      action: "Keep on-demand fallback for reliability, or switch back to spot when cost matters more than launch success.",
+      action:
+        "Keep on-demand fallback for reliability, or switch back to spot when cost matters more than launch success.",
       region: selectedRegion,
       market: selectedMarket,
       class: config.class,
@@ -3126,7 +3129,8 @@ function capacityHints(
     hints.push({
       code: "capacity_large_class",
       message: `class=${config.class} is configured as a high-pressure capacity class`,
-      action: "Use a smaller class unless the workload is explicitly CPU-bound or this large class was requested intentionally.",
+      action:
+        "Use a smaller class unless the workload is explicitly CPU-bound or this large class was requested intentionally.",
       region: selectedRegion,
       market: selectedMarket,
       class: config.class,
@@ -3283,7 +3287,10 @@ class AWSProvider implements CloudProvider {
           serverType: string;
           market?: string;
           attempts?: ProvisioningAttempt[];
-        } = { server: { ...readyServer, region }, serverType, market };
+        } = { server: { ...readyServer, region }, serverType };
+        if (market) {
+          result.market = market;
+        }
         const allAttempts = [...regionAttempts, ...(attempts ?? [])];
         if (allAttempts.length > 0) {
           result.attempts = allAttempts;
