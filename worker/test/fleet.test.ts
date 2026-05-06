@@ -712,10 +712,14 @@ describe("fleet lease identity and idle", () => {
     expect(body).toContain("table-scroll");
     expect(body).toContain(".lease-table th:nth-child(1)");
     expect(body).toContain(
-      'data-filter-buttons="active:active,ended:ended,aws:aws,hetzner:hetzner,linux:linux,macos:macos,windows:windows,all:all"',
+      'data-filter-buttons="active:active,ended:ended,external:external,stale:stale,aws:aws,hetzner:hetzner,blacksmith-testbox:blacksmith,linux:linux,macos:macos,windows:windows,all:all"',
     );
     expect(body).toContain('data-filter-default="active"');
-    expect(body).toContain("external runners");
+    expect(body).not.toContain("external runners");
+    expect(body).toContain("1 external");
+    expect(body).toContain('class="external-row"');
+    expect(body).toContain('aria-disabled="true"');
+    expect(body).toContain("no access");
     expect(body).toContain("tbx_01testbox");
     expect(body).toContain("blacksmith-testbox");
     expect(body).toContain("ci-check-testbox.yml");

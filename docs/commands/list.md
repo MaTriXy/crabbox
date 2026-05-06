@@ -20,10 +20,10 @@ In `blacksmith-testbox` mode this reads `blacksmith testbox list` and renders th
 same Crabbox list shape as other providers. `--json` keeps the compatibility
 shape parsed from the Blacksmith table: id, status, repo, workflow, job, ref,
 and created time when the upstream table exposes those columns.
-When coordinator auth is configured, the same list command also refreshes the
-portal's owner-scoped external runner table from the current all-status
-Blacksmith list. Missing runners from later syncs are marked stale rather than
-treated as Crabbox leases.
+When coordinator auth is configured, the same list command also refreshes
+owner-scoped external runner rows in the portal lease table from the current
+all-status Blacksmith list. Missing runners from later syncs are marked stale
+rather than treated as Crabbox leases.
 
 In `daytona` and `islo` modes, rendering is core-owned: human output and `--json`
 use the normalized Crabbox lease view.

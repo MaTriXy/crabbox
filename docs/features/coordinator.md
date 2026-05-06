@@ -64,10 +64,10 @@ can also see non-owned runner leases, with `mine` and `system` filters so
 Blacksmith/Testbox-style coordinator leases are visible without leaking them to
 normal users. It defaults to active leases when any are active, and falls back to
 all visible leases when the active list is empty. External runner rows, currently
-Blacksmith Testboxes synced from the CLI's current all-status list, render in a
-second owner-scoped table
-with search, pagination, status/provider filters, and stale markers when the
-next sync no longer sees a previously visible runner.
+Blacksmith Testboxes synced from the CLI's current all-status list, render in the
+same grid as muted, disabled rows with search, pagination, status/provider
+filters, and stale markers when the next sync no longer sees a previously
+visible runner.
 
 `/portal/leases/{id-or-slug}` is the authenticated lease detail page. It shows
 the lease state, bridge status, compact provider/target badges, latest Linux

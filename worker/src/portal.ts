@@ -34,34 +34,46 @@ export function portalHome(
   const admin = request.headers.get("x-crabbox-admin") === "true";
   const owner = request.headers.get("x-crabbox-owner") || "";
   const org = request.headers.get("x-crabbox-org") || "";
-  const system = admin
+  const systemLeases = admin
     ? sortedLeases.filter((lease) => leaseOwnership(lease, owner, org) === "system").length
     : 0;
-  const defaultFilter = active.length > 0 ? "active" : "all";
+  const systemRunners = admin
+    ? sortedRunners.filter((runner) => runnerOwnership(runner, owner, org) === "system").length
+    : 0;
+  const system = systemLeases + systemRunners;
+  const defaultFilter = active.length + activeRunners.length > 0 ? "active" : "all";
   const filterButtons = [
     "active:active",
     "ended:ended",
+    "external:external",
+    "stale:stale",
     ...(admin ? ["mine:mine", "system:system"] : []),
     "aws:aws",
     "hetzner:hetzner",
+    "blacksmith-testbox:blacksmith",
     "linux:linux",
     "macos:macos",
     "windows:windows",
     "all:all",
   ].join(",");
-  const rows = sortedLeases.length
-    ? sortedLeases.map((lease) => leaseRow(lease, { admin, owner, org })).join("")
-    : `<tr><td colspan="8" class="empty">no leases visible</td></tr>`;
-  const runnerRows = sortedRunners.length
-    ? sortedRunners.map((runner) => runnerRow(runner, { admin, owner, org })).join("")
-    : `<tr><td colspan="8" class="empty">no external runners synced</td></tr>`;
+  const rows = [
+    ...sortedLeases.map((lease) => ({ kind: "lease" as const, sort: leaseSortTime(lease), lease })),
+    ...sortedRunners.map((runner) => ({
+      kind: "runner" as const,
+      sort: runnerSortTime(runner),
+      runner,
+    })),
+  ]
+    .toSorted((a, b) => b.sort.localeCompare(a.sort))
+    .map((row) =>
+      row.kind === "lease"
+        ? leaseRow(row.lease, { admin, owner, org })
+        : externalRunnerLeaseRow(row.runner, { admin, owner, org }),
+    )
+    .join("");
   const summary = admin
-    ? `${active.length} active / ${ended} ended / ${system} system`
-    : `${active.length} active / ${ended} ended`;
-  const runnerSummary =
-    sortedRunners.length > 0
-      ? `${activeRunners.length} active / ${sortedRunners.length - activeRunners.length} stale`
-      : "sync with crabbox list --provider blacksmith-testbox";
+    ? `${active.length + activeRunners.length} active / ${ended} ended / ${sortedRunners.length} external / ${system} system`
+    : `${active.length + activeRunners.length} active / ${ended} ended / ${sortedRunners.length} external`;
   return html(
     "Crabbox Portal",
     `<main class="portal-shell">
@@ -87,28 +99,7 @@ export function portalHome(
               <th></th>
             </tr>
           </thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </section>
-      <section class="panel table-panel runner-panel">
-        <div class="section-head">
-          <h2>external runners</h2>
-          <span>${escapeHTML(runnerSummary)}</span>
-        </div>
-        <table class="runner-table" data-portal-table data-page-size="8" data-search-placeholder="search runners" data-filter-buttons="active:active,stale:stale,blacksmith-testbox:blacksmith,all:all" data-filter-default="${activeRunners.length > 0 ? "active" : "all"}">
-          <thead>
-            <tr>
-              <th>runner</th>
-              <th>status</th>
-              <th>provider</th>
-              <th>repo</th>
-              <th>workflow</th>
-              <th>job/ref</th>
-              <th>seen</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>${runnerRows}</tbody>
+          <tbody>${rows || `<tr><td colspan="8" class="empty">no leases or external runners visible</td></tr>`}</tbody>
         </table>
       </section>
     </main>`,
@@ -670,27 +661,24 @@ function leaseRow(
   </tr>`;
 }
 
-function runnerRow(
+function externalRunnerLeaseRow(
   runner: ExternalRunnerRecord,
   context: { admin: boolean; owner: string; org: string },
 ): string {
-  const ownership =
-    context.admin && (runner.owner !== context.owner || runner.org !== context.org)
-      ? "system"
-      : "mine";
+  const ownership = context.admin ? runnerOwnership(runner, context.owner, context.org) : "mine";
   const state = runner.stale ? "stale" : "active";
   const subline =
     context.admin && ownership === "system"
-      ? `${runner.owner || "unknown"} · ${runner.org || "unknown"}`
-      : runner.id;
+      ? `${runner.id} · ${runner.owner || "unknown"}`
+      : [runner.repo, runner.workflow].filter(Boolean).join(" · ") || runner.id;
   const jobRef = [runner.job, runner.ref].filter(Boolean).join(" / ") || "-";
-  return `<tr data-filter-tags="${escapeHTML([state, ownership, runner.provider, runner.status, runner.repo, runner.workflow, runner.job, runner.ref].filter(Boolean).join(" "))}">
+  return `<tr class="external-row" aria-disabled="true" data-filter-tags="${escapeHTML([state, "external", ownership, runner.provider, runner.status, runner.repo, runner.workflow, runner.job, runner.ref].filter(Boolean).join(" "))}">
     <td><span class="lease-link"><strong>${escapeHTML(runner.id)}</strong><small>${escapeHTML(subline)}</small></span></td>
     <td><span class="pill" data-tone="${runner.stale ? "warn" : runnerStatusTone(runner.status)}">${escapeHTML(runner.status || "-")}</span></td>
     <td>${providerBadge(runner.provider)}</td>
-    <td>${escapeHTML(runner.repo || "-")}</td>
-    <td>${escapeHTML(runner.workflow || "-")}</td>
-    <td>${escapeHTML(jobRef)}</td>
+    <td><span class="muted" title="Blacksmith owns runner host details">-</span></td>
+    <td><span title="${escapeHTML([runner.repo, runner.workflow, jobRef].filter(Boolean).join(" · "))}">external</span></td>
+    <td><span class="access-cell disabled-cell" title="external runner; no Crabbox access data">no access</span></td>
     ${timeCell(runnerSortTime(runner))}
     <td></td>
   </tr>`;
@@ -714,6 +702,14 @@ function portalHeader(options: PortalHeaderOptions): string {
 
 function leaseOwnership(lease: LeaseRecord, owner: string, org: string): "mine" | "system" {
   return lease.owner === owner && lease.org === org ? "mine" : "system";
+}
+
+function runnerOwnership(
+  runner: ExternalRunnerRecord,
+  owner: string,
+  org: string,
+): "mine" | "system" {
+  return runner.owner === owner && runner.org === org ? "mine" : "system";
 }
 
 function runnerSortTime(runner: ExternalRunnerRecord): string {
@@ -1177,7 +1173,7 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     html { min-height:100%; background:var(--bg); }
     body { margin:0; min-height:100vh; overflow-x:hidden; background:var(--bg); color:var(--fg); font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
     main { width:min(1180px, calc(100vw - 32px)); max-width:100%; margin:0 auto; padding:10px 0 22px; }
-    .portal-shell { width:min(1240px, calc(100vw - 16px)); max-width:100%; height:100dvh; display:grid; grid-template-rows:auto minmax(0,1.1fr) minmax(220px,0.9fr); gap:8px; padding:6px 0 8px; overflow:hidden; }
+    .portal-shell { width:min(1240px, calc(100vw - 16px)); max-width:100%; height:100dvh; display:grid; grid-template-rows:auto minmax(0,1fr); gap:8px; padding:6px 0 8px; overflow:hidden; }
     .lease-shell { grid-template-rows:auto auto minmax(0,1fr); }
     .run-shell { height:auto; min-height:100dvh; overflow:visible; grid-template-rows:auto; }
     h1,h2,p { margin:0; }
@@ -1276,6 +1272,7 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .icon-label[data-target="macos"] svg { color:#d8b4fe; }
     .actions-cell { display:flex; align-items:center; gap:5px; flex-wrap:nowrap; }
     .access-cell { display:flex; align-items:center; gap:5px; min-width:0; }
+    .disabled-cell { color:#6b7280; font-size:12px; }
     .access-icon { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:6px; border:1px solid var(--line); color:#cbd5e1; background:#0c0e10; text-decoration:none; }
     .access-icon svg { width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
     .access-icon[data-access="vscode"] { color:#d8b4fe; }
@@ -1298,6 +1295,12 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .table-footer { display:flex; justify-content:flex-end; align-items:center; gap:6px; min-height:36px; padding:5px 8px; background:var(--panel-2); }
     .table-page { min-width:64px; color:var(--muted); font-size:12px; text-align:center; }
     tr[hidden] { display:none; }
+    .external-row { color:var(--muted); background:color-mix(in srgb, var(--panel-2) 58%, transparent); }
+    .external-row td { border-bottom-color:var(--line-soft); }
+    .external-row .lease-link { color:#b6beca; pointer-events:none; }
+    .external-row .lease-link strong::after { content:"external"; display:inline-flex; margin-left:8px; min-height:18px; align-items:center; padding:0 6px; border:1px solid var(--line); border-radius:999px; color:#8b949e; font-size:10px; font-weight:700; text-transform:uppercase; vertical-align:middle; }
+    .external-row .icon-label svg { color:#7c8490; }
+    .external-row .pill { opacity:0.82; }
     .lease-table th:nth-child(1) { width:25%; }
     .lease-table th:nth-child(2) { width:86px; }
     .lease-table th:nth-child(3),.lease-table th:nth-child(4) { width:104px; }
@@ -1305,14 +1308,6 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .lease-table th:nth-child(6) { width:118px; }
     .lease-table th:nth-child(7) { width:148px; }
     .lease-table th:nth-child(8) { width:24px; }
-    .runner-table th:nth-child(1) { width:22%; }
-    .runner-table th:nth-child(2) { width:88px; }
-    .runner-table th:nth-child(3) { width:148px; }
-    .runner-table th:nth-child(4) { width:118px; }
-    .runner-table th:nth-child(5) { width:28%; }
-    .runner-table th:nth-child(6) { width:120px; }
-    .runner-table th:nth-child(7) { width:138px; }
-    .runner-table th:nth-child(8) { width:24px; }
     .run-table th:nth-child(2) { width:104px; }
     .run-table th:nth-child(3) { width:112px; }
     .run-table th:nth-child(4) { width:92px; }
