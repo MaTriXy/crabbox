@@ -267,6 +267,8 @@ Flags:
 --tailscale-tags <csv> Tailscale tags for new managed leases
 --tailscale-hostname-template <template>
 --tailscale-auth-key-env <env-var>
+--tailscale-exit-node <name-or-100.x>
+--tailscale-exit-node-allow-lan-access
 --network auto|tailscale|public
 --no-sync               run without syncing
 --sync-only             sync and exit
@@ -559,6 +561,8 @@ CRABBOX_TAILSCALE_TAGS
 CRABBOX_TAILSCALE_HOSTNAME_TEMPLATE
 CRABBOX_TAILSCALE_AUTH_KEY_ENV
 CRABBOX_TAILSCALE_AUTH_KEY        direct-provider only, via auth-key env
+CRABBOX_TAILSCALE_EXIT_NODE
+CRABBOX_TAILSCALE_EXIT_NODE_ALLOW_LAN_ACCESS
 ```
 
 Provider/deploy variables live outside normal CLI operation:

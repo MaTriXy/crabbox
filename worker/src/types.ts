@@ -54,6 +54,8 @@ export interface LeaseRequest {
   tailscale?: boolean;
   tailscaleTags?: string[];
   tailscaleHostname?: string;
+  tailscaleExitNode?: string;
+  tailscaleExitNodeAllowLanAccess?: boolean;
   profile?: string;
   class?: string;
   serverType?: string;
@@ -161,6 +163,8 @@ export interface TailscaleMetadata {
   tags?: string[];
   state?: "requested" | "ready" | "failed";
   error?: string;
+  exitNode?: string;
+  exitNodeAllowLanAccess?: boolean;
 }
 
 export interface ProvisioningAttempt {

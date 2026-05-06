@@ -11,6 +11,8 @@ export interface LeaseConfig {
   tailscaleTags: string[];
   tailscaleHostname: string;
   tailscaleAuthKey: string;
+  tailscaleExitNode: string;
+  tailscaleExitNodeAllowLanAccess: boolean;
   profile: string;
   class: string;
   serverType: string;
@@ -79,6 +81,11 @@ export function leaseConfig(input: LeaseRequest): LeaseConfig {
   if (!sshPublicKey) {
     throw new Error("sshPublicKey is required");
   }
+  const tailscaleExitNode = input.tailscaleExitNode?.trim() ?? "";
+  const tailscaleExitNodeAllowLanAccess = input.tailscaleExitNodeAllowLanAccess ?? false;
+  if (tailscaleExitNodeAllowLanAccess && !tailscaleExitNode) {
+    throw new Error("tailscaleExitNodeAllowLanAccess requires tailscaleExitNode");
+  }
   return {
     provider,
     target,
@@ -90,6 +97,8 @@ export function leaseConfig(input: LeaseRequest): LeaseConfig {
     tailscaleTags: normalizeTailscaleTags(input.tailscaleTags ?? ["tag:crabbox"]),
     tailscaleHostname: input.tailscaleHostname ?? "",
     tailscaleAuthKey: "",
+    tailscaleExitNode,
+    tailscaleExitNodeAllowLanAccess,
     profile: input.profile ?? "default",
     class: machineClass,
     serverType,

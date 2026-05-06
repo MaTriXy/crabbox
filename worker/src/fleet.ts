@@ -486,6 +486,10 @@ export class FleetDurableObject implements DurableObject {
         tags: config.tailscaleTags,
         state: "requested",
       };
+      if (config.tailscaleExitNode) {
+        record.tailscale.exitNode = config.tailscaleExitNode;
+        record.tailscale.exitNodeAllowLanAccess = config.tailscaleExitNodeAllowLanAccess;
+      }
     }
     const limitError = enforceCostLimits(leases, record, costLimits(this.env), now);
     if (limitError) {
@@ -613,6 +617,13 @@ export class FleetDurableObject implements DurableObject {
         slug,
         config.provider,
       );
+      config.tailscaleExitNode =
+        nonSecretString(input.tailscaleExitNode) || config.tailscaleExitNode;
+      config.tailscaleExitNodeAllowLanAccess =
+        input.tailscaleExitNodeAllowLanAccess ?? config.tailscaleExitNodeAllowLanAccess;
+      if (!config.tailscaleExitNode) {
+        config.tailscaleExitNodeAllowLanAccess = false;
+      }
       config.tailscaleAuthKey = await createTailscaleAuthKey(this.env, {
         hostname: config.tailscaleHostname,
         tags: config.tailscaleTags,
@@ -2026,6 +2037,7 @@ function mergeTailscaleMetadata(
   const fqdn = nonSecretString(input.fqdn) || current?.fqdn;
   const ipv4 = nonSecretString(input.ipv4) || current?.ipv4;
   const error = nonSecretString(input.error) || current?.error;
+  const exitNode = nonSecretString(input.exitNode) || current?.exitNode;
   if (hostname) {
     merged.hostname = hostname;
   }
@@ -2037,6 +2049,11 @@ function mergeTailscaleMetadata(
   }
   if (error) {
     merged.error = error;
+  }
+  if (exitNode) {
+    merged.exitNode = exitNode;
+    merged.exitNodeAllowLanAccess =
+      input.exitNodeAllowLanAccess ?? current?.exitNodeAllowLanAccess ?? false;
   }
   if (merged.state !== "failed") {
     delete merged.error;

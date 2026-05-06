@@ -144,12 +144,16 @@ func TestCloudInitTailscaleProfile(t *testing.T) {
 	cfg.Tailscale.AuthKey = "tskey-secret"
 	cfg.Tailscale.Hostname = "crabbox-blue-lobster"
 	cfg.Tailscale.Tags = []string{"tag:crabbox"}
+	cfg.Tailscale.ExitNode = "mac-studio.tailnet.ts.net"
+	cfg.Tailscale.ExitNodeAllowLANAccess = true
 	got := cloudInit(cfg, "ssh-ed25519 test")
 	for _, want := range []string{
 		"https://tailscale.com/install.sh",
 		"install -d -m 0750 -o 'runner' -g 'runner' /var/lib/crabbox",
-		"tailscale up --auth-key=\"$TS_AUTHKEY\" --hostname='crabbox-blue-lobster' --advertise-tags='tag:crabbox'",
+		"tailscale up --auth-key=\"$TS_AUTHKEY\" --hostname='crabbox-blue-lobster' --advertise-tags='tag:crabbox' --exit-node='mac-studio.tailnet.ts.net' --exit-node-allow-lan-access",
 		"printf '%s\\n' 'crabbox-blue-lobster' > /var/lib/crabbox/tailscale-hostname",
+		"printf '%s\\n' 'mac-studio.tailnet.ts.net' > /var/lib/crabbox/tailscale-exit-node",
+		"printf '%s\\n' 'true' > /var/lib/crabbox/tailscale-exit-node-allow-lan-access",
 		"chown 'runner:runner' /var/lib/crabbox/tailscale-* || true",
 		"test -s /var/lib/crabbox/tailscale-ipv4",
 		"grep -Eq '^100\\.' /var/lib/crabbox/tailscale-ipv4",

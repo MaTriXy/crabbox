@@ -20,6 +20,8 @@ func clearConfigEnv(t *testing.T) {
 		"CRABBOX_TAILSCALE_HOSTNAME_TEMPLATE",
 		"CRABBOX_TAILSCALE_AUTH_KEY_ENV",
 		"CRABBOX_TAILSCALE_AUTH_KEY",
+		"CRABBOX_TAILSCALE_EXIT_NODE",
+		"CRABBOX_TAILSCALE_EXIT_NODE_ALLOW_LAN_ACCESS",
 		"CRABBOX_ACCESS_CLIENT_ID",
 		"CRABBOX_ACCESS_CLIENT_SECRET",
 		"CRABBOX_ACCESS_TOKEN",
@@ -279,6 +281,8 @@ tailscale:
     - tag:ci
   hostnameTemplate: cbx-{slug}
   authKeyEnv: TEST_TS_AUTH_KEY
+  exitNode: mac-studio.tailnet.ts.net
+  exitNodeAllowLanAccess: true
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -287,7 +291,7 @@ tailscale:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.Tailscale.Enabled || cfg.Network != NetworkTailscale || cfg.Tailscale.HostnameTemplate != "cbx-{slug}" || cfg.Tailscale.AuthKeyEnv != "TEST_TS_AUTH_KEY" {
+	if !cfg.Tailscale.Enabled || cfg.Network != NetworkTailscale || cfg.Tailscale.HostnameTemplate != "cbx-{slug}" || cfg.Tailscale.AuthKeyEnv != "TEST_TS_AUTH_KEY" || cfg.Tailscale.ExitNode != "mac-studio.tailnet.ts.net" || !cfg.Tailscale.ExitNodeAllowLANAccess {
 		t.Fatalf("tailscale config not loaded: network=%s tailscale=%#v", cfg.Network, cfg.Tailscale)
 	}
 	if len(cfg.Tailscale.Tags) != 2 || cfg.Tailscale.Tags[1] != "tag:ci" {
@@ -315,6 +319,8 @@ func TestEnvOverridesConfig(t *testing.T) {
 	t.Setenv("CRABBOX_TAILSCALE_TAGS", "tag:crabbox,tag:ci")
 	t.Setenv("CRABBOX_TAILSCALE_HOSTNAME_TEMPLATE", "lease-{id}")
 	t.Setenv("CRABBOX_TAILSCALE_AUTH_KEY", "tskey-secret")
+	t.Setenv("CRABBOX_TAILSCALE_EXIT_NODE", "mac-studio.tailnet.ts.net")
+	t.Setenv("CRABBOX_TAILSCALE_EXIT_NODE_ALLOW_LAN_ACCESS", "1")
 	t.Setenv("CRABBOX_TARGET", "macos")
 	t.Setenv("CRABBOX_STATIC_HOST", "mac.local")
 	t.Setenv("DAYTONA_API_KEY", "daytona-api-file")
@@ -370,7 +376,7 @@ func TestEnvOverridesConfig(t *testing.T) {
 	if cfg.TargetOS != targetMacOS || cfg.Static.Host != "mac.local" {
 		t.Fatalf("unexpected target env: target=%s static=%#v", cfg.TargetOS, cfg.Static)
 	}
-	if cfg.Network != NetworkPublic || cfg.Tailscale.AuthKey != "tskey-secret" || cfg.Tailscale.HostnameTemplate != "lease-{id}" {
+	if cfg.Network != NetworkPublic || cfg.Tailscale.AuthKey != "tskey-secret" || cfg.Tailscale.HostnameTemplate != "lease-{id}" || cfg.Tailscale.ExitNode != "mac-studio.tailnet.ts.net" || !cfg.Tailscale.ExitNodeAllowLANAccess {
 		t.Fatalf("unexpected tailscale env: network=%s tailscale=%#v", cfg.Network, cfg.Tailscale)
 	}
 	if len(cfg.Tailscale.Tags) != 2 || cfg.Tailscale.Tags[1] != "tag:ci" {
@@ -396,12 +402,14 @@ func TestTailscaleEnvOverrides(t *testing.T) {
 	t.Setenv("CRABBOX_TAILSCALE_TAGS", "tag:crabbox,tag:ci")
 	t.Setenv("CRABBOX_TAILSCALE_HOSTNAME_TEMPLATE", "lease-{slug}")
 	t.Setenv("CRABBOX_TAILSCALE_AUTH_KEY", "tskey-secret")
+	t.Setenv("CRABBOX_TAILSCALE_EXIT_NODE", "100.100.100.100")
+	t.Setenv("CRABBOX_TAILSCALE_EXIT_NODE_ALLOW_LAN_ACCESS", "true")
 
 	cfg, err := loadConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Network != NetworkTailscale || !cfg.Tailscale.Enabled || cfg.Tailscale.AuthKey != "tskey-secret" || cfg.Tailscale.HostnameTemplate != "lease-{slug}" {
+	if cfg.Network != NetworkTailscale || !cfg.Tailscale.Enabled || cfg.Tailscale.AuthKey != "tskey-secret" || cfg.Tailscale.HostnameTemplate != "lease-{slug}" || cfg.Tailscale.ExitNode != "100.100.100.100" || !cfg.Tailscale.ExitNodeAllowLANAccess {
 		t.Fatalf("unexpected tailscale env: network=%s tailscale=%#v", cfg.Network, cfg.Tailscale)
 	}
 	if len(cfg.Tailscale.Tags) != 2 || cfg.Tailscale.Tags[1] != "tag:ci" {

@@ -58,6 +58,8 @@ tailscale:
     - tag:crabbox
   hostnameTemplate: crabbox-{slug}
   authKeyEnv: CRABBOX_TAILSCALE_AUTH_KEY
+  exitNode: mac-studio.example.ts.net
+  exitNodeAllowLanAccess: true
 ```
 
 Environment overrides:
@@ -68,6 +70,8 @@ CRABBOX_NETWORK=auto|tailscale|public
 CRABBOX_TAILSCALE_TAGS=tag:crabbox,tag:ci
 CRABBOX_TAILSCALE_HOSTNAME_TEMPLATE=crabbox-{slug}
 CRABBOX_TAILSCALE_AUTH_KEY=<direct-provider only>
+CRABBOX_TAILSCALE_EXIT_NODE=mac-studio.example.ts.net
+CRABBOX_TAILSCALE_EXIT_NODE_ALLOW_LAN_ACCESS=1
 ```
 
 `tailscale.enabled` and `--tailscale` request tailnet join for newly created
@@ -77,6 +81,11 @@ and `{provider}`.
 
 Direct-provider mode reads the one-off auth key from `tailscale.authKeyEnv`.
 Brokered mode does not require a local Tailscale key.
+
+`tailscale.exitNode` asks the lease to route outbound internet through a
+tailnet exit node after it joins Tailscale. Use a MagicDNS name or 100.x address
+for an approved exit node. `tailscale.exitNodeAllowLanAccess` maps to
+Tailscale's LAN-access flag and requires `tailscale.exitNode`.
 
 ## Brokered Mode
 
@@ -93,8 +102,8 @@ CRABBOX_TAILSCALE_ENABLED set 0 to disable
 
 Flow:
 
-1. The CLI sends `tailscale`, `tailscaleTags`, and `tailscaleHostname` in
-   `CreateLease`.
+1. The CLI sends `tailscale`, `tailscaleTags`, `tailscaleHostname`, and optional
+   exit-node settings in `CreateLease`.
 2. The Worker validates requested tags against `CRABBOX_TAILSCALE_TAGS`.
 3. The Worker uses OAuth to mint a one-off, ephemeral, pre-approved, tagged auth
    key.
@@ -107,6 +116,19 @@ Flow:
 The auth key is never stored in lease records, provider labels, run logs, or
 local config. User-data can still contain the short-lived key at the provider,
 so use one-off ephemeral keys and avoid long-lived reusable keys.
+
+## Exit Nodes
+
+Exit-node egress is opt-in per lease:
+
+```sh
+crabbox warmup --tailscale --tailscale-exit-node mac-studio.example.ts.net --tailscale-exit-node-allow-lan-access
+crabbox run --tailscale --tailscale-exit-node 100.100.100.100 -- curl -4 https://ifconfig.me
+```
+
+The exit node must already advertise exit-node capability and be approved in
+Tailscale admin. ACLs/grants must allow the lease's tags, such as
+`tag:crabbox`, to access `autogroup:internet` through exit nodes.
 
 ## VNC And SSH
 

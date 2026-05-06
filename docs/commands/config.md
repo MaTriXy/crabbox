@@ -36,6 +36,8 @@ tailscale:
     - tag:crabbox
   hostnameTemplate: crabbox-{slug}
   authKeyEnv: CRABBOX_TAILSCALE_AUTH_KEY
+  exitNode: mac-studio.example.ts.net
+  exitNodeAllowLanAccess: true
 capacity:
   market: spot
   strategy: most-available
@@ -72,3 +74,7 @@ env:
 Brokered `--tailscale` leases use Worker-minted one-off auth keys. Direct
 provider leases read a local one-off key from `tailscale.authKeyEnv`; do not
 store that key in repo config.
+
+`tailscale.exitNode` routes lease egress through an approved tailnet exit node.
+`tailscale.exitNodeAllowLanAccess` keeps LAN access available while using that
+exit node.

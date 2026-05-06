@@ -49,6 +49,10 @@ func directLeaseLabels(cfg Config, leaseID, slug, provider, market string, keep 
 		labels["tailscale_state"] = "requested"
 		labels["tailscale_hostname"] = cfg.Tailscale.Hostname
 		labels["tailscale_tags"] = strings.Join(cfg.Tailscale.Tags, ",")
+		if cfg.Tailscale.ExitNode != "" {
+			labels["tailscale_exit_node"] = cfg.Tailscale.ExitNode
+			labels["tailscale_exit_node_allow_lan_access"] = fmt.Sprint(cfg.Tailscale.ExitNodeAllowLANAccess)
+		}
 	}
 	return sanitizeProviderLabels(labels)
 }

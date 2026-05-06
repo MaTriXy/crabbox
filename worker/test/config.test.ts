@@ -176,11 +176,15 @@ describe("lease config", () => {
       tailscale: true,
       tailscaleTags: ["tag:Crabbox", "tag:ci", "invalid"],
       tailscaleHostname: "crabbox-blue-lobster",
+      tailscaleExitNode: "mac-studio.tailnet.ts.net",
+      tailscaleExitNodeAllowLanAccess: true,
     });
     expect(config.tailscale).toBe(true);
     expect(config.tailscaleTags).toEqual(["tag:crabbox", "tag:ci"]);
     expect(config.tailscaleHostname).toBe("crabbox-blue-lobster");
     expect(config.tailscaleAuthKey).toBe("");
+    expect(config.tailscaleExitNode).toBe("mac-studio.tailnet.ts.net");
+    expect(config.tailscaleExitNodeAllowLanAccess).toBe(true);
   });
 
   it("uses AWS defaults when requested", () => {

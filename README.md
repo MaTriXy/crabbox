@@ -199,13 +199,16 @@ tailscale:
     - tag:crabbox
   hostnameTemplate: crabbox-{slug}
   authKeyEnv: CRABBOX_TAILSCALE_AUTH_KEY
+  exitNode: mac-studio.example.ts.net
+  exitNodeAllowLanAccess: true
 ```
 
 Tailscale is a network plane, not a provider. `--tailscale` joins new managed
 Linux leases to the tailnet; `--network auto|tailscale|public` chooses how SSH
 and VNC tunnel commands resolve the host. Brokered mode uses Worker OAuth
 secrets to mint one-off keys; direct-provider mode reads the auth key from the
-configured env var. See [Tailscale](docs/features/tailscale.md).
+configured env var. `exitNode` is opt-in per lease for routing outbound internet
+through an approved tailnet exit node. See [Tailscale](docs/features/tailscale.md).
 
 Forwarded environment is intentionally narrow: `NODE_OPTIONS` and `CI`. Do not pass secrets as command-line arguments. Full env-var reference and per-command flags are in [docs/cli.md](docs/cli.md) and [docs/commands/](docs/commands/README.md).
 

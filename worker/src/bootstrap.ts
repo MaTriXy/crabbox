@@ -475,12 +475,23 @@ function tailscaleBootstrap(config: LeaseConfig): string {
     exit 1`;
   }
   const sshUser = config.sshUser.trim() || "crabbox";
+  const upArgs = [
+    `--auth-key="$TS_AUTHKEY"`,
+    `--hostname=${shellQuote(config.tailscaleHostname)}`,
+    `--advertise-tags=${shellQuote(config.tailscaleTags.join(","))}`,
+  ];
+  if (config.tailscaleExitNode) {
+    upArgs.push(`--exit-node=${shellQuote(config.tailscaleExitNode)}`);
+    if (config.tailscaleExitNodeAllowLanAccess) {
+      upArgs.push("--exit-node-allow-lan-access");
+    }
+  }
   return `    retry sh -c 'curl -fsSL https://tailscale.com/install.sh | sh'
     systemctl enable --now tailscaled || service tailscaled start || true
     install -d -m 0750 -o ${shellQuote(sshUser)} -g ${shellQuote(sshUser)} /var/lib/crabbox
     set +x
     TS_AUTHKEY=${shellQuote(config.tailscaleAuthKey)}
-    tailscale up --auth-key="$TS_AUTHKEY" --hostname=${shellQuote(config.tailscaleHostname)} --advertise-tags=${shellQuote(config.tailscaleTags.join(","))}
+    tailscale up ${upArgs.join(" ")}
     unset TS_AUTHKEY
     set -x
     ts_ip=""
@@ -492,6 +503,10 @@ function tailscaleBootstrap(config: LeaseConfig): string {
     test -n "$ts_ip"
     printf '%s\\n' "$ts_ip" > /var/lib/crabbox/tailscale-ipv4
     printf '%s\\n' ${shellQuote(config.tailscaleHostname)} > /var/lib/crabbox/tailscale-hostname
+    if [ -n ${shellQuote(config.tailscaleExitNode)} ]; then
+      printf '%s\\n' ${shellQuote(config.tailscaleExitNode)} > /var/lib/crabbox/tailscale-exit-node
+      printf '%s\\n' ${shellQuote(String(config.tailscaleExitNodeAllowLanAccess))} > /var/lib/crabbox/tailscale-exit-node-allow-lan-access
+    fi
     if tailscale status --json >/var/lib/crabbox/tailscale-status.json 2>/dev/null; then
       jq -r '.Self.DNSName // empty' /var/lib/crabbox/tailscale-status.json > /var/lib/crabbox/tailscale-fqdn || true
     fi

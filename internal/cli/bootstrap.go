@@ -601,6 +601,18 @@ func cloudInitTailscaleBootstrap(cfg Config) string {
 	sshUserGroup := shellQuote(sshUser)
 	sshUserChown := shellQuote(sshUser + ":" + sshUser)
 	tags := strings.Join(cfg.Tailscale.Tags, ",")
+	tailscaleUpArgs := []string{
+		"--auth-key=\"$TS_AUTHKEY\"",
+		"--hostname=" + shellQuote(hostname),
+		"--advertise-tags=" + shellQuote(tags),
+	}
+	exitNode := strings.TrimSpace(cfg.Tailscale.ExitNode)
+	if exitNode != "" {
+		tailscaleUpArgs = append(tailscaleUpArgs, "--exit-node="+shellQuote(exitNode))
+		if cfg.Tailscale.ExitNodeAllowLANAccess {
+			tailscaleUpArgs = append(tailscaleUpArgs, "--exit-node-allow-lan-access")
+		}
+	}
 	if authKey == "" {
 		return `    echo "tailscale requested but no auth key was injected" >&2
     exit 1`
@@ -610,7 +622,7 @@ func cloudInitTailscaleBootstrap(cfg Config) string {
     install -d -m 0750 -o ` + sshUserOwner + ` -g ` + sshUserGroup + ` /var/lib/crabbox
     set +x
     TS_AUTHKEY=` + shellQuote(authKey) + `
-    tailscale up --auth-key="$TS_AUTHKEY" --hostname=` + shellQuote(hostname) + ` --advertise-tags=` + shellQuote(tags) + `
+    tailscale up ` + strings.Join(tailscaleUpArgs, " ") + `
     unset TS_AUTHKEY
     set -x
     ts_ip=""
@@ -622,6 +634,10 @@ func cloudInitTailscaleBootstrap(cfg Config) string {
     test -n "$ts_ip"
     printf '%s\n' "$ts_ip" > /var/lib/crabbox/tailscale-ipv4
     printf '%s\n' ` + shellQuote(hostname) + ` > /var/lib/crabbox/tailscale-hostname
+    if [ -n ` + shellQuote(exitNode) + ` ]; then
+      printf '%s\n' ` + shellQuote(exitNode) + ` > /var/lib/crabbox/tailscale-exit-node
+      printf '%s\n' ` + shellQuote(fmt.Sprint(cfg.Tailscale.ExitNodeAllowLANAccess)) + ` > /var/lib/crabbox/tailscale-exit-node-allow-lan-access
+    fi
     if tailscale status --json >/var/lib/crabbox/tailscale-status.json 2>/dev/null; then
       jq -r '.Self.DNSName // empty' /var/lib/crabbox/tailscale-status.json > /var/lib/crabbox/tailscale-fqdn || true
     fi

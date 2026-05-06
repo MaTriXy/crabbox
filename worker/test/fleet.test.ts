@@ -109,6 +109,8 @@ describe("fleet lease identity and idle", () => {
           tailscaleAuthKey?: string;
           tailscaleHostname?: string;
           tailscaleTags?: string[];
+          tailscaleExitNode?: string;
+          tailscaleExitNodeAllowLanAccess?: boolean;
         }
       | undefined;
     vi.stubGlobal(
@@ -150,6 +152,8 @@ describe("fleet lease identity and idle", () => {
           tailscale: true,
           tailscaleTags: ["tag:ci"],
           tailscaleHostname: "crabbox-{slug}",
+          tailscaleExitNode: "mac-studio.tailnet.ts.net",
+          tailscaleExitNodeAllowLanAccess: true,
           sshPublicKey: "ssh-ed25519 test",
         },
       }),
@@ -161,6 +165,8 @@ describe("fleet lease identity and idle", () => {
       hostname: "crabbox-blue-lobster",
       tags: ["tag:ci"],
       state: "requested",
+      exitNode: "mac-studio.tailnet.ts.net",
+      exitNodeAllowLanAccess: true,
     });
     expect(JSON.stringify(lease)).not.toContain("tskey-oneoff");
     expect(providerConfig).toMatchObject({
@@ -168,6 +174,8 @@ describe("fleet lease identity and idle", () => {
       tailscaleAuthKey: "tskey-oneoff",
       tailscaleHostname: "crabbox-blue-lobster",
       tailscaleTags: ["tag:ci"],
+      tailscaleExitNode: "mac-studio.tailnet.ts.net",
+      tailscaleExitNodeAllowLanAccess: true,
     });
 
     const update = await fleet.fetch(
@@ -181,6 +189,8 @@ describe("fleet lease identity and idle", () => {
           hostname: "crabbox-blue-lobster",
           fqdn: "crabbox-blue-lobster.example.ts.net",
           ipv4: "100.64.0.10",
+          exitNode: "mac-studio.tailnet.ts.net",
+          exitNodeAllowLanAccess: true,
           state: "ready",
         },
       }),
@@ -188,6 +198,7 @@ describe("fleet lease identity and idle", () => {
     expect(update.status).toBe(200);
     const updated = (await update.json()) as { lease: LeaseRecord };
     expect(updated.lease.tailscale?.ipv4).toBe("100.64.0.10");
+    expect(updated.lease.tailscale?.exitNode).toBe("mac-studio.tailnet.ts.net");
     expect(updated.lease.tailscale?.state).toBe("ready");
   });
 
@@ -2122,6 +2133,8 @@ function fakeProvider(
     tailscaleAuthKey?: string;
     tailscaleHostname?: string;
     tailscaleTags?: string[];
+    tailscaleExitNode?: string;
+    tailscaleExitNodeAllowLanAccess?: boolean;
   }) => void,
   result: {
     provider?: "hetzner" | "aws";

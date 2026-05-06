@@ -14,6 +14,8 @@ const config: LeaseConfig = {
   tailscaleTags: ["tag:crabbox"],
   tailscaleHostname: "",
   tailscaleAuthKey: "",
+  tailscaleExitNode: "",
+  tailscaleExitNodeAllowLanAccess: false,
   profile: "project-check",
   class: "standard",
   serverType: "c7a.8xlarge",
@@ -153,14 +155,22 @@ describe("cloud-init bootstrap", () => {
       tailscaleTags: ["tag:crabbox"],
       tailscaleHostname: "crabbox-blue-lobster",
       tailscaleAuthKey: "tskey-secret",
+      tailscaleExitNode: "mac-studio.tailnet.ts.net",
+      tailscaleExitNodeAllowLanAccess: true,
     });
     expect(got).toContain("https://tailscale.com/install.sh");
     expect(got).toContain("install -d -m 0750 -o 'runner' -g 'runner' /var/lib/crabbox");
     expect(got).toContain(
-      "tailscale up --auth-key=\"$TS_AUTHKEY\" --hostname='crabbox-blue-lobster' --advertise-tags='tag:crabbox'",
+      "tailscale up --auth-key=\"$TS_AUTHKEY\" --hostname='crabbox-blue-lobster' --advertise-tags='tag:crabbox' --exit-node='mac-studio.tailnet.ts.net' --exit-node-allow-lan-access",
     );
     expect(got).toContain(
       "printf '%s\\n' 'crabbox-blue-lobster' > /var/lib/crabbox/tailscale-hostname",
+    );
+    expect(got).toContain(
+      "printf '%s\\n' 'mac-studio.tailnet.ts.net' > /var/lib/crabbox/tailscale-exit-node",
+    );
+    expect(got).toContain(
+      "printf '%s\\n' 'true' > /var/lib/crabbox/tailscale-exit-node-allow-lan-access",
     );
     expect(got).toContain("chown 'runner:runner' /var/lib/crabbox/tailscale-* || true");
     expect(got).toContain("test -s /var/lib/crabbox/tailscale-ipv4");

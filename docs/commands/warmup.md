@@ -89,6 +89,8 @@ Flags:
 --tailscale-tags <comma-separated tags>
 --tailscale-hostname-template <template>
 --tailscale-auth-key-env <env-var>
+--tailscale-exit-node <name-or-100.x>
+--tailscale-exit-node-allow-lan-access
 --network auto|tailscale|public
 --keep
 --actions-runner

@@ -50,12 +50,17 @@ func TestDirectLeaseLabelsIncludeNonSecretTailscaleMetadata(t *testing.T) {
 	cfg.Tailscale.Hostname = "crabbox-blue-lobster"
 	cfg.Tailscale.Tags = []string{"tag:crabbox"}
 	cfg.Tailscale.AuthKey = "tskey-secret"
+	cfg.Tailscale.ExitNode = "mac-studio.tailnet.ts.net"
+	cfg.Tailscale.ExitNodeAllowLANAccess = true
 	labels := directLeaseLabels(cfg, "cbx_abcdef123456", "blue-lobster", "hetzner", "", true, time.Now())
 	if labels["tailscale"] != "true" || labels["tailscale_state"] != "requested" {
 		t.Fatalf("tailscale labels missing: %#v", labels)
 	}
 	if labels["tailscale_hostname"] != "crabbox-blue-lobster" || labels["tailscale_tags"] != "tag_crabbox" {
 		t.Fatalf("tailscale metadata labels unexpected: %#v", labels)
+	}
+	if labels["tailscale_exit_node"] != "mac-studio.tailnet.ts.net" || labels["tailscale_exit_node_allow_lan_access"] != "true" {
+		t.Fatalf("tailscale exit-node labels unexpected: %#v", labels)
 	}
 	for key, value := range labels {
 		if strings.Contains(value, "tskey-secret") || strings.Contains(key, "auth") {

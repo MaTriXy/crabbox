@@ -17,30 +17,36 @@ const (
 )
 
 type TailscaleConfig struct {
-	Enabled          bool
-	Tags             []string
-	HostnameTemplate string
-	Hostname         string
-	AuthKeyEnv       string
-	AuthKey          string
+	Enabled                bool
+	Tags                   []string
+	HostnameTemplate       string
+	Hostname               string
+	AuthKeyEnv             string
+	AuthKey                string
+	ExitNode               string
+	ExitNodeAllowLANAccess bool
 }
 
 type TailscaleMetadata struct {
-	Enabled  bool     `json:"enabled"`
-	Hostname string   `json:"hostname,omitempty"`
-	FQDN     string   `json:"fqdn,omitempty"`
-	IPv4     string   `json:"ipv4,omitempty"`
-	Tags     []string `json:"tags,omitempty"`
-	State    string   `json:"state,omitempty"`
-	Error    string   `json:"error,omitempty"`
+	Enabled                bool     `json:"enabled"`
+	Hostname               string   `json:"hostname,omitempty"`
+	FQDN                   string   `json:"fqdn,omitempty"`
+	IPv4                   string   `json:"ipv4,omitempty"`
+	Tags                   []string `json:"tags,omitempty"`
+	State                  string   `json:"state,omitempty"`
+	Error                  string   `json:"error,omitempty"`
+	ExitNode               string   `json:"exitNode,omitempty"`
+	ExitNodeAllowLANAccess bool     `json:"exitNodeAllowLanAccess,omitempty"`
 }
 
 type networkFlagValues struct {
-	Network         *string
-	Tailscale       *bool
-	TailscaleTags   *string
-	TailscaleHost   *string
-	TailscaleKeyEnv *string
+	Network                   *string
+	Tailscale                 *bool
+	TailscaleTags             *string
+	TailscaleHost             *string
+	TailscaleKeyEnv           *string
+	TailscaleExitNode         *string
+	TailscaleExitNodeAllowLAN *bool
 }
 
 type networkModeFlagValues struct {
@@ -75,11 +81,13 @@ func applyNetworkModeFlagOverride(cfg *Config, fs *flag.FlagSet, values networkM
 
 func registerNetworkFlags(fs *flag.FlagSet, defaults Config) networkFlagValues {
 	return networkFlagValues{
-		Network:         fs.String("network", string(defaults.Network), "network mode: auto, tailscale, or public"),
-		Tailscale:       fs.Bool("tailscale", defaults.Tailscale.Enabled, "join new managed leases to the configured tailnet"),
-		TailscaleTags:   fs.String("tailscale-tags", strings.Join(defaults.Tailscale.Tags, ","), "comma-separated Tailscale tags for new managed leases"),
-		TailscaleHost:   fs.String("tailscale-hostname-template", defaults.Tailscale.HostnameTemplate, "Tailscale hostname template for new managed leases"),
-		TailscaleKeyEnv: fs.String("tailscale-auth-key-env", defaults.Tailscale.AuthKeyEnv, "environment variable containing a direct-provider Tailscale auth key"),
+		Network:                   fs.String("network", string(defaults.Network), "network mode: auto, tailscale, or public"),
+		Tailscale:                 fs.Bool("tailscale", defaults.Tailscale.Enabled, "join new managed leases to the configured tailnet"),
+		TailscaleTags:             fs.String("tailscale-tags", strings.Join(defaults.Tailscale.Tags, ","), "comma-separated Tailscale tags for new managed leases"),
+		TailscaleHost:             fs.String("tailscale-hostname-template", defaults.Tailscale.HostnameTemplate, "Tailscale hostname template for new managed leases"),
+		TailscaleKeyEnv:           fs.String("tailscale-auth-key-env", defaults.Tailscale.AuthKeyEnv, "environment variable containing a direct-provider Tailscale auth key"),
+		TailscaleExitNode:         fs.String("tailscale-exit-node", defaults.Tailscale.ExitNode, "Tailscale exit node name or 100.x address for new managed leases"),
+		TailscaleExitNodeAllowLAN: fs.Bool("tailscale-exit-node-allow-lan-access", defaults.Tailscale.ExitNodeAllowLANAccess, "allow LAN access while using the Tailscale exit node"),
 	}
 }
 
@@ -103,6 +111,12 @@ func applyNetworkFlagOverrides(cfg *Config, fs *flag.FlagSet, values networkFlag
 	if flagWasSet(fs, "tailscale-auth-key-env") {
 		cfg.Tailscale.AuthKeyEnv = strings.TrimSpace(*values.TailscaleKeyEnv)
 		cfg.Tailscale.AuthKey = getenv(cfg.Tailscale.AuthKeyEnv, "")
+	}
+	if flagWasSet(fs, "tailscale-exit-node") {
+		cfg.Tailscale.ExitNode = strings.TrimSpace(*values.TailscaleExitNode)
+	}
+	if flagWasSet(fs, "tailscale-exit-node-allow-lan-access") {
+		cfg.Tailscale.ExitNodeAllowLANAccess = *values.TailscaleExitNodeAllowLAN
 	}
 	return validateNetworkConfig(*cfg)
 }
@@ -135,6 +149,9 @@ func validateNetworkConfig(cfg Config) error {
 		}
 		if strings.TrimSpace(cfg.Tailscale.HostnameTemplate) == "" {
 			return exit(2, "tailscale.hostnameTemplate must not be empty")
+		}
+		if cfg.Tailscale.ExitNodeAllowLANAccess && strings.TrimSpace(cfg.Tailscale.ExitNode) == "" {
+			return exit(2, "tailscale.exitNodeAllowLanAccess requires tailscale.exitNode")
 		}
 		if cfg.TargetOS != targetLinux {
 			return exit(2, "--tailscale managed provisioning currently supports target=linux only")
@@ -241,12 +258,14 @@ func tailscaleTargetHost(meta TailscaleMetadata) string {
 func serverTailscaleMetadata(server Server) TailscaleMetadata {
 	labels := server.Labels
 	meta := TailscaleMetadata{
-		Enabled:  labelBool(labels["tailscale"]),
-		Hostname: labels["tailscale_hostname"],
-		FQDN:     labels["tailscale_fqdn"],
-		IPv4:     labels["tailscale_ipv4"],
-		State:    labels["tailscale_state"],
-		Error:    labels["tailscale_error"],
+		Enabled:                labelBool(labels["tailscale"]),
+		Hostname:               labels["tailscale_hostname"],
+		FQDN:                   labels["tailscale_fqdn"],
+		IPv4:                   labels["tailscale_ipv4"],
+		State:                  labels["tailscale_state"],
+		Error:                  labels["tailscale_error"],
+		ExitNode:               labels["tailscale_exit_node"],
+		ExitNodeAllowLANAccess: labelBool(labels["tailscale_exit_node_allow_lan_access"]),
 	}
 	if tags := splitCommaList(labels["tailscale_tags"]); len(tags) > 0 {
 		meta.Tags = tags
@@ -279,6 +298,12 @@ func applyTailscaleMetadataToServer(server *Server, meta TailscaleMetadata) {
 	if meta.Error != "" {
 		server.Labels["tailscale_error"] = meta.Error
 	}
+	if meta.ExitNode != "" {
+		server.Labels["tailscale_exit_node"] = meta.ExitNode
+	}
+	if meta.ExitNodeAllowLANAccess {
+		server.Labels["tailscale_exit_node_allow_lan_access"] = "true"
+	}
 }
 
 func (a App) refreshTailscaleMetadata(ctx context.Context, cfg Config, coord *CoordinatorClient, useCoordinator bool, server *Server, target SSHTarget, leaseID string) {
@@ -296,6 +321,8 @@ func (a App) refreshTailscaleMetadata(ctx context.Context, cfg Config, coord *Co
 		meta.Hostname = firstNonEmpty(meta.Hostname, existing.Hostname)
 		meta.FQDN = firstNonEmpty(meta.FQDN, existing.FQDN)
 		meta.Tags = appendUniqueStrings(existing.Tags, meta.Tags...)
+		meta.ExitNode = firstNonEmpty(meta.ExitNode, existing.ExitNode)
+		meta.ExitNodeAllowLANAccess = meta.ExitNodeAllowLANAccess || existing.ExitNodeAllowLANAccess
 	}
 	applyTailscaleMetadataToServer(server, meta)
 	if useCoordinator && coord != nil && leaseID != "" {
@@ -313,7 +340,11 @@ func readRemoteTailscaleMetadata(ctx context.Context, target SSHTarget) (Tailsca
 printf '\n'
 if [ -f /var/lib/crabbox/tailscale-hostname ]; then cat /var/lib/crabbox/tailscale-hostname; fi
 printf '\n'
-if [ -f /var/lib/crabbox/tailscale-fqdn ]; then cat /var/lib/crabbox/tailscale-fqdn; fi`)
+if [ -f /var/lib/crabbox/tailscale-fqdn ]; then cat /var/lib/crabbox/tailscale-fqdn; fi
+printf '\n'
+if [ -f /var/lib/crabbox/tailscale-exit-node ]; then cat /var/lib/crabbox/tailscale-exit-node; fi
+printf '\n'
+if [ -f /var/lib/crabbox/tailscale-exit-node-allow-lan-access ]; then cat /var/lib/crabbox/tailscale-exit-node-allow-lan-access; fi`)
 	if err != nil {
 		return TailscaleMetadata{}, err
 	}
@@ -327,6 +358,12 @@ if [ -f /var/lib/crabbox/tailscale-fqdn ]; then cat /var/lib/crabbox/tailscale-f
 	}
 	if len(lines) > 2 {
 		meta.FQDN = strings.TrimSpace(lines[2])
+	}
+	if len(lines) > 3 {
+		meta.ExitNode = strings.TrimSpace(lines[3])
+	}
+	if len(lines) > 4 {
+		meta.ExitNodeAllowLANAccess = labelBool(strings.TrimSpace(lines[4]))
 	}
 	if meta.IPv4 == "" {
 		return TailscaleMetadata{}, fmt.Errorf("remote tailscale metadata missing ipv4")

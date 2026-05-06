@@ -411,11 +411,13 @@ type fileIsloConfig struct {
 }
 
 type fileTailscaleConfig struct {
-	Enabled          *bool    `yaml:"enabled,omitempty"`
-	Network          string   `yaml:"network,omitempty"`
-	Tags             []string `yaml:"tags,omitempty"`
-	HostnameTemplate string   `yaml:"hostnameTemplate,omitempty"`
-	AuthKeyEnv       string   `yaml:"authKeyEnv,omitempty"`
+	Enabled                *bool    `yaml:"enabled,omitempty"`
+	Network                string   `yaml:"network,omitempty"`
+	Tags                   []string `yaml:"tags,omitempty"`
+	HostnameTemplate       string   `yaml:"hostnameTemplate,omitempty"`
+	AuthKeyEnv             string   `yaml:"authKeyEnv,omitempty"`
+	ExitNode               string   `yaml:"exitNode,omitempty"`
+	ExitNodeAllowLANAccess *bool    `yaml:"exitNodeAllowLanAccess,omitempty"`
 }
 
 type fileStaticConfig struct {
@@ -834,6 +836,12 @@ func applyFileConfig(cfg *Config, file fileConfig) {
 		if file.Tailscale.AuthKeyEnv != "" {
 			cfg.Tailscale.AuthKeyEnv = file.Tailscale.AuthKeyEnv
 		}
+		if file.Tailscale.ExitNode != "" {
+			cfg.Tailscale.ExitNode = strings.TrimSpace(file.Tailscale.ExitNode)
+		}
+		if file.Tailscale.ExitNodeAllowLANAccess != nil {
+			cfg.Tailscale.ExitNodeAllowLANAccess = *file.Tailscale.ExitNodeAllowLANAccess
+		}
 	}
 	if file.Static != nil {
 		if file.Static.ID != "" {
@@ -982,6 +990,10 @@ func applyEnv(cfg *Config) {
 	}
 	cfg.Tailscale.HostnameTemplate = getenv("CRABBOX_TAILSCALE_HOSTNAME_TEMPLATE", cfg.Tailscale.HostnameTemplate)
 	cfg.Tailscale.AuthKeyEnv = getenv("CRABBOX_TAILSCALE_AUTH_KEY_ENV", cfg.Tailscale.AuthKeyEnv)
+	cfg.Tailscale.ExitNode = getenv("CRABBOX_TAILSCALE_EXIT_NODE", cfg.Tailscale.ExitNode)
+	if value, ok := getenvBool("CRABBOX_TAILSCALE_EXIT_NODE_ALLOW_LAN_ACCESS"); ok {
+		cfg.Tailscale.ExitNodeAllowLANAccess = value
+	}
 	if cfg.Tailscale.AuthKeyEnv != "" {
 		cfg.Tailscale.AuthKey = getenv(cfg.Tailscale.AuthKeyEnv, "")
 	}

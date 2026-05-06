@@ -15,6 +15,8 @@ describe("provider labels", () => {
       tailscaleTags: ["tag:crabbox"],
       tailscaleHostname: "",
       tailscaleAuthKey: "",
+      tailscaleExitNode: "",
+      tailscaleExitNodeAllowLanAccess: false,
       profile: "default",
       class: "beast",
       serverType: "c7a.48xlarge",
@@ -70,6 +72,8 @@ describe("provider labels", () => {
       tailscaleTags: ["tag:crabbox"],
       tailscaleHostname: "crabbox-blue-lobster",
       tailscaleAuthKey: "tskey-secret",
+      tailscaleExitNode: "mac-studio.tailnet.ts.net",
+      tailscaleExitNodeAllowLanAccess: true,
       profile: "default",
       class: "beast",
       serverType: "c7a.48xlarge",
@@ -109,6 +113,8 @@ describe("provider labels", () => {
     expect(labels.tailscale).toBe("true");
     expect(labels.tailscale_hostname).toBe("crabbox-blue-lobster");
     expect(labels.tailscale_tags).toBe("tag_crabbox");
+    expect(labels.tailscale_exit_node).toBe("mac-studio.tailnet.ts.net");
+    expect(labels.tailscale_exit_node_allow_lan_access).toBe("true");
     expect(Object.values(labels).join(" ")).not.toContain("tskey-secret");
   });
 });

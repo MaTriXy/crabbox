@@ -46,6 +46,12 @@ export function leaseProviderLabels(
     labels["tailscale_state"] = "requested";
     labels["tailscale_hostname"] = config.tailscaleHostname;
     labels["tailscale_tags"] = config.tailscaleTags.join(",");
+    if (config.tailscaleExitNode) {
+      labels["tailscale_exit_node"] = config.tailscaleExitNode;
+      labels["tailscale_exit_node_allow_lan_access"] = String(
+        config.tailscaleExitNodeAllowLanAccess,
+      );
+    }
   }
   return sanitizeLabels({ ...labels, ...extra });
 }
