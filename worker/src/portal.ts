@@ -1,6 +1,12 @@
-import type { LeaseRecord } from "./types";
+import type { LeaseRecord, RunRecord } from "./types";
 
 const novncModuleURL = "/portal/assets/novnc/rfb.js";
+
+export interface PortalLeaseBridgeStatus {
+  webVNCBridgeConnected: boolean;
+  webVNCViewerConnected: boolean;
+  codeBridgeConnected: boolean;
+}
 
 export function portalHome(leases: LeaseRecord[], request: Request): Response {
   const active = leases.filter((lease) => lease.state === "active");
@@ -35,6 +41,103 @@ export function portalHome(leases: LeaseRecord[], request: Request): Response {
             </tr>
           </thead>
           <tbody>${rows}</tbody>
+        </table>
+      </section>
+    </main>`,
+  );
+}
+
+export function portalLeaseDetail(
+  lease: LeaseRecord,
+  runs: RunRecord[],
+  bridgeStatus: PortalLeaseBridgeStatus,
+): Response {
+  const slug = lease.slug || lease.id;
+  const runRows = runs.length
+    ? runs.map((run) => runRow(run)).join("")
+    : `<tr><td colspan="7" class="empty">no recorded runs for this lease</td></tr>`;
+  const vncAction = lease.desktop
+    ? `<a class="button" href="/portal/leases/${encodeURIComponent(lease.id)}/vnc">open VNC</a>`
+    : `<span class="muted">no desktop</span>`;
+  const codeAction = lease.code
+    ? `<a class="button" href="/portal/leases/${encodeURIComponent(lease.id)}/code/">open code</a>`
+    : `<span class="muted">no code</span>`;
+  const commands = [
+    commandBlock("shell", `crabbox ssh --id ${shellArg(slug)}`),
+    commandBlock("run", `crabbox run --id ${shellArg(slug)} -- <command>`),
+    lease.desktop ? commandBlock("WebVNC bridge", webVNCBridgeCommand(lease)) : "",
+    lease.code ? commandBlock("code bridge", codeBridgeCommand(lease)) : "",
+  ]
+    .filter(Boolean)
+    .join("");
+  return html(
+    `${slug} lease`,
+    `<main>
+      <header class="top">
+        <div>
+          <h1>${escapeHTML(slug)}</h1>
+          <p>${escapeHTML(lease.provider)} ${escapeHTML(lease.target)} lease <span class="mono">${escapeHTML(lease.id)}</span></p>
+        </div>
+        <div class="vnc-actions">
+          <a class="button secondary" href="/portal">leases</a>
+          <a class="button secondary" href="/portal/logout">log out</a>
+        </div>
+      </header>
+      <section class="detail-grid">
+        <div class="panel detail-card">
+          <div class="section-head">
+            <h2>status</h2>
+            <span class="pill" data-state="${escapeHTML(lease.state)}">${escapeHTML(lease.state)}</span>
+          </div>
+          <dl class="meta-grid">
+            ${metaRow("provider", lease.provider)}
+            ${metaRow("target", lease.windowsMode ? `${lease.target} / ${lease.windowsMode}` : lease.target)}
+            ${metaRow("class", lease.class)}
+            ${metaRow("host", lease.host || "pending")}
+            ${metaRow("ssh", lease.sshPort ? `${lease.sshUser || "crabbox"}@${lease.host || "host"}:${lease.sshPort}` : "pending")}
+            ${metaRow("work root", lease.workRoot || "pending")}
+            ${metaRow("expires", shortTime(lease.expiresAt))}
+          </dl>
+          <form method="post" action="/portal/leases/${encodeURIComponent(lease.id)}/release" class="stop-form">
+            <button class="button danger" type="submit">stop lease</button>
+          </form>
+        </div>
+        <div class="panel detail-card">
+          <div class="section-head">
+            <h2>access</h2>
+            <span>${lease.desktop || lease.code ? "bridges" : "ssh only"}</span>
+          </div>
+          <div class="bridge-grid">
+            ${bridgeRow("WebVNC", lease.desktop === true, bridgeStatus.webVNCBridgeConnected, bridgeStatus.webVNCViewerConnected, vncAction)}
+            ${bridgeRow("code", lease.code === true, bridgeStatus.codeBridgeConnected, false, codeAction)}
+          </div>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="section-head">
+          <h2>commands</h2>
+          <span>copy locally</span>
+        </div>
+        <div class="commands">${commands}</div>
+      </section>
+      <section class="panel">
+        <div class="section-head">
+          <h2>recent runs</h2>
+          <span>${runs.length}</span>
+        </div>
+        <table class="run-table">
+          <thead>
+            <tr>
+              <th>run</th>
+              <th>state</th>
+              <th>phase</th>
+              <th>started</th>
+              <th>duration</th>
+              <th>log</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>${runRows}</tbody>
         </table>
       </section>
     </main>`,
@@ -228,7 +331,7 @@ export function portalError(title: string, message: string, status = 400): Respo
 
 export function portalCode(lease: LeaseRecord): Response {
   const slug = lease.slug || lease.id;
-  const bridgeCmd = `crabbox code --id ${slug} --open`;
+  const bridgeCmd = codeBridgeCommand(lease);
   return html(
     `Code ${slug}`,
     `<main>
@@ -249,6 +352,10 @@ export function portalCode(lease: LeaseRecord): Response {
       </section>
     </main>`,
   );
+}
+
+export function codeBridgeCommand(lease: LeaseRecord): string {
+  return ["crabbox", "code", "--id", lease.slug || lease.id, "--open"].map(shellArg).join(" ");
 }
 
 export function webVNCBridgeCommand(lease: LeaseRecord): string {
@@ -279,6 +386,7 @@ function shellArg(value: string): string {
 
 function leaseRow(lease: LeaseRecord): string {
   const label = lease.slug || lease.id;
+  const detailPath = `/portal/leases/${encodeURIComponent(lease.id)}`;
   const vnc = lease.desktop
     ? `<a class="button" href="/portal/leases/${encodeURIComponent(lease.id)}/vnc">open</a>`
     : `<span class="muted">no desktop</span>`;
@@ -286,7 +394,7 @@ function leaseRow(lease: LeaseRecord): string {
     ? `<a class="button secondary" href="/portal/leases/${encodeURIComponent(lease.id)}/code/">code</a>`
     : `<span class="muted">no code</span>`;
   return `<tr>
-    <td><strong>${escapeHTML(label)}</strong><small>${escapeHTML(lease.id)}</small></td>
+    <td><a class="lease-link" href="${detailPath}"><strong>${escapeHTML(label)}</strong><small>${escapeHTML(lease.id)}</small></a></td>
     <td>${escapeHTML(lease.provider)}</td>
     <td>${escapeHTML(lease.target)}</td>
     <td>${escapeHTML(lease.class)}</td>
@@ -294,6 +402,50 @@ function leaseRow(lease: LeaseRecord): string {
     <td>${escapeHTML(shortTime(lease.expiresAt))}</td>
     <td></td>
   </tr>`;
+}
+
+function runRow(run: RunRecord): string {
+  const stateTone = run.state === "succeeded" ? "ok" : run.state === "failed" ? "bad" : "warn";
+  const logLabel = run.logBytes > 0 ? formatBytes(run.logBytes) : "empty";
+  return `<tr>
+    <td><strong>${escapeHTML(run.id)}</strong><small>${escapeHTML(run.command.join(" "))}</small></td>
+    <td><span class="pill" data-tone="${stateTone}">${escapeHTML(run.state)}</span></td>
+    <td>${escapeHTML(run.phase || "-")}</td>
+    <td>${escapeHTML(shortTime(run.startedAt))}</td>
+    <td>${escapeHTML(formatDuration(run.durationMs))}</td>
+    <td>${escapeHTML(logLabel)}</td>
+    <td><div class="actions-cell"><a class="button secondary" href="/portal/runs/${encodeURIComponent(run.id)}/logs">logs</a><a class="button secondary" href="/portal/runs/${encodeURIComponent(run.id)}/events">events</a></div></td>
+  </tr>`;
+}
+
+function metaRow(label: string, value: string | undefined): string {
+  return `<div><dt>${escapeHTML(label)}</dt><dd>${escapeHTML(value || "-")}</dd></div>`;
+}
+
+function bridgeRow(
+  label: string,
+  enabled: boolean,
+  bridgeConnected: boolean,
+  viewerConnected: boolean,
+  action: string,
+): string {
+  const status = enabled
+    ? bridgeConnected
+      ? viewerConnected
+        ? "viewer active"
+        : "bridge ready"
+      : "waiting for bridge"
+    : "unavailable";
+  const tone = enabled ? (bridgeConnected ? "ok" : "warn") : "";
+  return `<div class="bridge-row">
+    <div><strong>${escapeHTML(label)}</strong><small>${escapeHTML(status)}</small></div>
+    <span class="pill" data-tone="${tone}">${escapeHTML(enabled ? (bridgeConnected ? "connected" : "waiting") : "off")}</span>
+    ${action}
+  </div>`;
+}
+
+function commandBlock(label: string, command: string): string {
+  return `<div class="command-row"><div><small>${escapeHTML(label)}</small><code>${escapeHTML(command)}</code></div></div>`;
 }
 
 function html(title: string, body: string, status = 200, nonce = ""): Response {
@@ -317,6 +469,8 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     h1 { font-size:22px; font-weight:700; }
     h2 { font-size:14px; text-transform:uppercase; color:var(--muted); }
     a { color:inherit; }
+    form { margin:0; }
+    button { font:inherit; }
     code { display:block; overflow:auto; padding:12px; border:1px solid var(--line); border-radius:6px; background:#0c0e10; color:#d1fae5; font-family:var(--mono); }
     table { width:100%; border-collapse:collapse; table-layout:fixed; }
     th,td { padding:12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:middle; }
@@ -329,6 +483,23 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .button { display:inline-flex; align-items:center; justify-content:center; min-height:32px; padding:0 12px; border-radius:8px; background:var(--accent); color:#001018; text-decoration:none; font-weight:700; }
     .button.secondary { background:transparent; color:var(--fg); border:1px solid var(--line); font-weight:500; }
     .button.secondary:hover { background:#1b1f24; border-color:#3a4046; }
+    .button.danger { border:1px solid color-mix(in srgb, var(--bad) 42%, var(--line)); background:color-mix(in srgb, var(--bad) 18%, transparent); color:#fecaca; cursor:pointer; }
+    .lease-link { display:block; text-decoration:none; }
+    .mono { font-family:var(--mono); }
+    .detail-grid { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(280px,0.9fr); gap:12px; margin-bottom:12px; }
+    .detail-card { min-width:0; }
+    .meta-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0; margin:0; }
+    .meta-grid div { padding:12px 14px; border-bottom:1px solid var(--line-soft); }
+    .meta-grid dt { color:var(--muted); font-size:11px; text-transform:uppercase; margin-bottom:3px; }
+    .meta-grid dd { margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .stop-form { padding:14px; }
+    .bridge-grid { display:grid; gap:0; }
+    .bridge-row { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:10px; align-items:center; padding:14px; border-bottom:1px solid var(--line-soft); }
+    .bridge-row small { display:block; color:var(--muted); margin-top:2px; }
+    .pill { display:inline-flex; align-items:center; justify-content:center; min-height:24px; padding:0 8px; border-radius:999px; border:1px solid var(--line); color:var(--muted); background:var(--panel-2); font-size:12px; white-space:nowrap; }
+    .pill[data-tone="ok"],.pill[data-state="active"] { color:var(--ok); border-color:color-mix(in srgb, var(--ok) 35%, var(--line)); }
+    .pill[data-tone="warn"] { color:var(--warn); border-color:color-mix(in srgb, var(--warn) 35%, var(--line)); }
+    .pill[data-tone="bad"],.pill[data-state="released"],.pill[data-state="expired"] { color:var(--bad); border-color:color-mix(in srgb, var(--bad) 45%, var(--line)); }
     .actions-cell { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
     .vnc-page { width:100vw; height:100vh; padding:10px 12px 10px; display:grid; grid-template-rows:auto 1fr auto; gap:10px; }
     .vnc-bar { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:44px; padding:0 4px; }
@@ -353,12 +524,16 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .vnc-bridge-label { font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); flex-shrink:0; padding-left:4px; }
     .vnc-bridge-cmd { display:block; flex:1; min-width:0; padding:6px 10px; border:none; border-radius:5px; background:transparent; color:#d1fae5; font-family:var(--mono); font-size:13px; overflow-x:auto; white-space:nowrap; }
     .commands { padding:12px; display:grid; gap:8px; }
-    .command-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:stretch; }
+    .command-row { display:grid; grid-template-columns:minmax(0,1fr); gap:8px; align-items:stretch; }
+    .command-row small { display:block; color:var(--muted); margin-bottom:4px; text-transform:uppercase; font-size:11px; }
     .command-row code { min-width:0; }
     .error { margin-top:20vh; padding:24px; display:grid; gap:12px; }
     @media (max-width: 760px) {
       main { width:min(100vw - 20px, 1180px); padding:10px 0; }
       th:nth-child(4),td:nth-child(4),th:nth-child(6),td:nth-child(6){ display:none; }
+      .detail-grid { grid-template-columns:1fr; }
+      .meta-grid { grid-template-columns:1fr; }
+      .bridge-row { grid-template-columns:1fr; align-items:start; }
       .top{align-items:flex-start;}
       .vnc-bar { flex-wrap:wrap; gap:8px; min-height:0; padding:4px 0; }
       .vnc-meta { flex-wrap:wrap; gap:4px 10px; }
@@ -399,6 +574,29 @@ function shortTime(value: string): string {
     return value;
   }
   return date.toISOString().replace(".000Z", "Z");
+}
+
+function formatDuration(value: number | undefined): string {
+  if (!Number.isFinite(value)) {
+    return "-";
+  }
+  const seconds = Math.max(0, Math.round((value ?? 0) / 1000));
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return `${minutes}m ${rest}s`;
+}
+
+function formatBytes(value: number): string {
+  if (value < 1024) {
+    return `${value} B`;
+  }
+  if (value < 1024 * 1024) {
+    return `${(value / 1024).toFixed(1)} KiB`;
+  }
+  return `${(value / 1024 / 1024).toFixed(1)} MiB`;
 }
 
 function escapeHTML(value: string | undefined): string {

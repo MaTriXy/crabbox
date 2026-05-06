@@ -501,9 +501,102 @@ describe("fleet lease identity and idle", () => {
     expect(response.status).toBe(200);
     const body = await response.text();
     expect(body).toContain("blue-lobster");
+    expect(body).toContain("/portal/leases/cbx_000000000001");
     expect(body).toContain("/portal/leases/cbx_000000000001/vnc");
     expect(body).toContain("/portal/leases/cbx_000000000001/code/");
     expect(body).not.toContain("amber-krill");
+  });
+
+  it("renders lease detail pages with run logs and stop controls", async () => {
+    const storage = new MemoryStorage();
+    const fleet = testFleet(storage, { hetzner: fakeProvider() });
+    const headers = {
+      "x-crabbox-owner": "peter@example.com",
+      "x-crabbox-org": "openclaw",
+    };
+    storage.seed(
+      "lease:cbx_000000000001",
+      testLease({
+        id: "cbx_000000000001",
+        slug: "blue-lobster",
+        owner: "peter@example.com",
+        org: "openclaw",
+        desktop: true,
+        code: true,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      }),
+    );
+    storage.seed(
+      "run:run_000000000001",
+      testRun({
+        id: "run_000000000001",
+        leaseID: "cbx_000000000001",
+        owner: "peter@example.com",
+        org: "openclaw",
+        command: ["go", "test", "./..."],
+        state: "failed",
+        phase: "failed",
+        exitCode: 1,
+        durationMs: 1234,
+        logBytes: 11,
+      }),
+    );
+    storage.seed(
+      "run:run_000000000002",
+      testRun({
+        id: "run_000000000002",
+        leaseID: "cbx_000000000001",
+        owner: "friend@example.com",
+        org: "openclaw",
+      }),
+    );
+    storage.seed("runlog:run_000000000001", "portal log\n");
+    storage.seed("runevent:run_000000000001:000000000001", {
+      runID: "run_000000000001",
+      seq: 1,
+      type: "command.finished",
+      phase: "failed",
+      createdAt: "2026-05-01T00:00:01.000Z",
+    });
+
+    const page = await fleet.fetch(request("GET", "/portal/leases/blue-lobster", { headers }));
+    expect(page.status).toBe(200);
+    const body = await page.text();
+    expect(body).toContain("crabbox ssh --id blue-lobster");
+    expect(body).toContain("crabbox run --id blue-lobster -- &lt;command&gt;");
+    expect(body).toContain(
+      "crabbox webvnc --provider hetzner --target linux --id blue-lobster --open",
+    );
+    expect(body).toContain("crabbox code --id blue-lobster --open");
+    expect(body).toContain("/portal/runs/run_000000000001/logs");
+    expect(body).toContain("/portal/runs/run_000000000001/events");
+    expect(body).toContain("/portal/leases/cbx_000000000001/release");
+    expect(body).not.toContain("run_000000000002");
+
+    const logs = await fleet.fetch(
+      request("GET", "/portal/runs/run_000000000001/logs", { headers }),
+    );
+    expect(logs.status).toBe(200);
+    expect(logs.headers.get("content-type")).toBe("text/plain; charset=utf-8");
+    expect(await logs.text()).toBe("portal log\n");
+
+    const events = await fleet.fetch(
+      request("GET", "/portal/runs/run_000000000001/events", { headers }),
+    );
+    expect(events.status).toBe(200);
+    await expect(events.json()).resolves.toMatchObject({
+      events: [{ runID: "run_000000000001", type: "command.finished" }],
+    });
+
+    const stop = await fleet.fetch(
+      request("POST", "/portal/leases/blue-lobster/release", { headers }),
+    );
+    expect(stop.status).toBe(303);
+    expect(stop.headers.get("location")).toBe("/portal");
+    expect(storage.value<LeaseRecord>("lease:cbx_000000000001")).toMatchObject({
+      state: "released",
+      keep: false,
+    });
   });
 
   it("serves code pages only for code leases and requires a bridge ticket", async () => {
