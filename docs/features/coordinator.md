@@ -54,10 +54,11 @@ GET  /portal/runs/{run-id}/logs
 GET  /portal/runs/{run-id}/events
 ```
 
-`/portal` renders a searchable/paginated owner-scoped lease data grid with
-compact provider/target badges, dense rows, sticky column headers, and active,
-ended, provider, target, and all filters. It defaults to active leases when any
-are active, and falls back to all visible leases when the active list is empty.
+`/portal` renders a searchable/paginated/sortable owner-scoped lease data grid
+with compact provider/target badges, icon-only access capabilities, relative
+time cells, dense rows, sticky column headers, and active, ended, provider,
+target, and all filters. It defaults to active leases when any are active, and
+falls back to all visible leases when the active list is empty.
 
 `/portal/leases/{id-or-slug}` is the authenticated lease detail page. It shows
 the lease state, bridge status, compact provider/target badges, pasteable

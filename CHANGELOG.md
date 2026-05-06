@@ -26,6 +26,7 @@
 - Fixed WebVNC portal status text and bridge commands so waiting/reset states explain the exact local bridge command to run.
 - Fixed portal command rows so their copy affordance copies the matching local command instead of only labelling the section.
 - Fixed portal Windows target badges to show compact `win` and `win (wsl2)` labels instead of `windows / normal`.
+- Fixed portal access and time columns to use compact capability icons, relative time labels, and sortable time metadata instead of wide action buttons and Zulu timestamps.
 - Fixed Windows WebVNC credential handling so generated portal links preserve special characters and managed TightVNC sessions copy service passwords into the logged-in user's registry profile.
 - Fixed managed Linux browser setup so Chrome/Chromium launches skip first-run and default-browser prompts.
 - Fixed managed Linux browser cloud-init setup so Chrome/Chromium policy and wrapper generation cannot break YAML parsing.

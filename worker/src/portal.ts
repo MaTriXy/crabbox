@@ -2,6 +2,9 @@ import type { LeaseRecord, RunEventRecord, RunRecord } from "./types";
 
 const novncModuleURL = "/portal/assets/novnc/rfb.js";
 const copyIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>`;
+const serverIcon = `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h4"/></svg>`;
+const vncIcon = `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>`;
+const codeIcon = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 8-4 4 4 4"/><path d="m15 8 4 4-4 4"/><path d="m13 5-2 14"/></svg>`;
 
 export interface PortalLeaseBridgeStatus {
   webVNCBridgeConnected: boolean;
@@ -526,23 +529,17 @@ function leaseRow(lease: LeaseRecord): string {
   const active = lease.state === "active";
   const filterValue = active ? "active" : "ended";
   const target = lease.target || "linux";
-  const vnc =
-    active && lease.desktop
-      ? `<a class="button" href="/portal/leases/${encodeURIComponent(lease.id)}/vnc">open</a>`
-      : `<span class="muted">no desktop</span>`;
-  const code =
-    active && lease.code
-      ? `<a class="button secondary" href="/portal/leases/${encodeURIComponent(lease.id)}/code/">code</a>`
-      : `<span class="muted">no code</span>`;
-  const timeLabel = active ? lease.expiresAt : lease.endedAt || lease.releasedAt || lease.updatedAt;
+  const timeLabel = active
+    ? lease.lastTouchedAt || lease.updatedAt || lease.createdAt
+    : lease.endedAt || lease.releasedAt || lease.updatedAt;
   return `<tr data-filter-tags="${escapeHTML([filterValue, lease.provider, target].join(" "))}">
     <td><a class="lease-link" href="${detailPath}"><strong>${escapeHTML(label)}</strong><small>${escapeHTML(lease.id)}</small></a></td>
     <td><span class="pill" data-state="${escapeHTML(lease.state)}">${escapeHTML(lease.state)}</span></td>
     <td>${providerBadge(lease.provider)}</td>
     <td>${targetBadge(target, lease.windowsMode)}</td>
     <td>${escapeHTML(lease.class)}</td>
-    <td><div class="actions-cell">${vnc}${code}</div></td>
-    <td>${escapeHTML(shortTime(timeLabel))}</td>
+    <td>${accessCell(lease, detailPath)}</td>
+    ${timeCell(timeLabel)}
     <td></td>
   </tr>`;
 }
@@ -554,7 +551,7 @@ function runRow(run: RunRecord): string {
     <td><a class="lease-link" href="/portal/runs/${encodeURIComponent(run.id)}"><strong>${escapeHTML(run.id)}</strong><small>${escapeHTML(run.command.join(" "))}</small></a></td>
     <td><span class="pill" data-tone="${stateTone}">${escapeHTML(run.state)}</span></td>
     <td>${escapeHTML(run.phase || "-")}</td>
-    <td>${escapeHTML(shortTime(run.startedAt))}</td>
+    ${timeCell(run.startedAt)}
     <td>${escapeHTML(formatDuration(run.durationMs))}</td>
     <td>${escapeHTML(logLabel)}</td>
     <td><div class="actions-cell"><a class="button secondary" href="/portal/runs/${encodeURIComponent(run.id)}/logs">logs</a><a class="button secondary" href="/portal/runs/${encodeURIComponent(run.id)}/events">events</a></div></td>
@@ -567,9 +564,35 @@ function eventRow(event: RunEventRecord): string {
     <td>${event.seq}</td>
     <td><strong>${escapeHTML(event.type)}</strong><small>${escapeHTML(event.stream || "")}</small></td>
     <td>${escapeHTML(event.phase || "-")}</td>
-    <td>${escapeHTML(shortTime(event.createdAt))}</td>
+    ${timeCell(event.createdAt)}
     <td>${escapeHTML(truncate(event.message || event.data || "", 220))}</td>
   </tr>`;
+}
+
+function accessCell(lease: LeaseRecord, detailPath: string): string {
+  const active = lease.state === "active";
+  const pieces = [
+    `<a class="access-icon" href="${detailPath}" title="server" aria-label="server">${serverIcon}</a>`,
+  ];
+  if (active && lease.code) {
+    pieces.push(
+      `<a class="access-icon" data-access="vscode" href="/portal/leases/${encodeURIComponent(lease.id)}/code/" title="VS Code" aria-label="open VS Code">${codeIcon}</a>`,
+    );
+  }
+  if (active && lease.desktop) {
+    pieces.push(
+      `<a class="access-icon" data-access="vnc" href="/portal/leases/${encodeURIComponent(lease.id)}/vnc" title="VNC" aria-label="open VNC">${vncIcon}</a>`,
+    );
+  }
+  return `<div class="access-cell">${pieces.join("")}</div>`;
+}
+
+function timeCell(value: string | undefined): string {
+  const date = value ? new Date(value) : undefined;
+  const valid = !!date && !Number.isNaN(date.getTime());
+  const time = valid ? date.getTime() : 0;
+  const iso = valid ? date.toISOString().replace(".000Z", "Z") : value || "-";
+  return `<td data-sort="${time}" title="${escapeHTML(iso)}"><time datetime="${escapeHTML(iso)}">${escapeHTML(relativeTime(value))}</time></td>`;
 }
 
 function metaRow(label: string, value: string | undefined): string {
@@ -687,6 +710,10 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     table { width:100%; border-collapse:collapse; table-layout:fixed; }
     th,td { padding:7px 10px; border-bottom:1px solid var(--line); text-align:left; vertical-align:middle; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.25; }
     th { position:sticky; top:0; z-index:2; color:var(--muted); font-size:11px; font-weight:700; text-transform:uppercase; background:var(--panel); box-shadow:0 1px 0 var(--line); }
+    th[data-sortable] { cursor:pointer; user-select:none; }
+    th[data-sortable]::after { content:""; display:inline-block; width:0; height:0; margin-left:6px; vertical-align:middle; border-left:3px solid transparent; border-right:3px solid transparent; border-top:4px solid #4b5563; opacity:0.75; }
+    th[aria-sort="ascending"]::after { border-top:0; border-bottom:4px solid var(--accent); opacity:1; }
+    th[aria-sort="descending"]::after { border-top-color:var(--accent); opacity:1; }
     td { font-size:13px; }
     td small { display:block; color:var(--muted); margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .top { position:sticky; top:0; z-index:20; display:flex; justify-content:space-between; gap:12px; align-items:center; min-height:38px; margin:0; padding:4px 0; background:linear-gradient(180deg, var(--bg) 72%, color-mix(in srgb, var(--bg) 0%, transparent)); backdrop-filter:blur(10px); }
@@ -736,6 +763,12 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .icon-label[data-target="windows"] svg { color:#38bdf8; }
     .icon-label[data-target="macos"] svg { color:#d8b4fe; }
     .actions-cell { display:flex; align-items:center; gap:5px; flex-wrap:nowrap; }
+    .access-cell { display:flex; align-items:center; gap:5px; min-width:0; }
+    .access-icon { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:6px; border:1px solid var(--line); color:#cbd5e1; background:#0c0e10; text-decoration:none; }
+    .access-icon svg { width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+    .access-icon[data-access="vscode"] { color:#d8b4fe; }
+    .access-icon[data-access="vnc"] { color:#38bdf8; }
+    .access-icon:hover { border-color:#3a4046; background:#1b1f24; }
     .table-panel { min-height:0; display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; overflow:hidden; }
     .command-panel,.log-panel { min-height:0; overflow:hidden; }
     .run-shell .table-panel { max-height:55dvh; }
@@ -898,6 +931,8 @@ function portalEnhancementsScript(): string {
     let query = "";
     let page = 1;
     let selectedFilter = table.dataset.filterDefault || "all";
+    let sortColumn = -1;
+    let sortDirection = "descending";
     const tools = document.createElement("div");
     tools.className = "table-tools";
     const input = document.createElement("input");
@@ -953,8 +988,46 @@ function portalEnhancementsScript(): string {
     tableScroll.append(table);
     tableScroll.after(footer);
     table.dataset.enhancedIndex = String(index);
+    const headers = Array.from(table.tHead?.rows[0]?.cells || []);
+    headers.forEach((header, headerIndex) => {
+      if (!header.textContent.trim()) return;
+      header.dataset.sortable = "true";
+      header.tabIndex = 0;
+      header.addEventListener("click", () => {
+        if (sortColumn === headerIndex) {
+          sortDirection = sortDirection === "ascending" ? "descending" : "ascending";
+        } else {
+          sortColumn = headerIndex;
+          sortDirection = "ascending";
+        }
+        page = 1;
+        apply();
+      });
+      header.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        header.click();
+      });
+    });
+    function sortValue(row, column) {
+      const cell = row.cells[column];
+      const value = cell?.dataset.sort || cell?.textContent.trim() || "";
+      const number = Number(value);
+      return value !== "" && Number.isFinite(number) ? number : value.toLowerCase();
+    }
+    function sorted(rows) {
+      if (sortColumn < 0) return rows;
+      return rows.toSorted((a, b) => {
+        const left = sortValue(a, sortColumn);
+        const right = sortValue(b, sortColumn);
+        const result = typeof left === "number" && typeof right === "number"
+          ? left - right
+          : String(left).localeCompare(String(right));
+        return sortDirection === "ascending" ? result : -result;
+      });
+    }
     function apply() {
-      const filtered = dataRows.filter(
+      const filtered = sorted(dataRows.filter(
         (row) => {
           const tags = (row.dataset.filterTags || row.dataset.filterValue || "").split(/\\s+/);
           return (
@@ -962,11 +1035,14 @@ function portalEnhancementsScript(): string {
             row.textContent.toLowerCase().includes(query)
           );
         },
-      );
+      ));
       const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
       page = Math.min(page, pages);
       const start = (page - 1) * pageSize;
       const visible = new Set(filtered.slice(start, start + pageSize));
+      sorted(dataRows).forEach((row) => body.append(row));
+      body.append(generatedEmpty);
+      if (originalEmpty) body.append(originalEmpty);
       dataRows.forEach((row) => { row.hidden = !visible.has(row); });
       generatedEmpty.hidden = dataRows.length === 0 || filtered.length > 0;
       if (originalEmpty) originalEmpty.hidden = dataRows.length > 0;
@@ -978,6 +1054,10 @@ function portalEnhancementsScript(): string {
       prev.disabled = page <= 1;
       next.disabled = page >= pages;
       footer.hidden = dataRows.length <= pageSize && query === "";
+      headers.forEach((header, headerIndex) => {
+        if (!header.dataset.sortable) return;
+        header.setAttribute("aria-sort", headerIndex === sortColumn ? sortDirection : "none");
+      });
     }
     input.addEventListener("input", () => {
       query = input.value.trim().toLowerCase();
@@ -1003,11 +1083,29 @@ function scriptNonce(): string {
 }
 
 function shortTime(value: string): string {
+  return relativeTime(value);
+}
+
+function relativeTime(value: string | undefined): string {
+  if (!value) {
+    return "-";
+  }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
     return value;
   }
-  return date.toISOString().replace(".000Z", "Z");
+  const deltaSeconds = Math.round((date.getTime() - Date.now()) / 1000);
+  const absSeconds = Math.abs(deltaSeconds);
+  const units: Array<[number, string]> = [
+    [60 * 60 * 24 * 30, "mo"],
+    [60 * 60 * 24, "d"],
+    [60 * 60, "h"],
+    [60, "m"],
+  ];
+  const unit = units.find(([seconds]) => absSeconds >= seconds);
+  const amount = unit ? Math.max(1, Math.round(absSeconds / unit[0])) : Math.max(0, absSeconds);
+  const suffix = deltaSeconds >= 0 ? "from now" : "ago";
+  return `${amount}${unit ? unit[1] : "s"} ${suffix}`;
 }
 
 function leaseSortTime(lease: LeaseRecord): string {

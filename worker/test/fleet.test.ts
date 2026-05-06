@@ -551,6 +551,13 @@ describe("fleet lease identity and idle", () => {
     expect(body).toContain("<span>win</span>");
     expect(body).toContain("<span>win (wsl2)</span>");
     expect(body).toContain('data-filter-tags="active hetzner linux"');
+    expect(body).toContain('class="access-cell"');
+    expect(body).toContain('title="server"');
+    expect(body).toContain('data-access="vscode"');
+    expect(body).toContain('data-access="vnc"');
+    expect(body).toContain("data-sort=");
+    expect(body).toContain("<time datetime=");
+    expect(body).not.toContain("windows / normal");
     expect(body).toContain("blue-lobster");
     expect(body).toContain("old-clam");
     expect(body).toContain("released");
