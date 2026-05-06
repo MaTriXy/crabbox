@@ -16,10 +16,30 @@ export function portalHome(leases: LeaseRecord[], request: Request): Response {
   const sortedLeases = leases.toSorted((a, b) => leaseSortTime(b).localeCompare(leaseSortTime(a)));
   const active = sortedLeases.filter((lease) => lease.state === "active");
   const ended = sortedLeases.length - active.length;
+  const admin = request.headers.get("x-crabbox-admin") === "true";
+  const owner = request.headers.get("x-crabbox-owner") || "";
+  const org = request.headers.get("x-crabbox-org") || "";
+  const system = admin
+    ? sortedLeases.filter((lease) => leaseOwnership(lease, owner, org) === "system").length
+    : 0;
   const defaultFilter = active.length > 0 ? "active" : "all";
+  const filterButtons = [
+    "active:active",
+    "ended:ended",
+    ...(admin ? ["mine:mine", "system:system"] : []),
+    "aws:aws",
+    "hetzner:hetzner",
+    "linux:linux",
+    "macos:macos",
+    "windows:windows",
+    "all:all",
+  ].join(",");
   const rows = sortedLeases.length
-    ? sortedLeases.map((lease) => leaseRow(lease)).join("")
+    ? sortedLeases.map((lease) => leaseRow(lease, { admin, owner, org })).join("")
     : `<tr><td colspan="8" class="empty">no leases visible</td></tr>`;
+  const summary = admin
+    ? `${active.length} active / ${ended} ended / ${system} system`
+    : `${active.length} active / ${ended} ended`;
   return html(
     "Crabbox Portal",
     `<main class="portal-shell">
@@ -33,9 +53,9 @@ export function portalHome(leases: LeaseRecord[], request: Request): Response {
       <section class="panel table-panel">
         <div class="section-head">
           <h2>leases</h2>
-          <span>${active.length} active / ${ended} ended</span>
+          <span>${escapeHTML(summary)}</span>
         </div>
-        <table class="lease-table" data-portal-table data-page-size="12" data-search-placeholder="search leases" data-filter-buttons="active:active,ended:ended,aws:aws,hetzner:hetzner,linux:linux,macos:macos,windows:windows,all:all" data-filter-default="${defaultFilter}">
+        <table class="lease-table" data-portal-table data-page-size="12" data-search-placeholder="search leases" data-filter-buttons="${escapeHTML(filterButtons)}" data-filter-default="${defaultFilter}">
           <thead>
             <tr>
               <th>lease</th>
@@ -523,17 +543,25 @@ function shellArg(value: string): string {
   return `'${value.replaceAll("'", "'\"'\"'")}'`;
 }
 
-function leaseRow(lease: LeaseRecord): string {
+function leaseRow(
+  lease: LeaseRecord,
+  context: { admin: boolean; owner: string; org: string },
+): string {
   const label = lease.slug || lease.id;
   const detailPath = `/portal/leases/${encodeURIComponent(lease.id)}`;
   const active = lease.state === "active";
   const filterValue = active ? "active" : "ended";
   const target = lease.target || "linux";
+  const ownership = context.admin ? leaseOwnership(lease, context.owner, context.org) : "mine";
+  const subline =
+    context.admin && ownership === "system"
+      ? `${lease.id} · ${lease.owner || "unknown"}`
+      : lease.id;
   const timeLabel = active
     ? lease.lastTouchedAt || lease.updatedAt || lease.createdAt
     : lease.endedAt || lease.releasedAt || lease.updatedAt;
-  return `<tr data-filter-tags="${escapeHTML([filterValue, lease.provider, target].join(" "))}">
-    <td><a class="lease-link" href="${detailPath}"><strong>${escapeHTML(label)}</strong><small>${escapeHTML(lease.id)}</small></a></td>
+  return `<tr data-filter-tags="${escapeHTML([filterValue, ownership, lease.provider, target].join(" "))}">
+    <td><a class="lease-link" href="${detailPath}"><strong>${escapeHTML(label)}</strong><small>${escapeHTML(subline)}</small></a></td>
     <td><span class="pill" data-state="${escapeHTML(lease.state)}">${escapeHTML(lease.state)}</span></td>
     <td>${providerBadge(lease.provider)}</td>
     <td>${targetBadge(target, lease.windowsMode)}</td>
@@ -542,6 +570,10 @@ function leaseRow(lease: LeaseRecord): string {
     ${timeCell(timeLabel)}
     <td></td>
   </tr>`;
+}
+
+function leaseOwnership(lease: LeaseRecord, owner: string, org: string): "mine" | "system" {
+  return lease.owner === owner && lease.org === org ? "mine" : "system";
 }
 
 function runRow(run: RunRecord): string {

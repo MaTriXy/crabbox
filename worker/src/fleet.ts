@@ -638,7 +638,7 @@ export class FleetDurableObject implements DurableObject {
   private async portalRoute(request: Request, parts: string[]): Promise<Response> {
     const method = request.method.toUpperCase();
     if (method === "GET" && parts.length === 1) {
-      return portalHome(this.filterLeasesForRequest(await this.leaseRecords(), request), request);
+      return portalHome(await this.portalLeases(request), request);
     }
     if (method === "GET" && parts[1] === "runs" && parts[2]) {
       return await this.portalRunRoute(request, parts[2], parts[3]);
@@ -662,7 +662,7 @@ export class FleetDurableObject implements DurableObject {
       parts[3] === "vnc" &&
       parts[4] === undefined
     ) {
-      const lease = await this.resolveLease(parts[2], request, false);
+      const lease = await this.resolvePortalLease(parts[2], request);
       if (!lease) {
         return portalError(
           "Lease not found",
@@ -700,8 +700,22 @@ export class FleetDurableObject implements DurableObject {
     return json({ error: "not_found" }, { status: 404 });
   }
 
+  private async portalLeases(request: Request): Promise<LeaseRecord[]> {
+    const leases = await this.leaseRecords();
+    return isAdminRequest(request)
+      ? this.filterLeases(leases, request)
+      : this.filterLeasesForRequest(leases, request);
+  }
+
+  private async resolvePortalLease(
+    identifier: string,
+    request: Request,
+  ): Promise<LeaseRecord | undefined> {
+    return this.resolveLease(identifier, request, isAdminRequest(request));
+  }
+
   private async portalLeasePage(request: Request, identifier: string): Promise<Response> {
-    const lease = await this.resolveLease(identifier, request, false);
+    const lease = await this.resolvePortalLease(identifier, request);
     if (!lease) {
       return portalError(
         "Lease not found",
@@ -721,7 +735,7 @@ export class FleetDurableObject implements DurableObject {
   }
 
   private async portalReleaseLease(request: Request, identifier: string): Promise<Response> {
-    const lease = await this.resolveLease(identifier, request, false);
+    const lease = await this.resolvePortalLease(identifier, request);
     if (!lease) {
       return portalError(
         "Lease not found",
@@ -831,7 +845,7 @@ export class FleetDurableObject implements DurableObject {
   }
 
   private async webVNCStatus(request: Request, identifier: string): Promise<Response> {
-    const lease = await this.resolveLease(identifier, request, false);
+    const lease = await this.resolvePortalLease(identifier, request);
     if (!lease) {
       return notFound();
     }
@@ -924,7 +938,7 @@ export class FleetDurableObject implements DurableObject {
     identifier: string,
     _rest: string[],
   ): Promise<Response> {
-    const lease = await this.resolveLease(identifier, request, false);
+    const lease = await this.resolvePortalLease(identifier, request);
     if (!lease) {
       return portalError(
         "Lease not found",
@@ -1210,7 +1224,7 @@ export class FleetDurableObject implements DurableObject {
         { status: 426 },
       );
     }
-    const lease = await this.resolveLease(identifier, request, false);
+    const lease = await this.resolvePortalLease(identifier, request);
     if (!lease) {
       return notFound();
     }

@@ -550,7 +550,7 @@ describe("fleet lease identity and idle", () => {
     expect(body).toContain('data-target="windows"');
     expect(body).toContain("<span>win</span>");
     expect(body).toContain("<span>win (wsl2)</span>");
-    expect(body).toContain('data-filter-tags="active hetzner linux"');
+    expect(body).toContain('data-filter-tags="active mine hetzner linux"');
     expect(body).toContain('class="access-cell"');
     expect(body).toContain('title="server"');
     expect(body).toContain('data-access="vscode"');
@@ -565,6 +565,74 @@ describe("fleet lease identity and idle", () => {
     expect(body).toContain("/portal/leases/cbx_000000000001/vnc");
     expect(body).toContain("/portal/leases/cbx_000000000001/code/");
     expect(body).not.toContain("amber-krill");
+  });
+
+  it("shows non-owned runner leases only in the admin portal", async () => {
+    const storage = new MemoryStorage();
+    const fleet = testFleet(storage);
+    storage.seed(
+      "lease:cbx_000000000001",
+      testLease({
+        id: "cbx_000000000001",
+        slug: "blue-lobster",
+        owner: "peter@example.com",
+        org: "openclaw",
+      }),
+    );
+    storage.seed(
+      "lease:cbx_000000000002",
+      testLease({
+        id: "cbx_000000000002",
+        slug: "testbox-runner",
+        owner: "blacksmith",
+        org: "openclaw",
+        provider: "aws",
+        class: "standard",
+      }),
+    );
+
+    const userResponse = await fleet.fetch(
+      request("GET", "/portal", {
+        headers: {
+          "x-crabbox-owner": "peter@example.com",
+          "x-crabbox-org": "openclaw",
+        },
+      }),
+    );
+    const userBody = await userResponse.text();
+    expect(userBody).toContain("blue-lobster");
+    expect(userBody).not.toContain("testbox-runner");
+    expect(userBody).not.toContain("system:system");
+
+    const adminResponse = await fleet.fetch(
+      request("GET", "/portal", {
+        headers: {
+          "x-crabbox-admin": "true",
+          "x-crabbox-owner": "peter@example.com",
+          "x-crabbox-org": "openclaw",
+        },
+      }),
+    );
+    expect(adminResponse.status).toBe(200);
+    const adminBody = await adminResponse.text();
+    expect(adminBody).toContain("blue-lobster");
+    expect(adminBody).toContain("testbox-runner");
+    expect(adminBody).toContain("1 system");
+    expect(adminBody).toContain("mine:mine,system:system");
+    expect(adminBody).toContain('data-filter-tags="active mine hetzner linux"');
+    expect(adminBody).toContain('data-filter-tags="active system aws linux"');
+    expect(adminBody).toContain("cbx_000000000002 · blacksmith");
+
+    const detail = await fleet.fetch(
+      request("GET", "/portal/leases/cbx_000000000002", {
+        headers: {
+          "x-crabbox-admin": "true",
+          "x-crabbox-owner": "peter@example.com",
+          "x-crabbox-org": "openclaw",
+        },
+      }),
+    );
+    expect(detail.status).toBe(200);
   });
 
   it("defaults the portal lease table to all leases when none are active", async () => {

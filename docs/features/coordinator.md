@@ -54,16 +54,19 @@ GET  /portal/runs/{run-id}/logs
 GET  /portal/runs/{run-id}/events
 ```
 
-`/portal` renders a searchable/paginated/sortable owner-scoped lease data grid
-with compact provider/target badges, icon-only access capabilities, relative
-time cells, dense rows, sticky column headers, and active, ended, provider,
-target, and all filters. It defaults to active leases when any are active, and
-falls back to all visible leases when the active list is empty.
+`/portal` renders a searchable/paginated/sortable lease data grid with compact
+provider/target badges, icon-only access capabilities, relative time cells,
+dense rows, sticky column headers, and active, ended, provider, target, and all
+filters. Normal browser sessions are owner/org scoped. Admin/operator sessions
+can also see non-owned runner leases, with `mine` and `system` filters so
+Blacksmith/Testbox-style coordinator leases are visible without leaking them to
+normal users. It defaults to active leases when any are active, and falls back to
+all visible leases when the active list is empty.
 
 `/portal/leases/{id-or-slug}` is the authenticated lease detail page. It shows
 the lease state, bridge status, compact provider/target badges, pasteable
 `ssh`, `run`, WebVNC, and code commands, a viewport-fitted recent runs grid with
-state filters, and a stop action for the owner-scoped lease.
+state filters, and a stop action for the visible lease.
 Portal run links mirror the `/v1/runs/...` resources but use the browser
 session cookie, so users can inspect logs and events without copying a bearer
 token into the browser. The run detail page at `/portal/runs/{run-id}` renders
