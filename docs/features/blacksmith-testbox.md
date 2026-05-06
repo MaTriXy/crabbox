@@ -95,6 +95,13 @@ output into compatibility JSON rows with the fields Crabbox can see. That parser
 compatibility layer, not a Blacksmith API contract. If the Blacksmith CLI adds
 native JSON output, Crabbox should switch to that and drop table parsing.
 
+When coordinator auth is configured, `crabbox list --provider blacksmith-testbox`
+also performs a best-effort sync of the active Blacksmith list into the portal's
+external runner table. Those rows are owner-scoped visibility records for
+Blacksmith-owned Testboxes. They are not Crabbox leases, do not heartbeat, do not
+participate in Crabbox expiry or cost control, and become stale when a later sync
+does not see the runner.
+
 ## Auth
 
 Auth stays with Blacksmith. Run `blacksmith auth login` before using this provider. Crabbox does not call the Crabbox login broker, does not send work to the Cloudflare coordinator, and does not hold Blacksmith credentials.

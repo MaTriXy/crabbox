@@ -35,6 +35,8 @@ POST /v1/runs
 GET  /v1/runs/{run-id}
 GET  /v1/runs/{run-id}/logs
 POST /v1/runs/{run-id}/finish
+GET  /v1/runners
+POST /v1/runners/sync
 GET  /v1/usage
 GET  /v1/admin/leases
 POST /v1/admin/leases/{id-or-slug}/release
@@ -61,7 +63,10 @@ filters. Normal browser sessions are owner/org scoped. Admin/operator sessions
 can also see non-owned runner leases, with `mine` and `system` filters so
 Blacksmith/Testbox-style coordinator leases are visible without leaking them to
 normal users. It defaults to active leases when any are active, and falls back to
-all visible leases when the active list is empty.
+all visible leases when the active list is empty. External runner rows, currently
+Blacksmith Testboxes synced by the CLI, render in a second owner-scoped table
+with search, pagination, status/provider filters, and stale markers when the
+next sync no longer sees a previously visible runner.
 
 `/portal/leases/{id-or-slug}` is the authenticated lease detail page. It shows
 the lease state, bridge status, compact provider/target badges, latest Linux

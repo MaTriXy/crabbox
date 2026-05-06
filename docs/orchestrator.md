@@ -47,6 +47,12 @@ For Linux leases, heartbeats also attach best-effort telemetry when SSH is reach
 
 Direct-provider mode does not have a central heartbeat or alarm. It labels machines with `created_at`, `last_touched_at`, `idle_timeout_secs`, `expires_at`, `state`, `lease`, and `slug`; `crabbox cleanup` uses those labels conservatively.
 
+Delegated external runners, such as Blacksmith Testboxes, are visibility-only
+records in the coordinator. `crabbox list --provider blacksmith-testbox` syncs
+the active Blacksmith table into `/portal`, and a later sync marks missing
+runners stale. They do not heartbeat and do not participate in Crabbox lease
+expiry, cleanup, or cost accounting.
+
 ## Cleanup
 
 Brokered cleanup is owned by the Durable Object alarm. `crabbox cleanup` refuses to run when a coordinator is configured, because sweeping provider resources behind the coordinator can delete live leases.
