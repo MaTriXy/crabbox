@@ -1,6 +1,7 @@
 import type { LeaseRecord, RunEventRecord, RunRecord } from "./types";
 
 const novncModuleURL = "/portal/assets/novnc/rfb.js";
+const copyIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>`;
 
 export interface PortalLeaseBridgeStatus {
   webVNCBridgeConnected: boolean;
@@ -28,7 +29,7 @@ export function portalHome(leases: LeaseRecord[], request: Request): Response {
           <h2>leases</h2>
           <span>${active.length} active</span>
         </div>
-        <table>
+        <table data-portal-table data-page-size="12" data-search-placeholder="search leases">
           <thead>
             <tr>
               <th>lease</th>
@@ -125,7 +126,7 @@ export function portalLeaseDetail(
           <h2>recent runs</h2>
           <span>${runs.length}</span>
         </div>
-        <table class="run-table">
+        <table class="run-table" data-portal-table data-page-size="8" data-search-placeholder="search runs">
           <thead>
             <tr>
               <th>run</th>
@@ -166,7 +167,7 @@ export function portalRunDetail(
         .join("")
     : "";
   const logBlock = logTail
-    ? `<pre class="log-preview">${escapeHTML(logTail)}</pre>`
+    ? `<pre id="run-log-tail" class="log-preview">${escapeHTML(logTail)}</pre>`
     : `<p class="empty">no retained log output</p>`;
   return html(
     `${run.id} run`,
@@ -234,7 +235,14 @@ export function portalRunDetail(
       <section class="panel">
         <div class="section-head">
           <h2>log tail</h2>
-          <span>${run.logTruncated ? "truncated" : "retained"}</span>
+          <div class="section-actions">
+            <span>${run.logTruncated ? "truncated" : "retained"}</span>
+            ${
+              logTail
+                ? `<button class="icon-btn" type="button" title="copy log tail" aria-label="copy log tail" data-copy-target="#run-log-tail">${copyIcon}</button>`
+                : ""
+            }
+          </div>
         </div>
         ${logBlock}
       </section>
@@ -243,7 +251,7 @@ export function portalRunDetail(
           <h2>events</h2>
           <span>${events.length}</span>
         </div>
-        <table class="event-table">
+        <table class="event-table" data-portal-table data-page-size="12" data-search-placeholder="search events">
           <thead>
             <tr>
               <th>seq</th>
@@ -268,7 +276,6 @@ export function portalVNC(lease: LeaseRecord): Response {
   const statusPath = `/portal/leases/${encodeURIComponent(lease.id)}/vnc/status`;
   const bridgeCmd = webVNCBridgeCommand(lease);
   const fullscreenIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/></svg>`;
-  const copyIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>`;
   const reconnectIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>`;
   return html(
     title,
@@ -589,7 +596,8 @@ function resultsSummary(run: RunRecord): string {
 }
 
 function html(title: string, body: string, status = 200, nonce = ""): Response {
-  const scriptSource = nonce ? `'self' 'nonce-${nonce}'` : "'self'";
+  const pageNonce = nonce || scriptNonce();
+  const scriptSource = `'self' 'nonce-${pageNonce}'`;
   return new Response(
     `<!doctype html>
 <html lang="en">
@@ -620,9 +628,11 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .top p,.muted,.empty { color:var(--muted); }
     .panel { border:1px solid var(--line); border-radius:8px; background:var(--panel); overflow:hidden; }
     .section-head { display:flex; justify-content:space-between; align-items:center; padding:14px 16px; border-bottom:1px solid var(--line); }
+    .section-actions { display:flex; align-items:center; justify-content:flex-end; gap:8px; color:var(--muted); }
     .button { display:inline-flex; align-items:center; justify-content:center; min-height:32px; padding:0 12px; border-radius:8px; background:var(--accent); color:#001018; text-decoration:none; font-weight:700; }
     .button.secondary { background:transparent; color:var(--fg); border:1px solid var(--line); font-weight:500; }
     .button.secondary:hover { background:#1b1f24; border-color:#3a4046; }
+    .button:disabled { opacity:0.45; cursor:not-allowed; }
     .button.danger { border:1px solid color-mix(in srgb, var(--bad) 42%, var(--line)); background:color-mix(in srgb, var(--bad) 18%, transparent); color:#fecaca; cursor:pointer; }
     .lease-link { display:block; text-decoration:none; }
     .mono { font-family:var(--mono); }
@@ -651,6 +661,14 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .pill[data-tone="warn"] { color:var(--warn); border-color:color-mix(in srgb, var(--warn) 35%, var(--line)); }
     .pill[data-tone="bad"],.pill[data-state="released"],.pill[data-state="expired"] { color:var(--bad); border-color:color-mix(in srgb, var(--bad) 45%, var(--line)); }
     .actions-cell { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .table-tools { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 12px; border-bottom:1px solid var(--line-soft); background:var(--panel-2); }
+    .table-search { flex:1; min-width:180px; max-width:360px; height:32px; padding:0 10px; border:1px solid var(--line); border-radius:8px; background:#0c0e10; color:var(--fg); font:inherit; }
+    .table-search::placeholder { color:#6b7280; }
+    .table-search:focus { outline:2px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset:1px; border-color:color-mix(in srgb, var(--accent) 55%, var(--line)); }
+    .table-count { color:var(--muted); font-size:12px; white-space:nowrap; }
+    .table-footer { display:flex; justify-content:flex-end; align-items:center; gap:8px; padding:10px 12px; background:var(--panel-2); }
+    .table-page { min-width:64px; color:var(--muted); font-size:12px; text-align:center; }
+    tr[hidden] { display:none; }
     .vnc-page { width:100vw; height:100vh; padding:10px 12px 10px; display:grid; grid-template-rows:auto 1fr auto; gap:10px; }
     .vnc-bar { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:44px; padding:0 4px; }
     .vnc-meta { display:flex; align-items:baseline; gap:12px; min-width:0; }
@@ -685,6 +703,9 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
       .meta-grid { grid-template-columns:1fr; }
       .result-grid { grid-template-columns:1fr; }
       .bridge-row { grid-template-columns:1fr; align-items:start; }
+      .table-tools { align-items:stretch; flex-direction:column; }
+      .table-search { max-width:none; width:100%; }
+      .table-footer { justify-content:space-between; }
       .top{align-items:flex-start;}
       .vnc-bar { flex-wrap:wrap; gap:8px; min-height:0; padding:4px 0; }
       .vnc-meta { flex-wrap:wrap; gap:4px 10px; }
@@ -695,7 +716,7 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     }
   </style>
 </head>
-<body>${body}</body>
+<body>${body}<script nonce="${pageNonce}">${portalEnhancementsScript()}</script></body>
 </html>`,
     {
       status,
@@ -713,6 +734,118 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
       },
     },
   );
+}
+
+function portalEnhancementsScript(): string {
+  return `
+(() => {
+  function copyText(text, source) {
+    const finish = () => {
+      source.dataset.state = "ok";
+      window.setTimeout(() => { delete source.dataset.state; }, 1200);
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(finish).catch(() => fallbackCopy(text, source, finish));
+      return;
+    }
+    fallbackCopy(text, source, finish);
+  }
+  function fallbackCopy(text, source, finish) {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.append(area);
+    area.select();
+    try { document.execCommand("copy"); } catch (_) {}
+    area.remove();
+    finish();
+  }
+  document.querySelectorAll("[data-copy-target]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const selector = button.getAttribute("data-copy-target");
+      if (!selector) return;
+      const target = document.querySelector(selector);
+      copyText(target?.textContent || "", button);
+    });
+  });
+  document.querySelectorAll("table[data-portal-table]").forEach((table, index) => {
+    const body = table.tBodies[0];
+    if (!body) return;
+    const rows = Array.from(body.rows);
+    const dataRows = rows.filter((row) => !row.querySelector(".empty"));
+    const originalEmpty = rows.find((row) => row.querySelector(".empty"));
+    const generatedEmpty = document.createElement("tr");
+    const emptyCell = document.createElement("td");
+    emptyCell.className = "empty";
+    emptyCell.colSpan = table.tHead?.rows[0]?.cells.length || table.rows[0]?.cells.length || 1;
+    emptyCell.textContent = "no matches";
+    generatedEmpty.append(emptyCell);
+    generatedEmpty.hidden = true;
+    body.append(generatedEmpty);
+    const pageSize = Math.max(1, Number.parseInt(table.dataset.pageSize || "10", 10) || 10);
+    let query = "";
+    let page = 1;
+    const tools = document.createElement("div");
+    tools.className = "table-tools";
+    const input = document.createElement("input");
+    input.className = "table-search";
+    input.type = "search";
+    input.placeholder = table.dataset.searchPlaceholder || "search table";
+    input.setAttribute("aria-label", input.placeholder);
+    input.disabled = dataRows.length === 0;
+    const count = document.createElement("span");
+    count.className = "table-count";
+    tools.append(input, count);
+    const footer = document.createElement("div");
+    footer.className = "table-footer";
+    const prev = document.createElement("button");
+    prev.className = "button secondary";
+    prev.type = "button";
+    prev.textContent = "prev";
+    const pageLabel = document.createElement("span");
+    pageLabel.className = "table-page";
+    const next = document.createElement("button");
+    next.className = "button secondary";
+    next.type = "button";
+    next.textContent = "next";
+    footer.append(prev, pageLabel, next);
+    table.before(tools);
+    table.after(footer);
+    table.dataset.enhancedIndex = String(index);
+    function apply() {
+      const filtered = dataRows.filter((row) => row.textContent.toLowerCase().includes(query));
+      const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
+      page = Math.min(page, pages);
+      const start = (page - 1) * pageSize;
+      const visible = new Set(filtered.slice(start, start + pageSize));
+      dataRows.forEach((row) => { row.hidden = !visible.has(row); });
+      generatedEmpty.hidden = dataRows.length === 0 || filtered.length > 0;
+      if (originalEmpty) originalEmpty.hidden = dataRows.length > 0;
+      count.textContent = dataRows.length ? filtered.length + " of " + dataRows.length : "0";
+      pageLabel.textContent = page + " / " + pages;
+      prev.disabled = page <= 1;
+      next.disabled = page >= pages;
+      footer.hidden = dataRows.length <= pageSize && query === "";
+    }
+    input.addEventListener("input", () => {
+      query = input.value.trim().toLowerCase();
+      page = 1;
+      apply();
+    });
+    prev.addEventListener("click", () => {
+      page = Math.max(1, page - 1);
+      apply();
+    });
+    next.addEventListener("click", () => {
+      page += 1;
+      apply();
+    });
+    apply();
+  });
+})();
+`;
 }
 
 function scriptNonce(): string {

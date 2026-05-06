@@ -56,13 +56,14 @@ GET  /portal/runs/{run-id}/events
 
 `/portal/leases/{id-or-slug}` is the authenticated lease detail page. It shows
 the lease state, bridge status, pasteable `ssh`, `run`, WebVNC, and code
-commands, recent run links, and a stop action for the owner-scoped lease.
+commands, searchable/paginated recent run links, and a stop action for the
+owner-scoped lease.
 Portal run links mirror the `/v1/runs/...` resources but use the browser
 session cookie, so users can inspect logs and events without copying a bearer
 token into the browser. The run detail page at `/portal/runs/{run-id}` renders
 the command, owner, lease, provider metadata, exit status, JUnit summary when
-present, the latest events, and a retained log tail; `/logs` and `/events`
-remain raw/plain resources for copying and automation.
+present, a searchable/paginated event table, and a copyable retained log tail;
+`/logs` and `/events` remain raw/plain resources for copying and automation.
 
 GitHub browser-login tokens are owner/org scoped for lease, run, log, and usage routes. Shared-token admin auth is required for `GET /v1/pool`, admin lease routes, and fleet-wide usage/listing.
 
