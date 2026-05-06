@@ -2251,8 +2251,24 @@ function sanitizeExternalRunner(
     provider,
     status: nonSecretString(input.status).toLowerCase() || "unknown",
   };
-  for (const key of ["repo", "workflow", "job", "ref"] as const) {
+  for (const key of [
+    "repo",
+    "workflow",
+    "job",
+    "ref",
+    "actionsRepo",
+    "actionsRunID",
+    "actionsRunStatus",
+    "actionsRunConclusion",
+    "actionsWorkflowName",
+  ] as const) {
     const value = nonSecretString(input[key]);
+    if (value) {
+      runner[key] = value;
+    }
+  }
+  for (const key of ["actionsRunURL", "actionsWorkflowURL"] as const) {
+    const value = sanitizeGithubURL(input[key]);
     if (value) {
       runner[key] = value;
     }
@@ -2261,6 +2277,22 @@ function sanitizeExternalRunner(
     runner.createdAt = createdAt;
   }
   return runner;
+}
+
+function sanitizeGithubURL(value: unknown): string {
+  const raw = nonSecretString(value);
+  if (!raw) {
+    return "";
+  }
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "https:" || parsed.hostname !== "github.com") {
+      return "";
+    }
+    return parsed.toString();
+  } catch {
+    return "";
+  }
 }
 
 function sanitizeRunnerTimestamp(value: string | undefined, now: Date): string | undefined {

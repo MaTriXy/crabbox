@@ -672,16 +672,33 @@ function externalRunnerLeaseRow(
       ? `${runner.id} · ${runner.owner || "unknown"}`
       : [runner.repo, runner.workflow].filter(Boolean).join(" · ") || runner.id;
   const jobRef = [runner.job, runner.ref].filter(Boolean).join(" / ") || "-";
+  const actionsLinks = externalRunnerActionsLinks(runner);
   return `<tr class="external-row" aria-disabled="true" data-filter-tags="${escapeHTML([state, "external", ownership, runner.provider, runner.status, runner.repo, runner.workflow, runner.job, runner.ref].filter(Boolean).join(" "))}">
     <td><span class="lease-link"><strong>${escapeHTML(runner.id)}</strong><small>${escapeHTML(subline)}</small></span></td>
     <td><span class="pill" data-tone="${runner.stale ? "warn" : runnerStatusTone(runner.status)}">${escapeHTML(runner.status || "-")}</span></td>
     <td>${providerBadge(runner.provider)}</td>
     <td><span class="muted" title="Blacksmith owns runner host details">-</span></td>
-    <td><span title="${escapeHTML([runner.repo, runner.workflow, jobRef].filter(Boolean).join(" · "))}">external</span></td>
-    <td><span class="access-cell disabled-cell" title="external runner; no Crabbox access data">no access</span></td>
+    <td><span title="${escapeHTML([runner.repo, runner.workflow, jobRef].filter(Boolean).join(" · "))}">${actionsLinks || "external"}</span></td>
+    <td><span class="access-cell disabled-cell" title="external runner; no Crabbox access data">${actionsLinks ? "no box access" : "no access"}</span></td>
     ${timeCell(runnerSortTime(runner))}
     <td></td>
   </tr>`;
+}
+
+function externalRunnerActionsLinks(runner: ExternalRunnerRecord): string {
+  const links = [];
+  if (runner.actionsRunURL) {
+    const status = [runner.actionsRunStatus, runner.actionsRunConclusion].filter(Boolean).join("/");
+    links.push(
+      `<a class="row-link" href="${escapeHTML(runner.actionsRunURL)}" target="_blank" rel="noopener" title="${escapeHTML(status || "GitHub Actions run")}">run</a>`,
+    );
+  }
+  if (runner.actionsWorkflowURL) {
+    links.push(
+      `<a class="row-link secondary" href="${escapeHTML(runner.actionsWorkflowURL)}" target="_blank" rel="noopener" title="${escapeHTML(runner.actionsWorkflowName || runner.workflow || "GitHub Actions workflow")}">workflow</a>`,
+    );
+  }
+  return links.length ? `<span class="row-links">${links.join("")}</span>` : "";
 }
 
 function portalHeader(options: PortalHeaderOptions): string {
@@ -1301,6 +1318,10 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .external-row .lease-link strong::after { content:"external"; display:inline-flex; margin-left:8px; min-height:18px; align-items:center; padding:0 6px; border:1px solid var(--line); border-radius:999px; color:#8b949e; font-size:10px; font-weight:700; text-transform:uppercase; vertical-align:middle; }
     .external-row .icon-label svg { color:#7c8490; }
     .external-row .pill { opacity:0.82; }
+    .row-links { display:inline-flex; align-items:center; gap:5px; min-width:0; }
+    .row-link { display:inline-flex; align-items:center; min-height:22px; padding:0 7px; border:1px solid color-mix(in srgb, var(--accent) 36%, var(--line)); border-radius:6px; color:#bae6fd; background:color-mix(in srgb, var(--accent) 9%, transparent); text-decoration:none; font-size:11px; font-weight:700; }
+    .row-link.secondary { color:#cbd5e1; border-color:var(--line); background:#0c0e10; font-weight:600; }
+    .row-link:hover { border-color:color-mix(in srgb, var(--accent) 58%, var(--line)); background:color-mix(in srgb, var(--accent) 14%, transparent); }
     .lease-table th:nth-child(1) { width:25%; }
     .lease-table th:nth-child(2) { width:86px; }
     .lease-table th:nth-child(3),.lease-table th:nth-child(4) { width:104px; }

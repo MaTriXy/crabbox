@@ -98,9 +98,11 @@ native JSON output, Crabbox should switch to that and drop table parsing.
 When coordinator auth is configured, `crabbox list --provider blacksmith-testbox`
 also performs a best-effort sync of the current all-status Blacksmith list into
 the portal lease table. Those muted rows are owner-scoped visibility records for
-Blacksmith-owned Testboxes. They are not Crabbox leases, do not expose access
-actions, do not heartbeat, do not participate in Crabbox expiry or cost control,
-and become stale when a later sync does not see the runner.
+Blacksmith-owned Testboxes. When the row includes enough context, Crabbox queries
+GitHub Actions and links the row to the closest workflow run plus the workflow
+definition. They are not Crabbox leases, do not expose box access actions, do
+not heartbeat, do not participate in Crabbox expiry or cost control, and become
+stale when a later sync does not see the runner.
 
 ## Auth
 

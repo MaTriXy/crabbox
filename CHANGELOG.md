@@ -21,6 +21,7 @@
 - Added a provider backend registry and authoring guide so delegated and SSH-backed providers can live in provider-owned packages while core keeps command parsing, rendering, and capability validation.
 - Added `provider: daytona` for Daytona sandbox leases using Daytona's SDK/toolbox for sync and command execution, with short-lived SSH access available through `crabbox ssh`.
 - Added `provider: islo` for delegated Islo sandbox runs using the Islo Go SDK.
+- Added best-effort GitHub Actions run and workflow links for external Blacksmith Testbox rows in the portal.
 
 ### Changed
 

@@ -248,6 +248,13 @@ export interface ExternalRunnerInput {
   job?: string;
   ref?: string;
   createdAt?: string;
+  actionsRepo?: string;
+  actionsRunID?: string;
+  actionsRunURL?: string;
+  actionsRunStatus?: string;
+  actionsRunConclusion?: string;
+  actionsWorkflowName?: string;
+  actionsWorkflowURL?: string;
 }
 
 export interface ExternalRunnerSyncRequest {
@@ -266,6 +273,13 @@ export interface ExternalRunnerRecord {
   job?: string;
   ref?: string;
   createdAt?: string;
+  actionsRepo?: string;
+  actionsRunID?: string;
+  actionsRunURL?: string;
+  actionsRunStatus?: string;
+  actionsRunConclusion?: string;
+  actionsWorkflowName?: string;
+  actionsWorkflowURL?: string;
   firstSeenAt: string;
   lastSeenAt: string;
   updatedAt: string;

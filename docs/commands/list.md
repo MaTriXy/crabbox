@@ -22,8 +22,10 @@ shape parsed from the Blacksmith table: id, status, repo, workflow, job, ref,
 and created time when the upstream table exposes those columns.
 When coordinator auth is configured, the same list command also refreshes
 owner-scoped external runner rows in the portal lease table from the current
-all-status Blacksmith list. Missing runners from later syncs are marked stale
-rather than treated as Crabbox leases.
+all-status Blacksmith list. Crabbox also attempts to infer the matching GitHub
+Actions run/workflow from the row's repo, workflow, ref, and created time.
+Missing runners from later syncs are marked stale rather than treated as Crabbox
+leases.
 
 In `daytona` and `islo` modes, rendering is core-owned: human output and `--json`
 use the normalized Crabbox lease view.

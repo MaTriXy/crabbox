@@ -139,6 +139,54 @@ func TestCoordinatorExternalRunnersFromBlacksmithListView(t *testing.T) {
 	}
 }
 
+func TestExternalRunnerGitHubRepoFallsBackToBlacksmithOrg(t *testing.T) {
+	cfg := Config{}
+	cfg.Blacksmith.Org = "openclaw"
+	repo, ok := externalRunnerGitHubRepo(cfg, CoordinatorExternalRunner{Repo: "crabbox"})
+	if !ok {
+		t.Fatal("repo not inferred")
+	}
+	if repo.Slug() != "openclaw/crabbox" {
+		t.Fatalf("repo=%q", repo.Slug())
+	}
+}
+
+func TestMatchExternalRunnerActionRunChoosesClosestCreatedAt(t *testing.T) {
+	runner := CoordinatorExternalRunner{
+		Ref:       "main",
+		CreatedAt: "2026-05-06T10:00:00Z",
+	}
+	run, ok := matchExternalRunnerActionRun(runner, []externalRunnerActionsRun{
+		{DatabaseID: 1, HeadBranch: "main", CreatedAt: "2026-05-06T08:00:00Z"},
+		{DatabaseID: 2, HeadBranch: "main", CreatedAt: "2026-05-06T10:02:00Z"},
+		{DatabaseID: 3, HeadBranch: "feature", CreatedAt: "2026-05-06T10:01:00Z"},
+	})
+	if !ok {
+		t.Fatal("run not matched")
+	}
+	if run.DatabaseID != 2 {
+		t.Fatalf("run=%d, want 2", run.DatabaseID)
+	}
+}
+
+func TestExternalRunnerWorkflowURLUsesWorkflowBasename(t *testing.T) {
+	got := externalRunnerWorkflowURL(
+		GitHubRepo{Owner: "openclaw", Name: "openclaw"},
+		".github/workflows/ci-check-testbox.yml",
+	)
+	want := "https://github.com/openclaw/openclaw/actions/workflows/ci-check-testbox.yml"
+	if got != want {
+		t.Fatalf("url=%q want %q", got, want)
+	}
+}
+
+func TestStripANSIRemovesGitHubColorOutput(t *testing.T) {
+	got := stripANSI("\x1b[1;37m[\x1b[m{\"databaseId\":1}]")
+	if got != "[{\"databaseId\":1}]" {
+		t.Fatalf("stripped=%q", got)
+	}
+}
+
 func TestHeartbeatInterval(t *testing.T) {
 	tests := map[time.Duration]time.Duration{
 		0:                time.Minute,

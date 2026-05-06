@@ -159,7 +159,8 @@ blacksmith:
 
 `crabbox list --provider blacksmith-testbox` also refreshes muted external
 runner rows in the portal lease table from the current all-status Testbox list
-when coordinator auth is configured. Those rows are
+when coordinator auth is configured. When GitHub is reachable, Crabbox also
+links those rows back to the inferred Actions run and workflow. Those rows are
 visibility-only records for Blacksmith-owned Testboxes, not Crabbox leases.
 
 Optional Daytona sandbox:

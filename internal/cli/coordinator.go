@@ -161,15 +161,22 @@ type CoordinatorRunEventsResponse struct {
 }
 
 type CoordinatorExternalRunner struct {
-	ID        string `json:"id"`
-	Provider  string `json:"provider,omitempty"`
-	Status    string `json:"status,omitempty"`
-	Repo      string `json:"repo,omitempty"`
-	Workflow  string `json:"workflow,omitempty"`
-	Job       string `json:"job,omitempty"`
-	Ref       string `json:"ref,omitempty"`
-	CreatedAt string `json:"createdAt,omitempty"`
-	Created   string `json:"created,omitempty"`
+	ID                   string `json:"id"`
+	Provider             string `json:"provider,omitempty"`
+	Status               string `json:"status,omitempty"`
+	Repo                 string `json:"repo,omitempty"`
+	Workflow             string `json:"workflow,omitempty"`
+	Job                  string `json:"job,omitempty"`
+	Ref                  string `json:"ref,omitempty"`
+	CreatedAt            string `json:"createdAt,omitempty"`
+	Created              string `json:"created,omitempty"`
+	ActionsRepo          string `json:"actionsRepo,omitempty"`
+	ActionsRunID         string `json:"actionsRunID,omitempty"`
+	ActionsRunURL        string `json:"actionsRunURL,omitempty"`
+	ActionsRunStatus     string `json:"actionsRunStatus,omitempty"`
+	ActionsRunConclusion string `json:"actionsRunConclusion,omitempty"`
+	ActionsWorkflowName  string `json:"actionsWorkflowName,omitempty"`
+	ActionsWorkflowURL   string `json:"actionsWorkflowURL,omitempty"`
 }
 
 type CoordinatorExternalRunnerSyncResponse struct {

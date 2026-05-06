@@ -50,8 +50,9 @@ Direct-provider mode does not have a central heartbeat or alarm. It labels machi
 Delegated external runners, such as Blacksmith Testboxes, are visibility-only
 records in the coordinator. `crabbox list --provider blacksmith-testbox` syncs
 the current all-status Blacksmith table into muted `/portal` lease-grid rows,
-and a later sync marks missing runners stale. They do not heartbeat and do not
-participate in Crabbox lease expiry, cleanup, or cost accounting.
+adds inferred GitHub Actions run/workflow links when available, and a later sync
+marks missing runners stale. They do not heartbeat and do not participate in
+Crabbox lease expiry, cleanup, or cost accounting.
 
 ## Cleanup
 

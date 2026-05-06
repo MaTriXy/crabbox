@@ -4,9 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"path"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
+
+var ansiEscapePattern = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
 
 func (a App) list(ctx context.Context, args []string) error {
 	defaults := defaultConfig()
@@ -82,6 +88,7 @@ func (a App) syncExternalRunnersBestEffort(ctx context.Context, cfg Config, back
 		fmt.Fprintf(a.Stderr, "warning: external runner portal sync skipped: %v\n", err)
 		return
 	}
+	enrichExternalRunnerActionsBestEffort(ctx, cfg, runners)
 	if _, err := client.SyncExternalRunners(ctx, "blacksmith-testbox", runners); err != nil {
 		fmt.Fprintf(a.Stderr, "warning: external runner portal sync failed: %v\n", err)
 	}
@@ -103,6 +110,168 @@ func coordinatorExternalRunnersFromListView(view any) ([]CoordinatorExternalRunn
 		}
 	}
 	return runners, nil
+}
+
+type externalRunnerActionsRun struct {
+	DatabaseID   int64  `json:"databaseId"`
+	Status       string `json:"status"`
+	Conclusion   string `json:"conclusion"`
+	CreatedAt    string `json:"createdAt"`
+	UpdatedAt    string `json:"updatedAt"`
+	HeadBranch   string `json:"headBranch"`
+	URL          string `json:"url"`
+	WorkflowName string `json:"workflowName"`
+	DisplayTitle string `json:"displayTitle"`
+	Name         string `json:"name"`
+}
+
+func enrichExternalRunnerActionsBestEffort(ctx context.Context, cfg Config, runners []CoordinatorExternalRunner) {
+	cache := map[string][]externalRunnerActionsRun{}
+	for i := range runners {
+		repo, ok := externalRunnerGitHubRepo(cfg, runners[i])
+		if !ok || runners[i].Workflow == "" {
+			continue
+		}
+		key := repo.Slug() + "\x00" + runners[i].Workflow + "\x00" + runners[i].Ref
+		runs, seen := cache[key]
+		if !seen {
+			var err error
+			runs, err = externalRunnerGitHubRuns(ctx, repo, runners[i].Workflow, runners[i].Ref)
+			if err != nil {
+				cache[key] = nil
+				continue
+			}
+			cache[key] = runs
+		}
+		run, ok := matchExternalRunnerActionRun(runners[i], runs)
+		if !ok {
+			runners[i].ActionsRepo = repo.Slug()
+			runners[i].ActionsWorkflowURL = externalRunnerWorkflowURL(repo, runners[i].Workflow)
+			continue
+		}
+		runners[i].ActionsRepo = repo.Slug()
+		runners[i].ActionsRunID = strconv.FormatInt(run.DatabaseID, 10)
+		runners[i].ActionsRunURL = run.URL
+		runners[i].ActionsRunStatus = run.Status
+		runners[i].ActionsRunConclusion = run.Conclusion
+		runners[i].ActionsWorkflowName = run.WorkflowName
+		runners[i].ActionsWorkflowURL = externalRunnerWorkflowURL(repo, runners[i].Workflow)
+	}
+}
+
+func externalRunnerGitHubRepo(cfg Config, runner CoordinatorExternalRunner) (GitHubRepo, bool) {
+	if strings.Contains(runner.Repo, "/") {
+		repo, err := parseGitHubRepo(runner.Repo)
+		return repo, err == nil
+	}
+	owner := strings.TrimSpace(cfg.Blacksmith.Org)
+	if owner == "" && cfg.Actions.Repo != "" {
+		if repo, err := parseGitHubRepo(cfg.Actions.Repo); err == nil {
+			owner = repo.Owner
+		}
+	}
+	if owner == "" || runner.Repo == "" {
+		return GitHubRepo{}, false
+	}
+	repo, err := parseGitHubRepo(owner + "/" + runner.Repo)
+	return repo, err == nil
+}
+
+func externalRunnerGitHubRuns(ctx context.Context, repo GitHubRepo, workflow, ref string) ([]externalRunnerActionsRun, error) {
+	args := []string{
+		"run", "list",
+		"--repo", repo.Slug(),
+		"--workflow", workflow,
+		"--limit", "30",
+		"--json", "databaseId,status,conclusion,createdAt,updatedAt,headBranch,url,workflowName,displayTitle,name",
+	}
+	if ref != "" {
+		args = append(args, "--branch", ref)
+	}
+	out, err := ghOutput(ctx, "", args...)
+	if err != nil {
+		return nil, err
+	}
+	var runs []externalRunnerActionsRun
+	if err := json.Unmarshal([]byte(stripANSI(out)), &runs); err != nil {
+		return nil, err
+	}
+	return runs, nil
+}
+
+func matchExternalRunnerActionRun(runner CoordinatorExternalRunner, runs []externalRunnerActionsRun) (externalRunnerActionsRun, bool) {
+	if len(runs) == 0 {
+		return externalRunnerActionsRun{}, false
+	}
+	runnerTime, hasRunnerTime := parseExternalRunnerTime(runner.CreatedAt)
+	bestIndex := -1
+	bestDelta := int64(0)
+	for i, run := range runs {
+		if runner.Ref != "" && run.HeadBranch != "" && run.HeadBranch != runner.Ref {
+			continue
+		}
+		if !hasRunnerTime {
+			return run, true
+		}
+		runTime, ok := parseExternalRunnerTime(run.CreatedAt)
+		if !ok {
+			continue
+		}
+		delta := runTime.Sub(runnerTime)
+		if delta < 0 {
+			delta = -delta
+		}
+		if delta > 6*time.Hour {
+			continue
+		}
+		deltaMillis := delta.Milliseconds()
+		if bestIndex < 0 || deltaMillis < bestDelta {
+			bestIndex = i
+			bestDelta = deltaMillis
+		}
+	}
+	if bestIndex < 0 {
+		return externalRunnerActionsRun{}, false
+	}
+	return runs[bestIndex], true
+}
+
+func parseExternalRunnerTime(value string) (time.Time, bool) {
+	t, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(value))
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t, true
+}
+
+func externalRunnerWorkflowURL(repo GitHubRepo, workflow string) string {
+	if repo.Slug() == "" || workflow == "" {
+		return ""
+	}
+	workflow = strings.TrimPrefix(strings.TrimSpace(workflow), "/")
+	if strings.HasPrefix(workflow, ".github/workflows/") {
+		workflow = path.Base(workflow)
+	}
+	if !strings.HasSuffix(workflow, ".yml") && !strings.HasSuffix(workflow, ".yaml") && !allDigits(workflow) {
+		return ""
+	}
+	return "https://github.com/" + repo.Slug() + "/actions/workflows/" + url.PathEscape(workflow)
+}
+
+func allDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, char := range value {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func stripANSI(value string) string {
+	return ansiEscapePattern.ReplaceAllString(value, "")
 }
 
 func activeCoordinatorLeaseIDs(leases []CoordinatorLease) map[string]struct{} {

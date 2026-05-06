@@ -669,6 +669,13 @@ describe("fleet lease identity and idle", () => {
               job: "check",
               ref: "main",
               createdAt: "2026-05-05T10:00:00.000Z",
+              actionsRepo: "openclaw/openclaw",
+              actionsRunID: "123456",
+              actionsRunURL: "https://github.com/openclaw/openclaw/actions/runs/123456",
+              actionsRunStatus: "in_progress",
+              actionsWorkflowName: "ci-check-testbox",
+              actionsWorkflowURL:
+                "https://github.com/openclaw/openclaw/actions/workflows/ci-check-testbox.yml",
             },
           ],
         },
@@ -719,10 +726,15 @@ describe("fleet lease identity and idle", () => {
     expect(body).toContain("1 external");
     expect(body).toContain('class="external-row"');
     expect(body).toContain('aria-disabled="true"');
-    expect(body).toContain("no access");
+    expect(body).toContain("no box access");
     expect(body).toContain("tbx_01testbox");
     expect(body).toContain("blacksmith-testbox");
     expect(body).toContain("ci-check-testbox.yml");
+    expect(body).toContain("https://github.com/openclaw/openclaw/actions/runs/123456");
+    expect(body).toContain(
+      "https://github.com/openclaw/openclaw/actions/workflows/ci-check-testbox.yml",
+    );
+    expect(body).toContain('class="row-link"');
     expect(body).not.toContain("tbx_friendbox");
     expect(body).toContain('data-provider="hetzner"');
     expect(body).toContain('data-target="linux"');
@@ -768,6 +780,9 @@ describe("fleet lease identity and idle", () => {
               job: "check",
               ref: "main",
               createdAt: "2026-05-06T09:45:16.000000Z",
+              actionsRunURL: "https://github.com/openclaw/openclaw/actions/runs/123456",
+              actionsWorkflowURL:
+                "https://github.com/openclaw/openclaw/actions/workflows/ci-check-testbox.yml",
             },
           ],
         },
@@ -783,6 +798,7 @@ describe("fleet lease identity and idle", () => {
       repo: "openclaw",
       owner: "peter@example.com",
       org: "openclaw",
+      actionsRunURL: "https://github.com/openclaw/openclaw/actions/runs/123456",
     });
 
     const friendList = await fleet.fetch(
