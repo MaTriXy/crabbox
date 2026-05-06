@@ -505,6 +505,26 @@ const sidebar=document.querySelector('.sidebar');
 const toggle=document.querySelector('.nav-toggle');
 const mobileNav=window.matchMedia('(max-width: 900px)');
 const sidebarFocusable='a[href],button,input,select,textarea,[tabindex]';
+const sidebarScrollKey='crabbox.docs.sidebar.scrollTop';
+let sidebarScrollSaveTimer=0;
+function readSidebarScroll(){
+  try{
+    const raw=sessionStorage.getItem(sidebarScrollKey);
+    const value=raw===null?NaN:Number(raw);
+    return Number.isFinite(value)?Math.max(0,value):0;
+  }catch{
+    return 0;
+  }
+}
+function saveSidebarScroll(){
+  if(!sidebar)return;
+  try{sessionStorage.setItem(sidebarScrollKey,String(Math.round(sidebar.scrollTop)))}catch{}
+}
+function scheduleSidebarScrollSave(){
+  if(sidebarScrollSaveTimer)return;
+  sidebarScrollSaveTimer=window.setTimeout(()=>{sidebarScrollSaveTimer=0;saveSidebarScroll()},120);
+}
+if(sidebar)sidebar.scrollTop=readSidebarScroll();
 function setSidebarFocusable(enabled){
   sidebar?.querySelectorAll(sidebarFocusable).forEach((el)=>{
     if(enabled){
@@ -535,6 +555,12 @@ function setSidebarOpen(open){
   }
 }
 setSidebarOpen(false);
+sidebar?.addEventListener('scroll',scheduleSidebarScrollSave,{passive:true});
+sidebar?.addEventListener('click',(e)=>{
+  const link=e.target.closest?.('a[href]');
+  if(link)saveSidebarScroll();
+});
+window.addEventListener('pagehide',saveSidebarScroll);
 toggle?.addEventListener('click',()=>setSidebarOpen(!sidebar?.classList.contains('open')));
 document.addEventListener('click',(e)=>{if(!sidebar?.classList.contains('open'))return;if(sidebar.contains(e.target)||toggle?.contains(e.target))return;setSidebarOpen(false)});
 document.addEventListener('keydown',(e)=>{if(e.key==='Escape')setSidebarOpen(false)});
