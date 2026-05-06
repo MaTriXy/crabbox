@@ -4,7 +4,14 @@ import { leaseConfig, validCIDRs } from "./config";
 import { HetznerClient } from "./hetzner";
 import { errorMessage, json, pathParts, readJson, requestOwner } from "./http";
 import { githubAuthRoute, githubPortalLogin, githubPortalLogout } from "./oauth";
-import { portalCode, portalError, portalHome, portalVNC, webVNCBridgeCommand } from "./portal";
+import {
+  portalCode,
+  portalError,
+  portalHome,
+  portalLeaseDetail,
+  portalVNC,
+  webVNCBridgeCommand,
+} from "./portal";
 import { leaseSlugFromID, normalizeLeaseSlug, slugWithCollisionSuffix } from "./slug";
 import {
   createTailscaleAuthKey,
@@ -616,16 +623,7 @@ export class FleetDurableObject implements DurableObject {
     }
     const body = await optionalJson<{ delete?: boolean }>(request);
     const shouldDelete = body.delete ?? !lease.keep;
-    if (shouldDelete && lease.state === "active") {
-      await this.deleteLeaseServer(lease);
-    }
-    const now = new Date().toISOString();
-    lease.state = "released";
-    lease.updatedAt = now;
-    lease.releasedAt = now;
-    lease.endedAt = now;
-    await this.putLease(lease);
-    return json({ lease });
+    return json({ lease: await this.releaseResolvedLease(lease, { deleteServer: shouldDelete }) });
   }
 
   private whoami(request: Request): Response {
@@ -640,6 +638,21 @@ export class FleetDurableObject implements DurableObject {
     const method = request.method.toUpperCase();
     if (method === "GET" && parts.length === 1) {
       return portalHome(this.filterLeasesForRequest(await this.leaseRecords(), request), request);
+    }
+    if (method === "GET" && parts[1] === "runs" && parts[2]) {
+      return await this.portalRunRoute(request, parts[2], parts[3]);
+    }
+    if (method === "GET" && parts[1] === "leases" && parts[2] && parts[3] === undefined) {
+      return await this.portalLeasePage(request, parts[2]);
+    }
+    if (
+      method === "POST" &&
+      parts[1] === "leases" &&
+      parts[2] &&
+      parts[3] === "release" &&
+      parts[4] === undefined
+    ) {
+      return await this.portalReleaseLease(request, parts[2]);
     }
     if (
       method === "GET" &&
@@ -682,6 +695,69 @@ export class FleetDurableObject implements DurableObject {
     }
     if (parts[1] === "leases" && parts[2] && parts[3] === "code") {
       return await this.codePortalProxy(request, parts[2], parts.slice(4));
+    }
+    return json({ error: "not_found" }, { status: 404 });
+  }
+
+  private async portalLeasePage(request: Request, identifier: string): Promise<Response> {
+    const lease = await this.resolveLease(identifier, request, false);
+    if (!lease) {
+      return portalError(
+        "Lease not found",
+        "That lease is not active or is not visible to you.",
+        404,
+      );
+    }
+    const runs = (await this.runRecords())
+      .filter((run) => run.leaseID === lease.id && this.runVisibleToRequest(run, request))
+      .toSorted((a, b) => b.startedAt.localeCompare(a.startedAt))
+      .slice(0, 12);
+    return portalLeaseDetail(lease, runs, {
+      webVNCBridgeConnected: this.webVNCAgents.get(lease.id)?.readyState === WebSocket.OPEN,
+      webVNCViewerConnected: this.webVNCViewers.get(lease.id)?.readyState === WebSocket.OPEN,
+      codeBridgeConnected: this.codeAgents.get(lease.id)?.readyState === WebSocket.OPEN,
+    });
+  }
+
+  private async portalReleaseLease(request: Request, identifier: string): Promise<Response> {
+    const lease = await this.resolveLease(identifier, request, false);
+    if (!lease) {
+      return portalError(
+        "Lease not found",
+        "That lease is not active or is not visible to you.",
+        404,
+      );
+    }
+    await this.releaseResolvedLease(lease, { deleteServer: true, keep: false });
+    return new Response(null, { status: 303, headers: { location: "/portal" } });
+  }
+
+  private async portalRunRoute(
+    request: Request,
+    runID: string,
+    action?: string,
+  ): Promise<Response> {
+    const run = await this.getRun(runID);
+    if (!run || !this.runVisibleToRequest(run, request)) {
+      return notFound();
+    }
+    if (request.method.toUpperCase() !== "GET") {
+      return json({ error: "not_found" }, { status: 404 });
+    }
+    if (action === "logs") {
+      const log = await this.readRunLog(runID);
+      return new Response(log, {
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      });
+    }
+    if (action === "events") {
+      const url = new URL(request.url);
+      const after = finiteQueryNumber(url.searchParams.get("after")) ?? 0;
+      const limit = clampLimit(url.searchParams.get("limit"), 500);
+      return json({ events: await this.runEvents(runID, after, limit) });
+    }
+    if (action === undefined) {
+      return json({ run });
     }
     return json({ error: "not_found" }, { status: 404 });
   }
@@ -1306,17 +1382,9 @@ export class FleetDurableObject implements DurableObject {
     if (!lease) {
       return notFound();
     }
-    if (lease.state === "active") {
-      await this.deleteLeaseServer(lease);
-    }
-    const now = new Date().toISOString();
-    lease.state = "released";
-    lease.updatedAt = now;
-    lease.releasedAt = now;
-    lease.endedAt = now;
-    lease.keep = false;
-    await this.putLease(lease);
-    return json({ lease });
+    return json({
+      lease: await this.releaseResolvedLease(lease, { deleteServer: true, keep: false }),
+    });
   }
 
   private filterLeases(leases: LeaseRecord[], request: Request): LeaseRecord[] {
@@ -1747,6 +1815,25 @@ export class FleetDurableObject implements DurableObject {
     if (validCrabboxProviderKey(lease.providerKey)) {
       await this.provider("hetzner").deleteSSHKey(lease.providerKey);
     }
+  }
+
+  private async releaseResolvedLease(
+    lease: LeaseRecord,
+    options: { deleteServer: boolean; keep?: boolean },
+  ): Promise<LeaseRecord> {
+    if (options.deleteServer && lease.state === "active") {
+      await this.deleteLeaseServer(lease);
+    }
+    const now = new Date().toISOString();
+    lease.state = "released";
+    lease.updatedAt = now;
+    lease.releasedAt = now;
+    lease.endedAt = now;
+    if (options.keep !== undefined) {
+      lease.keep = options.keep;
+    }
+    await this.putLease(lease);
+    return lease;
   }
 }
 
