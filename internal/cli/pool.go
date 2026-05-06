@@ -170,8 +170,12 @@ func externalRunnerGitHubRepo(cfg Config, runner CoordinatorExternalRunner) (Git
 			owner = repo.Owner
 		}
 	}
-	if owner == "" || runner.Repo == "" {
+	if runner.Repo == "" {
 		return GitHubRepo{}, false
+	}
+	if owner == "" {
+		repo, err := parseGitHubRepo(runner.Repo + "/" + runner.Repo)
+		return repo, err == nil
 	}
 	repo, err := parseGitHubRepo(owner + "/" + runner.Repo)
 	return repo, err == nil

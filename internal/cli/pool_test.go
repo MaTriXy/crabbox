@@ -151,6 +151,16 @@ func TestExternalRunnerGitHubRepoFallsBackToBlacksmithOrg(t *testing.T) {
 	}
 }
 
+func TestExternalRunnerGitHubRepoFallsBackToRepoMirror(t *testing.T) {
+	repo, ok := externalRunnerGitHubRepo(Config{}, CoordinatorExternalRunner{Repo: "openclaw"})
+	if !ok {
+		t.Fatal("repo not inferred")
+	}
+	if repo.Slug() != "openclaw/openclaw" {
+		t.Fatalf("repo=%q", repo.Slug())
+	}
+}
+
 func TestMatchExternalRunnerActionRunChoosesClosestCreatedAt(t *testing.T) {
 	runner := CoordinatorExternalRunner{
 		Ref:       "main",
