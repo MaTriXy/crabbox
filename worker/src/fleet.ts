@@ -9,6 +9,7 @@ import {
   portalError,
   portalHome,
   portalLeaseDetail,
+  portalRunDetail,
   portalVNC,
   webVNCBridgeCommand,
 } from "./portal";
@@ -757,7 +758,11 @@ export class FleetDurableObject implements DurableObject {
       return json({ events: await this.runEvents(runID, after, limit) });
     }
     if (action === undefined) {
-      return json({ run });
+      const [events, log] = await Promise.all([
+        this.runEvents(runID, 0, 100),
+        this.readRunLog(runID),
+      ]);
+      return portalRunDetail(run, events, tailString(log, 12 * 1024));
     }
     return json({ error: "not_found" }, { status: 404 });
   }
@@ -1939,6 +1944,13 @@ function clampLimit(value: string | null, fallback: number): number {
     return fallback;
   }
   return Math.min(Math.trunc(parsed), 500);
+}
+
+function tailString(value: string, maxChars: number): string {
+  if (value.length <= maxChars) {
+    return value;
+  }
+  return value.slice(value.length - maxChars);
 }
 
 function notFound(): Response {

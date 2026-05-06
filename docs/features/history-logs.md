@@ -31,6 +31,12 @@ crabbox attach run_...
 crabbox logs run_...
 ```
 
+In the authenticated browser portal, `/portal/runs/<run-id>` renders the same
+run as a human page with command metadata, result summary, recent events, and a
+retained log tail. `/portal/runs/<run-id>/logs` stays a plain-text log endpoint,
+and `/portal/runs/<run-id>/events` stays JSON for copying or browser-side
+inspection.
+
 History records and run events live in the Fleet Durable Object. Log text is
 stored separately from run metadata and intentionally capped so noisy commands
 cannot exhaust storage. Logs larger than one storage value are chunked by the

@@ -1,4 +1,4 @@
-import type { LeaseRecord, RunRecord } from "./types";
+import type { LeaseRecord, RunEventRecord, RunRecord } from "./types";
 
 const novncModuleURL = "/portal/assets/novnc/rfb.js";
 
@@ -138,6 +138,122 @@ export function portalLeaseDetail(
             </tr>
           </thead>
           <tbody>${runRows}</tbody>
+        </table>
+      </section>
+    </main>`,
+  );
+}
+
+export function portalRunDetail(
+  run: RunRecord,
+  events: RunEventRecord[],
+  logTail: string,
+): Response {
+  const stateTone = run.state === "succeeded" ? "ok" : run.state === "failed" ? "bad" : "warn";
+  const eventRows = events.length
+    ? events.map((event) => eventRow(event)).join("")
+    : `<tr><td colspan="5" class="empty">no events recorded</td></tr>`;
+  const failureRows = run.results?.failed.length
+    ? run.results.failed
+        .slice(0, 8)
+        .map(
+          (failure) => `<li>
+            <strong>${escapeHTML(failure.name)}</strong>
+            <small>${escapeHTML([failure.suite, failure.file].filter(Boolean).join(" / "))}</small>
+            ${failure.message ? `<p>${escapeHTML(truncate(failure.message, 240))}</p>` : ""}
+          </li>`,
+        )
+        .join("")
+    : "";
+  const logBlock = logTail
+    ? `<pre class="log-preview">${escapeHTML(logTail)}</pre>`
+    : `<p class="empty">no retained log output</p>`;
+  return html(
+    `${run.id} run`,
+    `<main>
+      <header class="top">
+        <div>
+          <h1>${escapeHTML(run.id)}</h1>
+          <p>${escapeHTML(run.slug || run.leaseID)} <span class="mono">${escapeHTML(run.command.join(" "))}</span></p>
+        </div>
+        <div class="vnc-actions">
+          <a class="button secondary" href="/portal/leases/${encodeURIComponent(run.leaseID)}">lease</a>
+          <a class="button secondary" href="/portal">leases</a>
+          <a class="button secondary" href="/portal/logout">log out</a>
+        </div>
+      </header>
+      <section class="detail-grid">
+        <div class="panel detail-card">
+          <div class="section-head">
+            <h2>run</h2>
+            <span class="pill" data-tone="${stateTone}">${escapeHTML(run.state)}</span>
+          </div>
+          <dl class="meta-grid">
+            ${metaRow("lease", run.slug ? `${run.slug} / ${run.leaseID}` : run.leaseID)}
+            ${metaRow("provider", run.provider)}
+            ${metaRow("target", run.windowsMode ? `${run.target || "linux"} / ${run.windowsMode}` : run.target || "linux")}
+            ${metaRow("class", run.class)}
+            ${metaRow("server type", run.serverType)}
+            ${metaRow("phase", run.phase || run.state)}
+            ${metaRow("exit", formatExitCode(run.exitCode))}
+            ${metaRow("started", shortTime(run.startedAt))}
+            ${metaRow("duration", formatDuration(run.durationMs))}
+            ${metaRow("log", run.logBytes > 0 ? formatBytes(run.logBytes) : "empty")}
+          </dl>
+        </div>
+        <div class="panel detail-card">
+          <div class="section-head">
+            <h2>artifacts</h2>
+            <span>${run.results ? "junit" : "logs"}</span>
+          </div>
+          <div class="run-artifacts">
+            <a class="button" href="/portal/runs/${encodeURIComponent(run.id)}/logs">raw logs</a>
+            <a class="button secondary" href="/portal/runs/${encodeURIComponent(run.id)}/events">events json</a>
+            ${resultsSummary(run)}
+          </div>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="section-head">
+          <h2>command</h2>
+          <span>${escapeHTML(run.owner)}</span>
+        </div>
+        <div class="commands">${commandBlock("remote command", run.command.join(" "))}</div>
+      </section>
+      ${
+        failureRows
+          ? `<section class="panel">
+              <div class="section-head">
+                <h2>failures</h2>
+                <span>${run.results?.failed.length ?? 0}</span>
+              </div>
+              <ul class="failure-list">${failureRows}</ul>
+            </section>`
+          : ""
+      }
+      <section class="panel">
+        <div class="section-head">
+          <h2>log tail</h2>
+          <span>${run.logTruncated ? "truncated" : "retained"}</span>
+        </div>
+        ${logBlock}
+      </section>
+      <section class="panel">
+        <div class="section-head">
+          <h2>events</h2>
+          <span>${events.length}</span>
+        </div>
+        <table class="event-table">
+          <thead>
+            <tr>
+              <th>seq</th>
+              <th>type</th>
+              <th>phase</th>
+              <th>time</th>
+              <th>message</th>
+            </tr>
+          </thead>
+          <tbody>${eventRows}</tbody>
         </table>
       </section>
     </main>`,
@@ -408,13 +524,23 @@ function runRow(run: RunRecord): string {
   const stateTone = run.state === "succeeded" ? "ok" : run.state === "failed" ? "bad" : "warn";
   const logLabel = run.logBytes > 0 ? formatBytes(run.logBytes) : "empty";
   return `<tr>
-    <td><strong>${escapeHTML(run.id)}</strong><small>${escapeHTML(run.command.join(" "))}</small></td>
+    <td><a class="lease-link" href="/portal/runs/${encodeURIComponent(run.id)}"><strong>${escapeHTML(run.id)}</strong><small>${escapeHTML(run.command.join(" "))}</small></a></td>
     <td><span class="pill" data-tone="${stateTone}">${escapeHTML(run.state)}</span></td>
     <td>${escapeHTML(run.phase || "-")}</td>
     <td>${escapeHTML(shortTime(run.startedAt))}</td>
     <td>${escapeHTML(formatDuration(run.durationMs))}</td>
     <td>${escapeHTML(logLabel)}</td>
     <td><div class="actions-cell"><a class="button secondary" href="/portal/runs/${encodeURIComponent(run.id)}/logs">logs</a><a class="button secondary" href="/portal/runs/${encodeURIComponent(run.id)}/events">events</a></div></td>
+  </tr>`;
+}
+
+function eventRow(event: RunEventRecord): string {
+  return `<tr>
+    <td>${event.seq}</td>
+    <td><strong>${escapeHTML(event.type)}</strong><small>${escapeHTML(event.stream || "")}</small></td>
+    <td>${escapeHTML(event.phase || "-")}</td>
+    <td>${escapeHTML(shortTime(event.createdAt))}</td>
+    <td>${escapeHTML(truncate(event.message || event.data || "", 220))}</td>
   </tr>`;
 }
 
@@ -446,6 +572,20 @@ function bridgeRow(
 
 function commandBlock(label: string, command: string): string {
   return `<div class="command-row"><div><small>${escapeHTML(label)}</small><code>${escapeHTML(command)}</code></div></div>`;
+}
+
+function resultsSummary(run: RunRecord): string {
+  if (!run.results) {
+    return `<p class="muted">no test result summary</p>`;
+  }
+  const result = run.results;
+  return `<dl class="result-grid">
+    ${metaRow("tests", String(result.tests))}
+    ${metaRow("failures", String(result.failures))}
+    ${metaRow("errors", String(result.errors))}
+    ${metaRow("skipped", String(result.skipped))}
+    ${metaRow("time", `${result.timeSeconds}s`)}
+  </dl>`;
 }
 
 function html(title: string, body: string, status = 200, nonce = ""): Response {
@@ -496,6 +636,16 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .bridge-grid { display:grid; gap:0; }
     .bridge-row { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:10px; align-items:center; padding:14px; border-bottom:1px solid var(--line-soft); }
     .bridge-row small { display:block; color:var(--muted); margin-top:2px; }
+    .run-artifacts { display:grid; gap:10px; padding:14px; }
+    .result-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0; margin:4px -14px -14px; border-top:1px solid var(--line-soft); }
+    .result-grid div { padding:10px 14px; border-bottom:1px solid var(--line-soft); }
+    .result-grid dt { color:var(--muted); font-size:11px; text-transform:uppercase; margin-bottom:3px; }
+    .result-grid dd { margin:0; }
+    .log-preview { margin:0; max-height:420px; overflow:auto; padding:14px; background:#080a0c; color:#d1fae5; border:0; border-radius:0; font-family:var(--mono); font-size:12px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; }
+    .failure-list { display:grid; gap:0; margin:0; padding:0; list-style:none; }
+    .failure-list li { padding:14px 16px; border-bottom:1px solid var(--line-soft); }
+    .failure-list small { display:block; color:var(--muted); margin-top:2px; }
+    .failure-list p { margin-top:8px; color:#fecaca; }
     .pill { display:inline-flex; align-items:center; justify-content:center; min-height:24px; padding:0 8px; border-radius:999px; border:1px solid var(--line); color:var(--muted); background:var(--panel-2); font-size:12px; white-space:nowrap; }
     .pill[data-tone="ok"],.pill[data-state="active"] { color:var(--ok); border-color:color-mix(in srgb, var(--ok) 35%, var(--line)); }
     .pill[data-tone="warn"] { color:var(--warn); border-color:color-mix(in srgb, var(--warn) 35%, var(--line)); }
@@ -533,6 +683,7 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
       th:nth-child(4),td:nth-child(4),th:nth-child(6),td:nth-child(6){ display:none; }
       .detail-grid { grid-template-columns:1fr; }
       .meta-grid { grid-template-columns:1fr; }
+      .result-grid { grid-template-columns:1fr; }
       .bridge-row { grid-template-columns:1fr; align-items:start; }
       .top{align-items:flex-start;}
       .vnc-bar { flex-wrap:wrap; gap:8px; min-height:0; padding:4px 0; }
@@ -589,6 +740,10 @@ function formatDuration(value: number | undefined): string {
   return `${minutes}m ${rest}s`;
 }
 
+function formatExitCode(value: number | undefined): string {
+  return Number.isFinite(value) ? String(value) : "-";
+}
+
 function formatBytes(value: number): string {
   if (value < 1024) {
     return `${value} B`;
@@ -597,6 +752,10 @@ function formatBytes(value: number): string {
     return `${(value / 1024).toFixed(1)} KiB`;
   }
   return `${(value / 1024 / 1024).toFixed(1)} MiB`;
+}
+
+function truncate(value: string, maxLength: number): string {
+  return value.length > maxLength ? `${value.slice(0, maxLength - 1)}...` : value;
 }
 
 function escapeHTML(value: string | undefined): string {

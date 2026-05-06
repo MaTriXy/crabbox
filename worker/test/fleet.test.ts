@@ -539,6 +539,24 @@ describe("fleet lease identity and idle", () => {
         exitCode: 1,
         durationMs: 1234,
         logBytes: 11,
+        results: {
+          format: "junit",
+          files: ["junit.xml"],
+          suites: 1,
+          tests: 2,
+          failures: 1,
+          errors: 0,
+          skipped: 0,
+          timeSeconds: 0.42,
+          failed: [
+            {
+              suite: "portal",
+              name: "renders detail",
+              message: "expected detail page",
+              kind: "failure",
+            },
+          ],
+        },
       }),
     );
     storage.seed(
@@ -568,6 +586,7 @@ describe("fleet lease identity and idle", () => {
       "crabbox webvnc --provider hetzner --target linux --id blue-lobster --open",
     );
     expect(body).toContain("crabbox code --id blue-lobster --open");
+    expect(body).toContain("/portal/runs/run_000000000001");
     expect(body).toContain("/portal/runs/run_000000000001/logs");
     expect(body).toContain("/portal/runs/run_000000000001/events");
     expect(body).toContain("/portal/leases/cbx_000000000001/release");
@@ -579,6 +598,17 @@ describe("fleet lease identity and idle", () => {
     expect(logs.status).toBe(200);
     expect(logs.headers.get("content-type")).toBe("text/plain; charset=utf-8");
     expect(await logs.text()).toBe("portal log\n");
+
+    const runPage = await fleet.fetch(request("GET", "/portal/runs/run_000000000001", { headers }));
+    expect(runPage.status).toBe(200);
+    expect(runPage.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    const runBody = await runPage.text();
+    expect(runBody).toContain("run_000000000001");
+    expect(runBody).toContain("go test ./...");
+    expect(runBody).toContain("portal log");
+    expect(runBody).toContain("renders detail");
+    expect(runBody).toContain("/portal/leases/cbx_000000000001");
+    expect(runBody).toContain("/portal/runs/run_000000000001/logs");
 
     const events = await fleet.fetch(
       request("GET", "/portal/runs/run_000000000001/events", { headers }),
