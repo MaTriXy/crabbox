@@ -322,10 +322,21 @@ func (b *daytonaLeaseBackend) syncDaytonaToolbox(ctx context.Context, sandbox *s
 	if err != nil {
 		return nil, err
 	}
+	defer os.Remove(archive.Name())
+	defer archive.Close()
 	archiveDuration := time.Since(archiveStarted)
 	uploadStarted := time.Now()
 	archivePath := path.Join("/tmp", "crabbox-"+newLeaseID()+".tgz")
-	if err := sandbox.FileSystem.UploadFile(ctx, archive, archivePath); err != nil {
+	if _, err := archive.Seek(0, 0); err != nil {
+		return nil, fmt.Errorf("daytona rewind archive: %w", err)
+	}
+	if sandbox.ToolboxClient == nil {
+		return nil, fmt.Errorf("daytona toolbox client is not configured")
+	}
+	if _, httpResp, err := sandbox.ToolboxClient.FileSystemAPI.UploadFile(ctx).Path(archivePath).File(archive).Execute(); err != nil {
+		if httpResp != nil {
+			return nil, fmt.Errorf("daytona upload archive: %s: %w", httpResp.Status, err)
+		}
 		return nil, fmt.Errorf("daytona upload archive: %w", err)
 	}
 	uploadDuration := time.Since(uploadStarted)
@@ -362,19 +373,31 @@ func (b *daytonaLeaseBackend) syncDaytonaToolbox(ctx context.Context, sandbox *s
 	return phases, nil
 }
 
-func createDaytonaSyncArchive(ctx context.Context, repo Repo, manifest SyncManifest, stderr anyWriter) ([]byte, error) {
+func createDaytonaSyncArchive(ctx context.Context, repo Repo, manifest SyncManifest, stderr anyWriter) (*os.File, error) {
 	var input bytes.Buffer
 	input.Write(manifest.NUL())
+	archive, err := os.CreateTemp("", "crabbox-daytona-sync-*.tgz")
+	if err != nil {
+		return nil, fmt.Errorf("create sync archive temp file: %w", err)
+	}
+	keep := false
+	defer func() {
+		if !keep {
+			name := archive.Name()
+			_ = archive.Close()
+			_ = os.Remove(name)
+		}
+	}()
 	cmd := exec.CommandContext(ctx, "tar", "-czf", "-", "-C", repo.Root, "--null", "-T", "-")
 	cmd.Stdin = &input
 	cmd.Env = append(os.Environ(), "COPYFILE_DISABLE=1")
-	var archive bytes.Buffer
-	cmd.Stdout = &archive
+	cmd.Stdout = archive
 	cmd.Stderr = stderr
 	if err := cmd.Run(); err != nil {
 		return nil, exit(6, "create sync archive: %v", err)
 	}
-	return archive.Bytes(), nil
+	keep = true
+	return archive, nil
 }
 
 func daytonaCommandString(command []string, shellMode bool) string {

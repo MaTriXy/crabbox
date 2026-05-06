@@ -125,11 +125,12 @@ func parseIsloSSE(r io.Reader, stdout, stderr io.Writer) (int, error) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	exitCode := 0
+	seenExit := false
 	event := ""
 	var data []string
-	flush := func() {
+	flush := func() error {
 		if event == "" && len(data) == 0 {
-			return
+			return nil
 		}
 		payload := strings.Join(data, "\n")
 		switch event {
@@ -138,17 +139,23 @@ func parseIsloSSE(r io.Reader, stdout, stderr io.Writer) (int, error) {
 		case "stderr":
 			_, _ = stderr.Write([]byte(payload))
 		case "exit":
-			if n, err := strconv.Atoi(strings.TrimSpace(payload)); err == nil {
-				exitCode = n
+			n, err := strconv.Atoi(strings.TrimSpace(payload))
+			if err != nil {
+				return fmt.Errorf("islo exec stream invalid exit event %q: %w", payload, err)
 			}
+			exitCode = n
+			seenExit = true
 		}
 		event = ""
 		data = data[:0]
+		return nil
 	}
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
-			flush()
+			if err := flush(); err != nil {
+				return 1, err
+			}
 			continue
 		}
 		if strings.HasPrefix(line, ":") {
@@ -167,6 +174,14 @@ func parseIsloSSE(r io.Reader, stdout, stderr io.Writer) (int, error) {
 			data = append(data, value)
 		}
 	}
-	flush()
-	return exitCode, scanner.Err()
+	if err := flush(); err != nil {
+		return 1, err
+	}
+	if err := scanner.Err(); err != nil {
+		return 1, err
+	}
+	if !seenExit {
+		return 1, fmt.Errorf("islo exec stream ended without exit event")
+	}
+	return exitCode, nil
 }

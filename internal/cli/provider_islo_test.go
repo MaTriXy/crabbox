@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -29,6 +30,54 @@ func TestParseIsloSSE(t *testing.T) {
 	}
 	if code != 7 || stdout.String() != "hello" || stderr.String() != "warn" {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+}
+
+func TestParseIsloSSERequiresExitEvent(t *testing.T) {
+	body := strings.Join([]string{
+		"event: stdout",
+		"data: partial",
+		"",
+	}, "\n")
+	var stdout, stderr bytes.Buffer
+	code, err := parseIsloSSE(strings.NewReader(body), &stdout, &stderr)
+	if err == nil || !strings.Contains(err.Error(), "without exit event") {
+		t.Fatalf("code=%d err=%v, want missing exit event error", code, err)
+	}
+	if stdout.String() != "partial" {
+		t.Fatalf("stdout=%q", stdout.String())
+	}
+}
+
+func TestParseIsloSSERejectsInvalidExitEvent(t *testing.T) {
+	body := strings.Join([]string{
+		"event: exit",
+		"data: nope",
+		"",
+	}, "\n")
+	if _, err := parseIsloSSE(strings.NewReader(body), &bytes.Buffer{}, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "invalid exit event") {
+		t.Fatalf("err=%v, want invalid exit event error", err)
+	}
+}
+
+func TestIsloExecCommandPreservesShellString(t *testing.T) {
+	got, err := isloExecCommand([]string{"pnpm install && pnpm test"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"bash", "-lc", "pnpm install && pnpm test"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("command=%#v want %#v", got, want)
+	}
+}
+
+func TestIsloExecCommandQuotesImplicitShellArgv(t *testing.T) {
+	got, err := isloExecCommand([]string{"FOO=bar", "pnpm", "test"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 || got[0] != "bash" || got[1] != "-lc" || !strings.Contains(got[2], "FOO=") || !strings.Contains(got[2], "'pnpm'") {
+		t.Fatalf("command=%#v", got)
 	}
 }
 

@@ -40,6 +40,8 @@
 - Fixed Windows WebVNC credential handling so generated portal links preserve special characters and managed TightVNC sessions copy service passwords into the logged-in user's registry profile.
 - Fixed managed Linux browser setup so Chrome/Chromium launches skip first-run and default-browser prompts.
 - Fixed managed Linux browser cloud-init setup so Chrome/Chromium policy and wrapper generation cannot break YAML parsing.
+- Fixed Islo delegated runs so shell-mode commands preserve raw shell strings and truncated exec streams fail instead of silently reporting success.
+- Fixed Daytona SDK sync so the tar archive uploads from a temp file instead of buffering the whole archive in memory.
 - Fixed WebVNC portal passwords with escaped special characters and kept the bridge alive across viewer resets and transient coordinator EOFs.
 - Fixed managed AWS Windows WSL2 bootstrap by using the current Ubuntu WSL rootfs URL, downloading large rootfs files through `curl.exe`, and retrying empty or partial rootfs downloads instead of reusing a poisoned tarball. Thanks @vincentkoc.
 - Fixed AWS Windows WSL2 mode overrides so they refresh the default instance type to a nested-virtualization-capable family. Thanks @steipete.

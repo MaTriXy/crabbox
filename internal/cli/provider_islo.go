@@ -294,18 +294,28 @@ func (b *isloBackend) createSandbox(ctx context.Context, client isloAPI, repo Re
 }
 
 func (b *isloBackend) exec(ctx context.Context, client isloAPI, name string, command []string, shellMode bool) (int, error) {
-	if len(command) == 0 {
-		return 2, errors.New("missing command")
-	}
-	execCommand := command
-	if shellMode || shouldUseShell(command) || leadingEnvAssignment(command) {
-		execCommand = []string{"bash", "-lc", shellScriptFromArgv(command)}
+	execCommand, err := isloExecCommand(command, shellMode)
+	if err != nil {
+		return 2, err
 	}
 	req := &gosdk.ExecRequest{Command: execCommand}
 	if b.cfg.Islo.Workdir != "" {
 		req.Workdir = stringValue(b.cfg.Islo.Workdir)
 	}
 	return client.ExecStream(ctx, name, req, b.rt.Stdout, b.rt.Stderr)
+}
+
+func isloExecCommand(command []string, shellMode bool) ([]string, error) {
+	if len(command) == 0 {
+		return nil, errors.New("missing command")
+	}
+	if shellMode {
+		return []string{"bash", "-lc", strings.Join(command, " ")}, nil
+	}
+	if shouldUseShell(command) || leadingEnvAssignment(command) {
+		return []string{"bash", "-lc", shellScriptFromArgv(command)}, nil
+	}
+	return command, nil
 }
 
 func resolveIsloLeaseID(id, repoRoot string, reclaim bool) (string, string, error) {
