@@ -84,7 +84,8 @@ When coordinator auth is configured, `crabbox list --provider blacksmith-testbox
 also syncs visibility-only Testbox rows into the portal lease table. If Crabbox
 can infer the owning GitHub Actions run, the portal links the row to the run and
 workflow, shows the Actions status/conclusion, flags long-queued or long-running
-rows as `stuck`, and exposes a copyable local stop command.
+rows as `stuck`, exposes a copyable local stop command, and provides a
+visibility-only detail page for the row.
 
 ## Capabilities
 

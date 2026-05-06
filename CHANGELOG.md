@@ -23,6 +23,7 @@
 - Added `provider: islo` for delegated Islo sandbox runs using the Islo Go SDK.
 - Added best-effort GitHub Actions run and workflow links for external Blacksmith Testbox rows in the portal.
 - Added GitHub Actions status badges, stuck filters, and copyable local stop commands for external Blacksmith Testbox rows in the portal.
+- Added external runner detail pages in the portal with owner, Actions, lifecycle timestamps, boundary notes, and copyable stop commands.
 
 ### Changed
 

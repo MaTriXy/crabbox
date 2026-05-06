@@ -103,9 +103,11 @@ GitHub Actions and links the row to the closest workflow run plus the workflow
 definition. The portal also renders the Actions status/conclusion, adds a
 `stuck` filter for long-queued or long-running workflow owners, and offers a
 copyable local `crabbox stop --provider blacksmith-testbox ...` command for
-operator cleanup. They are not Crabbox leases, do not expose box access actions,
-do not heartbeat, do not participate in Crabbox expiry or cost control, and
-become stale when a later sync does not see the runner.
+operator cleanup. Clicking the row opens a visibility-only detail page with
+owner/org, Actions ownership, timestamps, boundary notes, and the same local stop
+command. They are not Crabbox leases, do not expose box access actions, do not
+heartbeat, do not participate in Crabbox expiry or cost control, and become stale
+when a later sync does not see the runner.
 
 ## Auth
 

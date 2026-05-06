@@ -163,8 +163,10 @@ when coordinator auth is configured. When GitHub is reachable, Crabbox also
 links those rows back to the inferred Actions run and workflow, surfaces the
 Actions status/conclusion, flags long-queued or long-running rows as `stuck`,
 and exposes a copyable local `crabbox stop --provider blacksmith-testbox ...`
-command. Those rows are visibility-only records for Blacksmith-owned Testboxes,
-not Crabbox leases.
+command. Clicking an external row opens a visibility-only runner detail page
+with owner, workflow, timestamps, boundary notes, and the same stop command.
+Those rows are visibility-only records for Blacksmith-owned Testboxes, not
+Crabbox leases.
 
 Optional Daytona sandbox:
 

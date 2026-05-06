@@ -54,6 +54,7 @@ GET  /portal/leases/{id-or-slug}/code/
 GET  /portal/runs/{run-id}
 GET  /portal/runs/{run-id}/logs
 GET  /portal/runs/{run-id}/events
+GET  /portal/runners/{provider}/{runner-id}
 ```
 
 `/portal` renders a searchable/paginated/sortable lease data grid with compact
@@ -69,7 +70,10 @@ same grid as muted, disabled rows with search, pagination, status/provider
 filters, inferred GitHub Actions run/workflow links and status badges when
 available, `stuck` markers for long-queued or long-running Actions owners, a
 copyable local stop command, and stale markers when the next sync no longer sees
-a previously visible runner.
+a previously visible runner. Clicking an external runner opens
+`/portal/runners/{provider}/{runner-id}`, a visibility-only detail page with
+owner/org, Actions ownership, lifecycle timestamps, boundary notes, and the local
+stop command.
 
 `/portal/leases/{id-or-slug}` is the authenticated lease detail page. It shows
 the lease state, bridge status, compact provider/target badges, latest Linux

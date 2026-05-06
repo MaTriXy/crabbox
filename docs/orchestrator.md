@@ -52,9 +52,9 @@ records in the coordinator. `crabbox list --provider blacksmith-testbox` syncs
 the current all-status Blacksmith table into muted `/portal` lease-grid rows,
 adds inferred GitHub Actions run/workflow links and status/conclusion badges
 when available, and a later sync marks missing runners stale. Long-queued or
-long-running Actions owners are tagged as `stuck`, but these rows do not
-heartbeat and do not participate in Crabbox lease expiry, cleanup, or cost
-accounting.
+long-running Actions owners are tagged as `stuck`, and each row can open a
+visibility-only runner detail page. These rows do not heartbeat and do not
+participate in Crabbox lease expiry, cleanup, or cost accounting.
 
 ## Cleanup
 
