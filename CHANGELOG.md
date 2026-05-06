@@ -29,6 +29,7 @@
 ### Changed
 
 - Changed AWS capacity fallback to route configured `CRABBOX_CAPACITY_REGIONS` across both brokered and direct AWS launches, with the deployed coordinator defaulting to a wider multi-region pool for better headroom.
+- Changed coordinator lease requests to omit the default capacity block, preserving mixed-version broker compatibility while still sending explicit market, strategy, fallback, multi-region, availability-zone, or hint opt-out settings.
 - Changed coordinator-backed CLI lease output to print broker capacity hints when AWS routing, quota, Spot fallback, or configured high-pressure classes are involved.
 - Changed the portal lease table to merge external Blacksmith Testbox runners into the main grid as muted, disabled rows instead of rendering a separate external-runners table.
 - Refactored built-in provider backend implementations into `internal/providers/<name>` packages while keeping command orchestration and rendering core-owned.

@@ -54,6 +54,13 @@ pressure, Spot-to-On-Demand fallback, and high-pressure class warnings. Set
 `CRABBOX_CAPACITY_LARGE_CLASSES=beast,large` when an installation wants warning
 hints for a different set of classes.
 
+These fields are wire-compatible with mixed CLI/broker versions. Upgraded
+brokers add optional response fields that older clients ignore. Upgraded
+clients keep the lease request sparse: they omit default hint and routing fields
+and do not send the capacity block at all for broker defaults, unless an
+operator configures a non-default market/strategy/fallback, a multi-region pool,
+pinned availability zones, or `capacity.hints: false`.
+
 Crabbox tries ordered instance candidates for the requested class. Explicit
 `--type` is exact: if EC2 rejects it, Crabbox fails clearly instead of silently
 choosing another type.

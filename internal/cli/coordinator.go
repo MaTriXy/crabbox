@@ -349,7 +349,26 @@ func (c *CoordinatorClient) CreateLease(ctx context.Context, cfg Config, publicK
 	if slug == "" {
 		slug = newLeaseSlug(leaseID)
 	}
-	err := c.do(ctx, http.MethodPost, "/v1/leases", map[string]any{
+	capacity := map[string]any{}
+	if cfg.Capacity.Market != "" && cfg.Capacity.Market != "spot" {
+		capacity["market"] = cfg.Capacity.Market
+	}
+	if cfg.Capacity.Strategy != "" && cfg.Capacity.Strategy != "most-available" {
+		capacity["strategy"] = cfg.Capacity.Strategy
+	}
+	if cfg.Capacity.Fallback != "" && cfg.Capacity.Fallback != "on-demand-after-120s" {
+		capacity["fallback"] = cfg.Capacity.Fallback
+	}
+	if len(cfg.Capacity.Regions) > 0 {
+		capacity["regions"] = cfg.Capacity.Regions
+	}
+	if len(cfg.Capacity.AvailabilityZones) > 0 {
+		capacity["availabilityZones"] = cfg.Capacity.AvailabilityZones
+	}
+	if !cfg.Capacity.Hints {
+		capacity["hints"] = false
+	}
+	req := map[string]any{
 		"leaseID":                         leaseID,
 		"slug":                            slug,
 		"profile":                         cfg.Profile,
@@ -377,24 +396,20 @@ func (c *CoordinatorClient) CreateLease(ctx context.Context, cfg Config, publicK
 		"awsRootGB":                       cfg.AWSRootGB,
 		"awsSSHCIDRs":                     cfg.AWSSSHCIDRs,
 		"awsMacHostID":                    cfg.AWSMacHostID,
-		"capacity": map[string]any{
-			"market":            cfg.Capacity.Market,
-			"strategy":          cfg.Capacity.Strategy,
-			"fallback":          cfg.Capacity.Fallback,
-			"regions":           cfg.Capacity.Regions,
-			"availabilityZones": cfg.Capacity.AvailabilityZones,
-			"hints":             cfg.Capacity.Hints,
-		},
-		"sshUser":            cfg.SSHUser,
-		"sshPort":            cfg.SSHPort,
-		"sshFallbackPorts":   cfg.SSHFallbackPorts,
-		"providerKey":        cfg.ProviderKey,
-		"workRoot":           cfg.WorkRoot,
-		"ttlSeconds":         int(cfg.TTL.Seconds()),
-		"idleTimeoutSeconds": int(cfg.IdleTimeout.Seconds()),
-		"keep":               keep,
-		"sshPublicKey":       publicKey,
-	}, &res)
+		"sshUser":                         cfg.SSHUser,
+		"sshPort":                         cfg.SSHPort,
+		"sshFallbackPorts":                cfg.SSHFallbackPorts,
+		"providerKey":                     cfg.ProviderKey,
+		"workRoot":                        cfg.WorkRoot,
+		"ttlSeconds":                      int(cfg.TTL.Seconds()),
+		"idleTimeoutSeconds":              int(cfg.IdleTimeout.Seconds()),
+		"keep":                            keep,
+		"sshPublicKey":                    publicKey,
+	}
+	if len(capacity) > 0 {
+		req["capacity"] = capacity
+	}
+	err := c.do(ctx, http.MethodPost, "/v1/leases", req, &res)
 	return res.Lease, err
 }
 

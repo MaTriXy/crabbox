@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -380,6 +381,7 @@ func TestCoordinatorCreateLeaseSendsAWSSSHCIDRs(t *testing.T) {
 		AWSSSHCIDRs        []string `json:"awsSSHCIDRs"`
 		SSHFallbackPorts   []string `json:"sshFallbackPorts"`
 		ServerTypeExplicit bool     `json:"serverTypeExplicit"`
+		Capacity           map[string]any
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/v1/leases" {
@@ -400,6 +402,12 @@ func TestCoordinatorCreateLeaseSendsAWSSSHCIDRs(t *testing.T) {
 		ServerTypeExplicit: true,
 		AWSSSHCIDRs:        []string{"198.51.100.7/32"},
 		SSHFallbackPorts:   []string{"22", "2022"},
+		Capacity: CapacityConfig{
+			Market:   "spot",
+			Strategy: "most-available",
+			Fallback: "on-demand-after-120s",
+			Hints:    true,
+		},
 	}, "ssh-ed25519 test", false, "cbx_123", "blue-crab")
 	if err != nil {
 		t.Fatal(err)
@@ -412,6 +420,61 @@ func TestCoordinatorCreateLeaseSendsAWSSSHCIDRs(t *testing.T) {
 	}
 	if !body.ServerTypeExplicit {
 		t.Fatal("serverTypeExplicit=false, want true")
+	}
+	if body.Capacity != nil {
+		t.Fatalf("default capacity fields should be omitted for mixed-version brokers: %#v", body.Capacity)
+	}
+}
+
+func TestCoordinatorCreateLeaseSendsConfiguredCapacityExtensions(t *testing.T) {
+	var body struct {
+		Capacity map[string]any
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/leases" {
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"lease":{"id":"cbx_123","provider":"aws","state":"active","host":"192.0.2.10"}}`))
+	}))
+	defer server.Close()
+
+	client := CoordinatorClient{BaseURL: server.URL, Client: server.Client()}
+	_, err := client.CreateLease(context.Background(), Config{
+		Provider: "aws",
+		Capacity: CapacityConfig{
+			Market:            "spot",
+			Strategy:          "most-available",
+			Fallback:          "on-demand-after-120s",
+			Regions:           []string{"eu-west-1", "eu-west-2"},
+			AvailabilityZones: []string{"eu-west-1a"},
+			Hints:             false,
+		},
+	}, "ssh-ed25519 test", false, "cbx_123", "blue-crab")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := stringSliceFromJSON(body.Capacity["regions"]); !reflect.DeepEqual(got, []string{"eu-west-1", "eu-west-2"}) {
+		t.Fatalf("capacity.regions=%v", got)
+	}
+	if got := stringSliceFromJSON(body.Capacity["availabilityZones"]); !reflect.DeepEqual(got, []string{"eu-west-1a"}) {
+		t.Fatalf("capacity.availabilityZones=%v", got)
+	}
+	if got, ok := body.Capacity["hints"].(bool); !ok || got {
+		t.Fatalf("capacity.hints=%#v, want false", body.Capacity["hints"])
+	}
+}
+
+func TestCoordinatorLeaseDecodesLegacyCapacityResponse(t *testing.T) {
+	var lease CoordinatorLease
+	if err := json.Unmarshal([]byte(`{"id":"cbx_123","provider":"aws","serverType":"c7a.8xlarge"}`), &lease); err != nil {
+		t.Fatal(err)
+	}
+	if lease.Market != "" || len(lease.ProvisioningAttempts) != 0 || len(lease.CapacityHints) != 0 {
+		t.Fatalf("new capacity fields should be optional: %#v", lease)
 	}
 }
 
@@ -437,6 +500,17 @@ func TestCoordinatorLeaseDecodesProvisioningAttempts(t *testing.T) {
 	if lease.Market != "on-demand" || len(lease.CapacityHints) != 1 || lease.CapacityHints[0].Region != "eu-west-2" {
 		t.Fatalf("capacity fields market=%q hints=%#v", lease.Market, lease.CapacityHints)
 	}
+}
+
+func stringSliceFromJSON(value any) []string {
+	items, _ := value.([]any)
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		if s, ok := item.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func TestCoordinatorFallbackSummary(t *testing.T) {
