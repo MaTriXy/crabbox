@@ -253,6 +253,7 @@ describe("lease config", () => {
     });
     expect(config.serverType).toBe("mac2.metal");
     expect(config.sshUser).toBe("ec2-user");
+    expect(config.workRoot).toBe("/Users/ec2-user/crabbox");
   });
 
   it("preserves exact server type requests", () => {

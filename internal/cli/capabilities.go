@@ -270,7 +270,7 @@ func vncPasswordCommand(target SSHTarget) string {
 		return powershellCommand("Get-Content -Raw -LiteralPath " + psQuote(windowsVNCPasswordPath))
 	}
 	if target.TargetOS == targetMacOS {
-		return "cat " + shellQuote(macOSVNCPasswordPath)
+		return "sudo cat " + shellQuote(macOSVNCPasswordPath)
 	}
 	return "cat " + shellQuote(vncPasswordPath)
 }

@@ -214,8 +214,10 @@ describe("cloud-init bootstrap", () => {
       ...config,
       target: "macos",
       sshUser: "ec2-user",
+      workRoot: "/Users/ec2-user/crabbox",
     });
     expect(got).toContain("#!/bin/bash");
+    expect(got).toContain("/Users/ec2-user/crabbox");
     expect(got).toContain("/var/db/crabbox/vnc.password");
     expect(got).toContain("com.apple.screensharing");
     expect(got).toContain("/usr/local/bin/crabbox-ready");

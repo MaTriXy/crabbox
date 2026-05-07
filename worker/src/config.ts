@@ -82,6 +82,7 @@ export function leaseConfig(input: LeaseRequest): LeaseConfig {
   if (!sshPublicKey) {
     throw new Error("sshPublicKey is required");
   }
+  const sshUser = input.sshUser ?? defaultSSHUser(provider, target, windowsMode);
   const tailscaleExitNode = input.tailscaleExitNode?.trim() ?? "";
   const tailscaleExitNodeAllowLanAccess = input.tailscaleExitNodeAllowLanAccess ?? false;
   if (tailscaleExitNodeAllowLanAccess && !tailscaleExitNode) {
@@ -120,18 +121,26 @@ export function leaseConfig(input: LeaseRequest): LeaseConfig {
     capacityRegions: input.capacity?.regions ?? [],
     capacityAvailabilityZones: input.capacity?.availabilityZones ?? [],
     capacityHints: input.capacity?.hints ?? true,
-    sshUser: input.sshUser ?? defaultSSHUser(provider, target, windowsMode),
+    sshUser,
     sshPort: input.sshPort ?? "2222",
     sshFallbackPorts: validPorts(input.sshFallbackPorts ?? ["22"]),
     providerKey: input.providerKey ?? "crabbox-steipete",
-    workRoot:
-      input.workRoot ??
-      (target === "windows" && windowsMode === "normal" ? "C:\\crabbox" : "/work/crabbox"),
+    workRoot: input.workRoot ?? defaultWorkRoot(target, windowsMode, sshUser),
     ttlSeconds,
     idleTimeoutSeconds,
     keep: input.keep ?? false,
     sshPublicKey,
   };
+}
+
+function defaultWorkRoot(target: TargetOS, windowsMode: WindowsMode, sshUser: string): string {
+  if (target === "macos") {
+    return `/Users/${sshUser || "ec2-user"}/crabbox`;
+  }
+  if (target === "windows" && windowsMode === "normal") {
+    return "C:\\crabbox";
+  }
+  return "/work/crabbox";
 }
 
 function defaultSSHUser(provider: Provider, target: TargetOS, windowsMode: WindowsMode): string {

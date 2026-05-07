@@ -254,9 +254,11 @@ func TestAWSUserDataMacOSProfile(t *testing.T) {
 	cfg.Provider = "aws"
 	cfg.TargetOS = targetMacOS
 	cfg.SSHUser = "ec2-user"
+	cfg.WorkRoot = defaultMacOSWorkRoot
 	got := awsUserData(cfg, "ssh-ed25519 test")
 	for _, want := range []string{
 		"#!/bin/bash",
+		defaultMacOSWorkRoot,
 		"/var/db/crabbox/vnc.password",
 		"com.apple.screensharing",
 		"/usr/local/bin/crabbox-ready",

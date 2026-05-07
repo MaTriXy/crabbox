@@ -249,6 +249,18 @@ func TestApplyTargetFlagOverridesRefreshesDefaultWorkRoot(t *testing.T) {
 			args: []string{"--windows-mode", "wsl2"},
 			want: `/custom/root`,
 		},
+		{
+			name: "linux to macos",
+			cfg: Config{
+				Provider:    "aws",
+				TargetOS:    targetLinux,
+				WindowsMode: windowsModeNormal,
+				SSHUser:     baseConfig().SSHUser,
+				WorkRoot:    defaultPOSIXWorkRoot,
+			},
+			args: []string{"--target", "macos"},
+			want: defaultMacOSWorkRoot,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -29,7 +29,9 @@ EC2 Mac requirements:
 
 Bootstrap enables Screen Sharing for `ec2-user`, sets a generated per-lease
 password, stores it at `/var/db/crabbox/vnc.password`, and keeps access behind
-the SSH tunnel. `crabbox vnc` prints:
+the SSH tunnel. Managed EC2 Mac leases use `/Users/ec2-user/crabbox` as the
+default work root because the macOS system volume is read-only. `crabbox vnc`
+prints:
 
 ```text
 macos username: ec2-user

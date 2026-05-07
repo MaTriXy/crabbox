@@ -297,6 +297,13 @@ func TestSSHTransportProbeDoesNotRequireCrabboxReady(t *testing.T) {
 	}
 }
 
+func TestSSHReadyCommandUsesAbsoluteCrabboxReadyPath(t *testing.T) {
+	got := sshReadyCommand(SSHTarget{})
+	if !strings.Contains(got, "/usr/local/bin/crabbox-ready >/tmp/crabbox-ready.log") {
+		t.Fatalf("sshReadyCommand() should use absolute crabbox-ready path: %q", got)
+	}
+}
+
 func TestSSHArgsQuoteKnownHostsPathWithSpaces(t *testing.T) {
 	got := strings.Join(sshArgs(SSHTarget{
 		User: "crabbox",

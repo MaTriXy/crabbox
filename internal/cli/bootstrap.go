@@ -392,7 +392,7 @@ func windowsSSHPortsPowerShell(cfg Config) string {
 func macOSUserData(cfg Config, _ string) string {
 	workRoot := cfg.WorkRoot
 	if workRoot == "" {
-		workRoot = "/work/crabbox"
+		workRoot = defaultMacOSWorkRoot
 	}
 	return `#!/bin/bash
 set -euxo pipefail

@@ -14,6 +14,7 @@ const (
 	windowsModeWSL2   = "wsl2"
 
 	defaultPOSIXWorkRoot   = "/work/crabbox"
+	defaultMacOSWorkRoot   = "/Users/ec2-user/crabbox"
 	defaultWindowsWorkRoot = `C:\crabbox`
 )
 
@@ -26,9 +27,6 @@ const (
 func normalizeTargetConfig(cfg *Config) {
 	cfg.TargetOS = normalizeTargetOS(cfg.TargetOS)
 	cfg.WindowsMode = normalizeWindowsMode(cfg.WindowsMode)
-	if isDefaultWorkRoot(cfg.WorkRoot) {
-		cfg.WorkRoot = defaultWorkRootForTarget(cfg.TargetOS, cfg.WindowsMode)
-	}
 	if cfg.Provider == "aws" && cfg.TargetOS == targetMacOS && cfg.SSHUser == baseConfig().SSHUser {
 		cfg.SSHUser = "ec2-user"
 	}
@@ -37,6 +35,9 @@ func normalizeTargetConfig(cfg *Config) {
 	}
 	if cfg.Static.User != "" && cfg.SSHUser == baseConfig().SSHUser {
 		cfg.SSHUser = cfg.Static.User
+	}
+	if isDefaultWorkRoot(cfg.WorkRoot) {
+		cfg.WorkRoot = defaultWorkRootForTarget(cfg.TargetOS, cfg.WindowsMode)
 	}
 	if cfg.Static.Port != "" && cfg.SSHPort == baseConfig().SSHPort {
 		cfg.SSHPort = cfg.Static.Port
@@ -48,7 +49,7 @@ func normalizeTargetConfig(cfg *Config) {
 
 func isDefaultWorkRoot(value string) bool {
 	switch value {
-	case "", defaultPOSIXWorkRoot, defaultWindowsWorkRoot:
+	case "", defaultPOSIXWorkRoot, defaultMacOSWorkRoot, defaultWindowsWorkRoot:
 		return true
 	default:
 		return false
@@ -56,6 +57,9 @@ func isDefaultWorkRoot(value string) bool {
 }
 
 func defaultWorkRootForTarget(targetOS, windowsMode string) string {
+	if targetOS == targetMacOS {
+		return defaultMacOSWorkRoot
+	}
 	if targetOS == targetWindows && windowsMode == windowsModeNormal {
 		return defaultWindowsWorkRoot
 	}

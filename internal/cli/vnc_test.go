@@ -35,7 +35,7 @@ func TestVNCPasswordCommandSupportsManagedTargets(t *testing.T) {
 	if !strings.Contains(windows, "EncodedCommand") {
 		t.Fatalf("windows password command should be encoded PowerShell: %q", windows)
 	}
-	if got := vncPasswordCommand(SSHTarget{TargetOS: targetMacOS}); got != "cat '/var/db/crabbox/vnc.password'" {
+	if got := vncPasswordCommand(SSHTarget{TargetOS: targetMacOS}); got != "sudo cat '/var/db/crabbox/vnc.password'" {
 		t.Fatalf("mac password command=%q", got)
 	}
 }
