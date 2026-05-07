@@ -62,6 +62,7 @@ type Config struct {
 	Actions            ActionsConfig
 	Blacksmith         BlacksmithConfig
 	Daytona            DaytonaConfig
+	E2B                E2BConfig
 	Islo               IsloConfig
 	Tailscale          TailscaleConfig
 	Static             StaticConfig
@@ -124,6 +125,15 @@ type DaytonaConfig struct {
 	WorkRoot         string
 	SSHGatewayHost   string
 	SSHAccessMinutes int
+}
+
+type E2BConfig struct {
+	APIKey   string
+	APIURL   string
+	Domain   string
+	Template string
+	Workdir  string
+	User     string
 }
 
 type IsloConfig struct {
@@ -259,6 +269,12 @@ func baseConfig() Config {
 			SSHGatewayHost:   "ssh.app.daytona.io",
 			SSHAccessMinutes: 30,
 		},
+		E2B: E2BConfig{
+			APIURL:   "https://api.e2b.app",
+			Domain:   "e2b.app",
+			Template: "base",
+			Workdir:  "crabbox",
+		},
 		Islo: IsloConfig{
 			BaseURL:  "https://api.islo.dev",
 			Image:    "docker.io/library/ubuntu:24.04",
@@ -307,6 +323,7 @@ type fileConfig struct {
 	Actions          *fileActionsConfig    `yaml:"actions,omitempty"`
 	Blacksmith       *fileBlacksmithConfig `yaml:"blacksmith,omitempty"`
 	Daytona          *fileDaytonaConfig    `yaml:"daytona,omitempty"`
+	E2B              *fileE2BConfig        `yaml:"e2b,omitempty"`
 	Islo             *fileIsloConfig       `yaml:"islo,omitempty"`
 	Tailscale        *fileTailscaleConfig  `yaml:"tailscale,omitempty"`
 	Static           *fileStaticConfig     `yaml:"static,omitempty"`
@@ -430,6 +447,14 @@ type fileDaytonaConfig struct {
 	WorkRoot         string `yaml:"workRoot,omitempty"`
 	SSHGatewayHost   string `yaml:"sshGatewayHost,omitempty"`
 	SSHAccessMinutes int    `yaml:"sshAccessMinutes,omitempty"`
+}
+
+type fileE2BConfig struct {
+	APIURL   string `yaml:"apiUrl,omitempty"`
+	Domain   string `yaml:"domain,omitempty"`
+	Template string `yaml:"template,omitempty"`
+	Workdir  string `yaml:"workdir,omitempty"`
+	User     string `yaml:"user,omitempty"`
 }
 
 type fileIsloConfig struct {
@@ -862,6 +887,23 @@ func applyFileConfig(cfg *Config, file fileConfig) {
 			cfg.Daytona.SSHAccessMinutes = file.Daytona.SSHAccessMinutes
 		}
 	}
+	if file.E2B != nil {
+		if file.E2B.APIURL != "" {
+			cfg.E2B.APIURL = file.E2B.APIURL
+		}
+		if file.E2B.Domain != "" {
+			cfg.E2B.Domain = file.E2B.Domain
+		}
+		if file.E2B.Template != "" {
+			cfg.E2B.Template = file.E2B.Template
+		}
+		if file.E2B.Workdir != "" {
+			cfg.E2B.Workdir = file.E2B.Workdir
+		}
+		if file.E2B.User != "" {
+			cfg.E2B.User = file.E2B.User
+		}
+	}
 	if file.Islo != nil {
 		if file.Islo.BaseURL != "" {
 			cfg.Islo.BaseURL = file.Islo.BaseURL
@@ -1056,6 +1098,12 @@ func applyEnv(cfg *Config) {
 	cfg.Daytona.WorkRoot = getenv("CRABBOX_DAYTONA_WORK_ROOT", cfg.Daytona.WorkRoot)
 	cfg.Daytona.SSHGatewayHost = getenv("CRABBOX_DAYTONA_SSH_GATEWAY_HOST", cfg.Daytona.SSHGatewayHost)
 	cfg.Daytona.SSHAccessMinutes = getenvInt("CRABBOX_DAYTONA_SSH_ACCESS_MINUTES", cfg.Daytona.SSHAccessMinutes)
+	cfg.E2B.APIKey = getenv("CRABBOX_E2B_API_KEY", getenv("E2B_API_KEY", cfg.E2B.APIKey))
+	cfg.E2B.APIURL = getenv("CRABBOX_E2B_API_URL", getenv("E2B_API_URL", cfg.E2B.APIURL))
+	cfg.E2B.Domain = getenv("CRABBOX_E2B_DOMAIN", getenv("E2B_DOMAIN", cfg.E2B.Domain))
+	cfg.E2B.Template = getenv("CRABBOX_E2B_TEMPLATE", cfg.E2B.Template)
+	cfg.E2B.Workdir = getenv("CRABBOX_E2B_WORKDIR", cfg.E2B.Workdir)
+	cfg.E2B.User = getenv("CRABBOX_E2B_USER", cfg.E2B.User)
 	cfg.Islo.APIKey = getenv("CRABBOX_ISLO_API_KEY", getenv("ISLO_API_KEY", cfg.Islo.APIKey))
 	cfg.Islo.BaseURL = getenv("CRABBOX_ISLO_BASE_URL", getenv("ISLO_BASE_URL", cfg.Islo.BaseURL))
 	cfg.Islo.Image = getenv("CRABBOX_ISLO_IMAGE", cfg.Islo.Image)
@@ -1177,6 +1225,9 @@ func serverTypeForConfig(cfg Config) string {
 	if isBlacksmithProvider(cfg.Provider) || isStaticProvider(cfg.Provider) || cfg.Provider == "islo" {
 		return ""
 	}
+	if cfg.Provider == "e2b" {
+		return blank(cfg.E2B.Template, "base")
+	}
 	if cfg.Provider == "daytona" {
 		return "snapshot"
 	}
@@ -1192,6 +1243,9 @@ func serverTypeForConfig(cfg Config) string {
 func serverTypeForProviderClass(provider, class string) string {
 	if isBlacksmithProvider(provider) || isStaticProvider(provider) || provider == "islo" {
 		return ""
+	}
+	if provider == "e2b" {
+		return "base"
 	}
 	if provider == "daytona" {
 		return "snapshot"

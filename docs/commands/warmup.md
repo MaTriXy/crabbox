@@ -15,6 +15,7 @@ crabbox warmup --actions-runner
 crabbox warmup --provider blacksmith-testbox --blacksmith-workflow .github/workflows/ci-check-testbox.yml --blacksmith-job test
 crabbox warmup --provider daytona --daytona-snapshot crabbox-ready
 crabbox warmup --provider islo --islo-image docker.io/library/ubuntu:24.04
+crabbox warmup --provider e2b --e2b-template base
 crabbox warmup --provider ssh --target macos --static-host mac-studio.local
 crabbox warmup --provider ssh --target windows --windows-mode normal --static-host win-dev.local --static-work-root 'C:\crabbox' --browser
 ```
@@ -31,6 +32,10 @@ them from output.
 With `--provider islo`, the canonical ID is
 `isb_<crabbox-sandbox-name>`. Crabbox stores a local slug, but Islo owns sandbox
 setup and command execution.
+
+With `--provider e2b`, the canonical ID is a Crabbox `cbx_...` lease backed by
+an E2B sandbox created from `e2b.template`. Crabbox stores a local slug and uses
+E2B file/process APIs for later `run` calls.
 
 With `--provider ssh`, warmup claims an existing static SSH host instead of
 creating cloud capacity. Use `--target macos`, `--target windows
@@ -77,7 +82,7 @@ On success, `warmup` prints a concise total duration line. Add `--timing-json` t
 Flags:
 
 ```text
---provider hetzner|aws|azure|ssh|blacksmith-testbox|daytona|islo
+--provider hetzner|aws|azure|ssh|blacksmith-testbox|daytona|islo|e2b
 --target linux|macos|windows
 --windows-mode normal|wsl2
 --static-host <host>
@@ -108,6 +113,11 @@ Flags:
 --blacksmith-workflow <file|name|id>
 --blacksmith-job <job>
 --blacksmith-ref <ref>
+--e2b-api-url <url>
+--e2b-domain <domain>
+--e2b-template <template-id>
+--e2b-workdir <path>
+--e2b-user <user>
 ```
 
 `--idle-timeout` releases the lease after no touch for that duration, default `30m`. `--ttl` remains the maximum wall-clock lifetime, default `90m`.

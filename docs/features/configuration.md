@@ -153,6 +153,17 @@ daytona:
   apiKey: <daytona-api-key>      # prefer DAYTONA_API_KEY env
 ```
 
+### E2B
+
+```yaml
+provider: e2b
+e2b:
+  template: base
+  workdir: crabbox
+  apiUrl: https://api.e2b.app
+  domain: e2b.app
+```
+
 ### Sync
 
 ```yaml

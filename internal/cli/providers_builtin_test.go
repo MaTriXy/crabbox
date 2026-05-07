@@ -13,6 +13,7 @@ func init() {
 	RegisterProvider(testBlacksmithProvider{})
 	RegisterProvider(testDaytonaProvider{})
 	RegisterProvider(testIsloProvider{})
+	RegisterProvider(testE2BProvider{})
 }
 
 type testAzureProvider struct{}
@@ -267,6 +268,56 @@ func (testIsloProvider) ApplyFlags(cfg *Config, fs *flag.FlagSet, values any) er
 	return nil
 }
 func (p testIsloProvider) Configure(cfg Config, rt Runtime) (Backend, error) {
+	return testDelegatedBackend{spec: p.Spec()}, nil
+}
+
+type testE2BProvider struct{}
+
+func (testE2BProvider) Name() string      { return "e2b" }
+func (testE2BProvider) Aliases() []string { return nil }
+func (testE2BProvider) Spec() ProviderSpec {
+	return ProviderSpec{
+		Name:        "e2b",
+		Kind:        ProviderKindDelegatedRun,
+		Targets:     []TargetSpec{{OS: targetLinux}},
+		Features:    nil,
+		Coordinator: CoordinatorNever,
+	}
+}
+
+type testE2BFlagValues struct {
+	Template *string
+	Workdir  *string
+}
+
+func (testE2BProvider) RegisterFlags(fs *flag.FlagSet, defaults Config) any {
+	return testE2BFlagValues{
+		Template: fs.String("e2b-template", defaults.E2B.Template, "E2B sandbox template ID"),
+		Workdir:  fs.String("e2b-workdir", defaults.E2B.Workdir, "E2B sandbox workdir"),
+	}
+}
+func (testE2BProvider) ApplyFlags(cfg *Config, fs *flag.FlagSet, values any) error {
+	if cfg.Provider == "e2b" {
+		if flagWasSet(fs, "class") {
+			return exit(2, "--class is not supported for provider=e2b")
+		}
+		if flagWasSet(fs, "type") {
+			return exit(2, "--type is not supported for provider=e2b")
+		}
+	}
+	v, ok := values.(testE2BFlagValues)
+	if !ok {
+		return nil
+	}
+	if flagWasSet(fs, "e2b-template") {
+		cfg.E2B.Template = *v.Template
+	}
+	if flagWasSet(fs, "e2b-workdir") {
+		cfg.E2B.Workdir = *v.Workdir
+	}
+	return nil
+}
+func (p testE2BProvider) Configure(cfg Config, rt Runtime) (Backend, error) {
 	return testDelegatedBackend{spec: p.Spec()}, nil
 }
 

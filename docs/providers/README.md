@@ -18,6 +18,7 @@ static SSH provider for existing machines.
 | [Blacksmith Testbox](blacksmith-testbox.md) | delegated run | Linux | existing Blacksmith Testbox workflows |
 | [Daytona](daytona.md) | hybrid delegated run + SSH | Linux | Daytona snapshot sandboxes |
 | [Islo](islo.md) | delegated run | Linux | Islo-owned sandbox execution |
+| [E2B](e2b.md) | delegated run | Linux | E2B-owned sandbox execution |
 
 ## Shared Rules
 
@@ -52,6 +53,7 @@ Delegated providers do not use the Crabbox coordinator:
 - Blacksmith uses the authenticated Blacksmith CLI.
 - Daytona uses Daytona API and SDK/toolbox APIs.
 - Islo uses the Islo API and SDK auth.
+- E2B uses E2B's sandbox REST and envd APIs.
 
 ## Feature Matrix
 
@@ -64,6 +66,7 @@ Delegated providers do not use the Crabbox coordinator:
 | Blacksmith Testbox | yes | yes | no | no | no | yes |
 | Daytona | yes | yes | yes | no | archive via Daytona toolbox | no |
 | Islo | yes | yes | no | no | no | yes |
+| E2B | yes | yes | no | no | archive via E2B envd | no |
 
 Actions runner hydration requires a normal SSH lease on Linux and is core-over-SSH.
 Use AWS, Hetzner, or Static SSH for that path.

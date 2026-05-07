@@ -9,6 +9,7 @@ crabbox status --id blue-lobster --wait --wait-timeout 10m
 crabbox status --id blue-lobster --json
 crabbox status --provider daytona --id blue-lobster
 crabbox status --provider islo --id blue-lobster
+crabbox status --provider e2b --id blue-lobster
 crabbox status --provider ssh --target macos --static-host mac-studio.local
 ```
 
@@ -17,7 +18,10 @@ crabbox status --provider ssh --target macos --static-host mac-studio.local
 normalized Crabbox status view from `blacksmith testbox list --all`. In
 `daytona` mode it resolves Crabbox labels and sandbox state through Daytona
 APIs. In `islo` mode it accepts an `isb_...` ID, Crabbox-created sandbox name,
-or local slug and renders SDK status through the core status view. In
+or local slug and renders SDK status through the core status view. In `e2b`
+mode it accepts a Crabbox lease ID, local slug, or Crabbox-owned E2B sandbox ID
+in raw or `e2b_<sandboxID>` form and renders E2B sandbox state through the core
+status view. In
 `provider=ssh` mode `--id` is optional and resolves the configured static target
 or local claim. Plain status is read-only; `--wait` touches the lease while
 waiting for Crabbox brokered leases.
@@ -26,7 +30,7 @@ Flags:
 
 ```text
 --id <lease-id-or-slug>
---provider hetzner|aws|azure|ssh|blacksmith-testbox|daytona|islo
+--provider hetzner|aws|azure|ssh|blacksmith-testbox|daytona|islo|e2b
 --target linux|macos|windows
 --windows-mode normal|wsl2
 --static-host <host>
@@ -37,6 +41,8 @@ Flags:
 --wait
 --wait-timeout <duration>
 --json
+--e2b-api-url <url>
+--e2b-domain <domain>
 ```
 
 Human and JSON output include the selected network. With Tailscale metadata,

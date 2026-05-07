@@ -44,6 +44,15 @@ func clearConfigEnv(t *testing.T) {
 		"CRABBOX_DAYTONA_WORK_ROOT",
 		"CRABBOX_DAYTONA_SSH_GATEWAY_HOST",
 		"CRABBOX_DAYTONA_SSH_ACCESS_MINUTES",
+		"CRABBOX_E2B_API_KEY",
+		"E2B_API_KEY",
+		"CRABBOX_E2B_API_URL",
+		"E2B_API_URL",
+		"CRABBOX_E2B_DOMAIN",
+		"E2B_DOMAIN",
+		"CRABBOX_E2B_TEMPLATE",
+		"CRABBOX_E2B_WORKDIR",
+		"CRABBOX_E2B_USER",
 		"CRABBOX_ISLO_API_KEY",
 		"ISLO_API_KEY",
 		"CRABBOX_ISLO_BASE_URL",
@@ -146,6 +155,12 @@ daytona:
   workRoot: /home/daytona/crabbox
   sshGatewayHost: ssh.daytona.example.test
   sshAccessMinutes: 12
+e2b:
+  apiUrl: https://api.e2b.example.test
+  domain: e2b.example.test
+  template: crabbox-ready
+  workdir: work/repo
+  user: sandbox
 islo:
   baseUrl: https://islo.example.test
   image: docker.io/library/ubuntu:24.04
@@ -248,6 +263,9 @@ ssh:
 	if cfg.Daytona.APIURL != "https://daytona.example.test/api" || cfg.Daytona.Snapshot != "crabbox-ready" || cfg.Daytona.Target != "us" || cfg.Daytona.User != "daytona" || cfg.Daytona.WorkRoot != "/home/daytona/crabbox" || cfg.Daytona.SSHGatewayHost != "ssh.daytona.example.test" || cfg.Daytona.SSHAccessMinutes != 12 {
 		t.Fatalf("daytona config not loaded: %#v", cfg.Daytona)
 	}
+	if cfg.E2B.APIURL != "https://api.e2b.example.test" || cfg.E2B.Domain != "e2b.example.test" || cfg.E2B.Template != "crabbox-ready" || cfg.E2B.Workdir != "work/repo" || cfg.E2B.User != "sandbox" {
+		t.Fatalf("e2b config not loaded: %#v", cfg.E2B)
+	}
 	if cfg.Islo.BaseURL != "https://islo.example.test" || cfg.Islo.Image != "docker.io/library/ubuntu:24.04" || cfg.Islo.Workdir != "crabbox" || cfg.Islo.GatewayProfile != "default" || cfg.Islo.SnapshotName != "snap-ready" || cfg.Islo.VCPUs != 4 || cfg.Islo.MemoryMB != 8192 || cfg.Islo.DiskGB != 40 {
 		t.Fatalf("islo config not loaded: %#v", cfg.Islo)
 	}
@@ -336,6 +354,15 @@ func TestEnvOverridesConfig(t *testing.T) {
 	t.Setenv("CRABBOX_DAYTONA_WORK_ROOT", "/home/daytona/env")
 	t.Setenv("CRABBOX_DAYTONA_SSH_GATEWAY_HOST", "ssh.env.example")
 	t.Setenv("CRABBOX_DAYTONA_SSH_ACCESS_MINUTES", "44")
+	t.Setenv("E2B_API_KEY", "e2b-api-file")
+	t.Setenv("CRABBOX_E2B_API_KEY", "e2b-api-env")
+	t.Setenv("E2B_API_URL", "https://api.e2b-file.example")
+	t.Setenv("CRABBOX_E2B_API_URL", "https://api.e2b-env.example")
+	t.Setenv("E2B_DOMAIN", "e2b-file.example")
+	t.Setenv("CRABBOX_E2B_DOMAIN", "e2b-env.example")
+	t.Setenv("CRABBOX_E2B_TEMPLATE", "template-env")
+	t.Setenv("CRABBOX_E2B_WORKDIR", "env-workdir")
+	t.Setenv("CRABBOX_E2B_USER", "sandbox-env")
 	t.Setenv("ISLO_API_KEY", "islo-api-file")
 	t.Setenv("CRABBOX_ISLO_API_KEY", "islo-api-env")
 	t.Setenv("ISLO_BASE_URL", "https://islo-file.example")
@@ -385,6 +412,9 @@ func TestEnvOverridesConfig(t *testing.T) {
 	}
 	if cfg.Daytona.APIKey != "daytona-api-env" || cfg.Daytona.APIURL != "https://daytona-env.example/api" || cfg.Daytona.Snapshot != "snapshot-env" || cfg.Daytona.Target != "target-env" || cfg.Daytona.User != "daytona-env-user" || cfg.Daytona.WorkRoot != "/home/daytona/env" || cfg.Daytona.SSHGatewayHost != "ssh.env.example" || cfg.Daytona.SSHAccessMinutes != 44 {
 		t.Fatalf("unexpected daytona env: %#v", cfg.Daytona)
+	}
+	if cfg.E2B.APIKey != "e2b-api-env" || cfg.E2B.APIURL != "https://api.e2b-env.example" || cfg.E2B.Domain != "e2b-env.example" || cfg.E2B.Template != "template-env" || cfg.E2B.Workdir != "env-workdir" || cfg.E2B.User != "sandbox-env" {
+		t.Fatalf("unexpected e2b env: %#v", cfg.E2B)
 	}
 	if cfg.Islo.APIKey != "islo-api-env" || cfg.Islo.BaseURL != "https://islo-env.example" || cfg.Islo.Image != "ubuntu:env" || cfg.Islo.Workdir != "env-workdir" || cfg.Islo.GatewayProfile != "env-gateway" || cfg.Islo.SnapshotName != "env-snapshot" || cfg.Islo.VCPUs != 8 || cfg.Islo.MemoryMB != 16384 || cfg.Islo.DiskGB != 80 {
 		t.Fatalf("unexpected islo env: %#v", cfg.Islo)

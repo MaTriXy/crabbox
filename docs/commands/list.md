@@ -9,6 +9,7 @@ crabbox list --provider ssh --target macos --static-host mac-studio.local
 crabbox list --provider blacksmith-testbox
 crabbox list --provider daytona
 crabbox list --provider islo
+crabbox list --provider e2b
 crabbox list --json
 ```
 
@@ -29,13 +30,13 @@ owners as `stuck`, exposes a copyable local stop command, and links each row to
 a visibility-only runner detail page. Missing runners from later syncs are
 marked stale rather than treated as Crabbox leases.
 
-In `daytona` and `islo` modes, rendering is core-owned: human output and `--json`
-use the normalized Crabbox lease view.
+In `daytona`, `islo`, and `e2b` modes, rendering is core-owned: human output
+and `--json` use the normalized Crabbox lease view.
 
 Flags:
 
 ```text
---provider hetzner|aws|azure|ssh|blacksmith-testbox|daytona|islo
+--provider hetzner|aws|azure|ssh|blacksmith-testbox|daytona|islo|e2b
 --target linux|macos|windows
 --windows-mode normal|wsl2
 --static-host <host>
@@ -43,4 +44,6 @@ Flags:
 --static-port <port>
 --static-work-root <path>
 --json
+--e2b-api-url <url>
+--e2b-domain <domain>
 ```

@@ -15,6 +15,7 @@ crabbox run --id cbx_abcdef123456 --junit junit.xml -- go test ./...
 crabbox run --provider blacksmith-testbox --blacksmith-workflow .github/workflows/ci-check-testbox.yml --blacksmith-job test -- pnpm test
 crabbox run --provider daytona --daytona-snapshot crabbox-ready -- pnpm test
 crabbox run --provider islo --islo-image docker.io/library/ubuntu:24.04 -- pnpm test
+crabbox run --provider e2b --e2b-template base -- pnpm test
 crabbox run --provider ssh --target macos --static-host mac-studio.local -- xcodebuild test
 crabbox run --provider ssh --target windows --windows-mode normal --static-host win-dev.local -- dotnet test
 crabbox run --provider ssh --target windows --windows-mode normal --static-host win-dev.local --shell 'Write-Output ("BROWSER=" + $env:BROWSER)'
@@ -34,6 +35,12 @@ With `--provider islo`, `--id` accepts an `isb_<crabbox-sandbox-name>` lease ID,
 a Crabbox-created sandbox name, or a local Crabbox slug. Islo owns sandbox
 workspace setup and command execution, so sync is delegated and the final timing
 summary reports `sync=delegated`.
+
+With `--provider e2b`, `--id` accepts a Crabbox `cbx_...` lease ID, local slug,
+or Crabbox-owned E2B sandbox ID in raw or `e2b_<sandboxID>` form. Crabbox uploads
+the sync archive through E2B file APIs, extracts it in the sandbox, and runs the
+command through E2B process APIs. The final timing summary reports
+`sync=delegated`.
 
 When the lease has been hydrated by `crabbox actions hydrate`, `run` reads the remote marker under `$HOME/.crabbox/actions`, syncs into the workflow's `$GITHUB_WORKSPACE`, and sources the non-secret env file written by the workflow. That preserves the setup the workflow performed: checkout path, installed dependencies, service containers, caches, runner temp/toolcache paths, and any project-specific preparation. GitHub secrets and OIDC request tokens remain workflow-step scoped unless the project explicitly persists its own short-lived credentials.
 
@@ -89,7 +96,7 @@ Flags:
 
 ```text
 --id <lease-id-or-slug>
---provider hetzner|aws|azure|ssh|blacksmith-testbox|daytona|islo
+--provider hetzner|aws|azure|ssh|blacksmith-testbox|daytona|islo|e2b
 --target linux|macos|windows
 --windows-mode normal|wsl2
 --static-host <host>
@@ -126,6 +133,11 @@ Flags:
 --blacksmith-workflow <file|name|id>
 --blacksmith-job <job>
 --blacksmith-ref <ref>
+--e2b-api-url <url>
+--e2b-domain <domain>
+--e2b-template <template-id>
+--e2b-workdir <path>
+--e2b-user <user>
 ```
 
 `--idle-timeout` controls inactivity expiry, default `30m`. `--ttl` remains the maximum wall-clock lifetime, default `90m`.
