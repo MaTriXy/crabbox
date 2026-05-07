@@ -89,6 +89,14 @@ webvnc: https://crabbox.openclaw.ai/portal/leases/cbx_.../vnc#password=...
 fallback: crabbox vnc --provider aws --target linux --network tailscale --id cbx_... --open
 ```
 
+When a layer is unhealthy, the CLI prints `problem:`, optional `detail:`, and
+one or more exact `rescue:` commands in the command output, not only in docs.
+Common problems include `VNC bridge disconnected`, `WebVNC daemon not running`,
+`WebVNC viewer already active`, and `VNC target unreachable`. If the browser
+portal path looks unhealthy but the target VNC service is reachable, the output
+also prints the native `crabbox vnc ... --open` fallback command with the same
+provider/target/network flags.
+
 Use `crabbox webvnc reset --id <lease> --open` when the portal is stuck on a
 stale bridge/viewer/session. Reset closes only that lease's coordinator
 WebVNC sockets, stops only that lease's local daemon pid after verifying it is
@@ -108,8 +116,9 @@ flow redirects first, the page may still prompt for the VNC password; use the
 password printed by the command. If an old browser tab is retrying with a stale
 fragment, close it before opening the new bridge URL.
 
-The portal page may show `waiting for bridge` until the local command has
-connected. If you opened the portal first, start:
+The portal page may show `WebVNC daemon not running` or `waiting for VNC
+bridge` until the local command has connected. If you opened the portal first,
+start:
 
 ```sh
 crabbox webvnc --id <lease-id-or-slug>
@@ -182,14 +191,15 @@ The lease is reachable over SSH, but the desktop service is not ready or was not
 provisioned. Create the lease with `--desktop`, or wait for bootstrap to finish
 and retry.
 
-The portal keeps saying `waiting for bridge`
+The portal keeps saying `WebVNC daemon not running` or `waiting for VNC bridge`
 
 The browser can reach the coordinator, but no local bridge is currently paired
-with that lease. Start or restart `crabbox webvnc --id <lease>` locally and keep
-the process running. If the command is still running, wait for the portal retry
-or reload the browser tab.
+with that lease. Start or restart `crabbox webvnc daemon start --id <lease>
+--open`, or run `crabbox webvnc reset --id <lease> --open` when stale tabs or
+session state are likely. If the command is still running, wait for the portal
+retry or reload the browser tab.
 
-Another viewer is active
+`WebVNC viewer already active`
 
 Close old WebVNC tabs first. If the portal still reports a stale viewer, run:
 

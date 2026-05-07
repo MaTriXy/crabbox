@@ -133,6 +133,14 @@ lease's desktop session, VNC service, input tooling, browser binary, ffmpeg,
 screen geometry, and screenshot capture, then separately reports WebVNC
 bridge/viewer status with one-line repair suggestions.
 
+Failure output is designed for rescue-first debugging. When a desktop command
+cannot prove the expected state, Crabbox prints the failed layer as
+`problem: browser not launched`, `problem: input stack dead`, `problem: VNC
+bridge disconnected`, `problem: WebVNC daemon not running`, or similar, followed
+by an exact `rescue:` command. WebVNC status/reset also prints the exact native
+`crabbox vnc ... --open` fallback when the native viewer is the better next
+step.
+
 Use first-class input helpers instead of hand-rolled `xdotool`:
 
 ```sh
@@ -173,6 +181,9 @@ Managed VNC is tunnel-first:
 - `crabbox webvnc reset` closes only the selected lease's WebVNC sockets,
   stops only that lease's verified local WebVNC daemon, restarts the target
   desktop/VNC services, then prints the fresh portal URL.
+- WebVNC and desktop commands print rescue commands inline when the bridge,
+  viewer, browser launch, VNC target, or input stack fails, so operators do not
+  need to dig through troubleshooting docs during a demo.
 
 Crabbox does not bind managed VNC directly to a public IP or Tailscale 100.x
 address. Static hosts can expose direct `host:5900` only when the operator has

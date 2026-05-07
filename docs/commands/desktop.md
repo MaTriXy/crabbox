@@ -48,6 +48,14 @@ clipboard tool, browser binary, `ffmpeg`, screen size, screenshot capture, and
 WebVNC bridge/viewer state. Failures include a one-line repair suggestion so
 you can tell session bugs from WebVNC/browser-portal bugs.
 
+Desktop launch and input failures now surface the failing layer directly in the
+CLI output. For example, a missing visible browser reports `problem: browser not
+launched`, a dead input path reports `problem: input stack dead`, and a broken
+portal path reports `problem: VNC bridge disconnected` or `problem: WebVNC
+daemon not running`. The same output includes exact `rescue:` commands such as
+`crabbox desktop doctor --id <lease>` or `crabbox webvnc reset --id <lease>
+--open`.
+
 Input helpers also operate on the selected lease over SSH without repo sync.
 Use them instead of hand-written `xdotool` snippets. `desktop type` uses raw
 `xdotool type` only for simple alphanumeric text; text with emails, passwords,
