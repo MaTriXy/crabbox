@@ -103,6 +103,13 @@ connects to the coordinator with a one-use bridge ticket, and the browser uses
 bundled noVNC from the authenticated portal. The portal does not connect to the
 runner by itself; the local bridge must keep running.
 
+The portal toolbar supports explicit clipboard exchange. Paste reads the local
+browser clipboard, forwards it to the remote VNC server, and sends the target
+paste shortcut. Copy-remote is enabled after the remote server publishes
+clipboard text and then writes that text to the local browser clipboard on
+click; browsers generally block fully automatic clipboard writes without a user
+gesture.
+
 Use `crabbox screenshot` when you need a PNG without taking over the session:
 
 ```sh

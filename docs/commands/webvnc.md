@@ -122,6 +122,14 @@ preloads the per-lease password in the local browser URL fragment. Use native
 VNC only as the fallback printed by `crabbox webvnc status` or
 `crabbox webvnc reset`.
 
+The WebVNC toolbar includes clipboard controls. The paste control reads the
+local browser clipboard, sends it through noVNC, and then sends the target paste
+shortcut: Command-V for macOS targets, Ctrl-V for Linux and Windows targets.
+When the remote VNC server publishes clipboard text, the copy-remote control is
+enabled; click it to write that remote text into the local browser clipboard.
+Browsers require a user gesture for clipboard writes, so remote-to-local copy is
+explicit instead of fully automatic.
+
 ## Flags
 
 Flags:
