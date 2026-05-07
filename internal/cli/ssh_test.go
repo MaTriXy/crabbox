@@ -270,6 +270,15 @@ func TestSSHArgsAuthSecretDisablesControlMaster(t *testing.T) {
 	}
 }
 
+func TestShouldRetrySSHPortOnlyForTransportExit(t *testing.T) {
+	if !shouldRetrySSHPort(exec.Command("sh", "-c", "exit 255").Run()) {
+		t.Fatal("ssh transport exit 255 should retry fallback ports")
+	}
+	if shouldRetrySSHPort(exec.Command("sh", "-c", "exit 7").Run()) {
+		t.Fatal("remote command failure should not retry fallback ports")
+	}
+}
+
 func TestSSHCommandLineRedactsSecretAuthUser(t *testing.T) {
 	target := SSHTarget{
 		User:       "tok_live_secret",

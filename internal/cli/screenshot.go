@@ -96,18 +96,32 @@ func captureDesktopScreenshot(ctx context.Context, target SSHTarget, outputPath 
 
 func runSSHToWriter(ctx context.Context, target SSHTarget, remote string, stdout io.Writer) error {
 	remote = wrapRemoteForTarget(target, remote)
-	cmd := exec.CommandContext(ctx, "ssh", sshArgs(target, remote)...)
-	cmd.Stdout = stdout
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		message := strings.TrimSpace(stderr.String())
-		if message != "" {
-			return fmt.Errorf("%w: %s", err, message)
+	var lastErr error
+	var lastMessage string
+	for _, port := range sshPortCandidates(target.Port, target.FallbackPorts) {
+		probe := target
+		probe.Port = port
+		cmd := exec.CommandContext(ctx, "ssh", sshArgs(probe, remote)...)
+		cmd.Stdout = stdout
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			lastErr = err
+			lastMessage = strings.TrimSpace(stderr.String())
+			if shouldRetrySSHPort(err) {
+				continue
+			}
+			if lastMessage != "" {
+				return fmt.Errorf("%w: %s", err, lastMessage)
+			}
+			return err
 		}
-		return err
+		return nil
 	}
-	return nil
+	if lastMessage != "" {
+		return fmt.Errorf("%w: %s", lastErr, lastMessage)
+	}
+	return lastErr
 }
 
 func screenshotRemoteCommand(target SSHTarget) string {

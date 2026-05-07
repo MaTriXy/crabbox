@@ -233,27 +233,65 @@ func runSSHQuiet(ctx context.Context, target SSHTarget, remote string) error {
 
 func runSSHQuietWithOptions(ctx context.Context, target SSHTarget, remote, connectTimeout, connectionAttempts string) error {
 	remote = wrapRemoteForTarget(target, remote)
-	cmd := exec.CommandContext(ctx, "ssh", sshArgsWithOptions(target, remote, connectTimeout, connectionAttempts)...)
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
-	return cmd.Run()
+	var lastErr error
+	for _, port := range sshPortCandidates(target.Port, target.FallbackPorts) {
+		probe := target
+		probe.Port = port
+		cmd := exec.CommandContext(ctx, "ssh", sshArgsWithOptions(probe, remote, connectTimeout, connectionAttempts)...)
+		cmd.Stdout = io.Discard
+		cmd.Stderr = io.Discard
+		err := cmd.Run()
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if !shouldRetrySSHPort(err) {
+			return err
+		}
+	}
+	return lastErr
 }
 
 func runSSHOutput(ctx context.Context, target SSHTarget, remote string) (string, error) {
 	remote = wrapRemoteForTarget(target, remote)
-	cmd := exec.CommandContext(ctx, "ssh", sshArgs(target, remote)...)
-	out, err := cmd.Output()
-	if err != nil {
-		return "", err
+	var lastOut []byte
+	var lastErr error
+	for _, port := range sshPortCandidates(target.Port, target.FallbackPorts) {
+		probe := target
+		probe.Port = port
+		cmd := exec.CommandContext(ctx, "ssh", sshArgs(probe, remote)...)
+		out, err := cmd.Output()
+		if err == nil {
+			return strings.TrimSpace(string(out)), nil
+		}
+		lastOut = out
+		lastErr = err
+		if !shouldRetrySSHPort(err) {
+			return "", err
+		}
 	}
-	return strings.TrimSpace(string(out)), nil
+	return strings.TrimSpace(string(lastOut)), lastErr
 }
 
 func runSSHCombinedOutput(ctx context.Context, target SSHTarget, remote string) (string, error) {
 	remote = wrapRemoteForTarget(target, remote)
-	cmd := exec.CommandContext(ctx, "ssh", sshArgs(target, remote)...)
-	out, err := cmd.CombinedOutput()
-	return strings.TrimSpace(string(out)), err
+	var lastOut []byte
+	var lastErr error
+	for _, port := range sshPortCandidates(target.Port, target.FallbackPorts) {
+		probe := target
+		probe.Port = port
+		cmd := exec.CommandContext(ctx, "ssh", sshArgs(probe, remote)...)
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			return strings.TrimSpace(string(out)), nil
+		}
+		lastOut = out
+		lastErr = err
+		if !shouldRetrySSHPort(err) {
+			return strings.TrimSpace(string(out)), err
+		}
+	}
+	return strings.TrimSpace(string(lastOut)), lastErr
 }
 
 func runSSHInputQuiet(ctx context.Context, target SSHTarget, remote, input string) error {
@@ -262,11 +300,31 @@ func runSSHInputQuiet(ctx context.Context, target SSHTarget, remote, input strin
 
 func runSSHInput(ctx context.Context, target SSHTarget, remote string, input io.Reader, stdout, stderr io.Writer) error {
 	remote = wrapRemoteForTarget(target, remote)
-	cmd := exec.CommandContext(ctx, "ssh", sshArgs(target, remote)...)
-	cmd.Stdin = input
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	return cmd.Run()
+	if input == nil {
+		input = strings.NewReader("")
+	}
+	data, err := io.ReadAll(input)
+	if err != nil {
+		return err
+	}
+	var lastErr error
+	for _, port := range sshPortCandidates(target.Port, target.FallbackPorts) {
+		probe := target
+		probe.Port = port
+		cmd := exec.CommandContext(ctx, "ssh", sshArgs(probe, remote)...)
+		cmd.Stdin = bytes.NewReader(data)
+		cmd.Stdout = stdout
+		cmd.Stderr = stderr
+		err := cmd.Run()
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if !shouldRetrySSHPort(err) {
+			return err
+		}
+	}
+	return lastErr
 }
 
 func runSSHStream(ctx context.Context, target SSHTarget, remote string, stdout, stderr io.Writer) int {
@@ -289,6 +347,10 @@ func runSSHStream(ctx context.Context, target SSHTarget, remote string, stdout, 
 
 func sshArgs(target SSHTarget, remote string) []string {
 	return sshArgsWithOptions(target, remote, "10", "3")
+}
+
+func shouldRetrySSHPort(err error) bool {
+	return exitCode(err) == 255
 }
 
 func sshArgsWithOptions(target SSHTarget, remote, connectTimeout, connectionAttempts string) []string {

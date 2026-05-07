@@ -129,6 +129,9 @@ func (a App) resolveNetworkLeaseTarget(ctx context.Context, cfg Config, id strin
 		return Server{}, SSHTarget{}, "", err
 	}
 	target = resolved.Target
+	if target.Host != "" {
+		_ = probeSSHTransport(ctx, &target, 4*time.Second)
+	}
 	if printFallback && resolved.FallbackReason != "" {
 		fmt.Fprintf(a.Stderr, "network fallback %s\n", resolved.FallbackReason)
 	}
