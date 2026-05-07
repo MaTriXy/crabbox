@@ -225,7 +225,10 @@ Before tagging a release:
 - Live smoke at least one coordinator-backed `crabbox run`, then verify
   `crabbox attach`, `crabbox events`, `crabbox logs`, and lease cleanup.
 - Push, pull, and wait for CI green on the release commit.
-- Tag and push `vX.Y.Z`, then wait for the release workflow.
+- Tag and push `vX.Y.Z`, then wait for the release workflow. The workflow
+  publishes GitHub release assets and directly pushes the generated
+  `Formula/crabbox.rb` update to `openclaw/homebrew-tap` with
+  `HOMEBREW_TAP_GITHUB_TOKEN`; missing tap access is a release failure.
 - Verify the GitHub release assets and Homebrew formula update.
 - `brew update`, install or upgrade `openclaw/tap/crabbox`, run
   `crabbox --version`, and run a short live smoke from the installed binary.
