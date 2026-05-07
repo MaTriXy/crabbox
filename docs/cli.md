@@ -36,6 +36,12 @@ crabbox config set-broker --url <url> --token-stdin [--provider hetzner|aws]
 crabbox warmup [--provider hetzner|aws|ssh|blacksmith-testbox|daytona|islo] [--target linux|macos|windows] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--profile <name>] [--idle-timeout <duration>] [--timing-json]
 crabbox run [--id <lease-id-or-slug>] [--provider hetzner|aws|ssh|blacksmith-testbox|daytona|islo] [--target linux|macos|windows] [--windows-mode normal|wsl2] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--shell] [--checksum] [--debug] [--force-sync-large] [--timing-json] [--blacksmith-workflow <workflow>] -- <command...>
 crabbox desktop launch --id <lease-id-or-slug> [--browser] [--url <url>] [--egress <profile>] [--webvnc] [--open] [-- <command...>]
+crabbox desktop doctor --id <lease-id-or-slug> [--network auto|tailscale|public]
+crabbox desktop click --id <lease-id-or-slug> --x <n> --y <n> [--network auto|tailscale|public]
+crabbox desktop paste --id <lease-id-or-slug> --text <text> [--network auto|tailscale|public]
+crabbox desktop paste --id <lease-id-or-slug> [--network auto|tailscale|public] < input.txt
+crabbox desktop type --id <lease-id-or-slug> --text <text> [--network auto|tailscale|public]
+crabbox desktop key --id <lease-id-or-slug> <keys> [--network auto|tailscale|public]
 crabbox code --id <lease-id-or-slug> [--open]
 crabbox egress start --id <lease-id-or-slug> [--profile <name>|--allow <hosts>] [--listen <addr>] [--coordinator <url>] [--daemon]
 crabbox egress host --id <lease-id-or-slug> [--profile <name>|--allow <hosts>]
@@ -65,6 +71,11 @@ crabbox admin delete <lease-id-or-slug> --force
 crabbox ssh --id <lease-id-or-slug> [--network auto|tailscale|public]
 crabbox vnc --id <lease-id-or-slug> [--network auto|tailscale|public] [--open]
 crabbox webvnc --id <lease-id-or-slug> [--network auto|tailscale|public] [--open]
+crabbox webvnc daemon start --id <lease-id-or-slug> [--network auto|tailscale|public] [--open]
+crabbox webvnc daemon status --id <lease-id-or-slug>
+crabbox webvnc daemon stop --id <lease-id-or-slug>
+crabbox webvnc status --id <lease-id-or-slug> [--network auto|tailscale|public]
+crabbox webvnc reset --id <lease-id-or-slug> [--network auto|tailscale|public] [--open]
 crabbox inspect --id <lease-id-or-slug> [--network auto|tailscale|public] [--json]
 crabbox stop <lease-id-or-slug>
 crabbox cleanup [--dry-run]
@@ -93,8 +104,13 @@ crabbox warmup --desktop --browser
 crabbox run --id blue-lobster -- pnpm test:changed
 crabbox vnc --id blue-lobster --open
 crabbox webvnc --id blue-lobster --open
+crabbox webvnc status --id blue-lobster
+crabbox webvnc daemon start --id blue-lobster --open
 crabbox code --id blue-lobster --open
 crabbox desktop launch --id blue-lobster --browser --url https://example.com --webvnc --open
+crabbox desktop doctor --id blue-lobster
+crabbox desktop paste --id blue-lobster --text "peter@example.com"
+crabbox desktop key --id blue-lobster ctrl+l
 crabbox egress start --id blue-lobster --profile discord --daemon
 crabbox desktop launch --id blue-lobster --browser --url https://discord.com/login --egress discord --webvnc --open
 crabbox egress status --id blue-lobster

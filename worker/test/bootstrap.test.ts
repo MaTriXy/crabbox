@@ -119,7 +119,9 @@ describe("cloud-init bootstrap", () => {
     expect(got).toContain("apt-cache show chromium-browser");
     expect(got).toContain("/etc/opt/chrome/policies/managed/crabbox.json");
     expect(got).toContain("/usr/local/bin/crabbox-browser");
-    expect(got).toContain("--no-first-run --no-default-browser-check --disable-default-apps");
+    expect(got).toContain(
+      "--no-first-run --no-default-browser-check --disable-default-apps --window-size=1500,900 --window-position=80,80",
+    );
     expect(got).toContain("/var/lib/crabbox/browser.env");
     expect(got).toContain('test -x "$BROWSER"');
     expect(got).toContain('"$BROWSER" --version >/dev/null');
@@ -127,7 +129,7 @@ describe("cloud-init bootstrap", () => {
       `printf '%s\\n' '{"DefaultBrowserSettingEnabled":false,"MetricsReportingEnabled":false,"PromotionalTabsEnabled":false}' > /etc/opt/chrome/policies/managed/crabbox.json`,
     );
     expect(got).toContain(
-      `printf '%s\\n' '#!/bin/sh' "exec \\"$browser_path\\" --no-first-run --no-default-browser-check --disable-default-apps \\"\\$@\\"" > "$browser_wrapper"`,
+      `printf '%s\\n' '#!/bin/sh' "exec \\"$browser_path\\" --no-first-run --no-default-browser-check --disable-default-apps --window-size=1500,900 --window-position=80,80 \\"\\$@\\"" > "$browser_wrapper"`,
     );
     expect(got).not.toContain("<<'EOF'");
     expect(got).not.toContain("<<EOF");

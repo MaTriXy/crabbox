@@ -1565,7 +1565,15 @@ describe("fleet lease identity and idle", () => {
     expect(pageBody).toContain("WebVNC blue-lobster");
     expect(pageBody).toContain("function scheduleRetry");
     expect(pageBody).toContain("/portal/leases/cbx_000000000001/vnc/status");
+    expect(pageBody).toContain("vnc-copy-remote");
+    expect(pageBody).toContain("vnc-paste");
     expect(pageBody).toContain("vnc-copy");
+    expect(pageBody).toContain('addEventListener("clipboard"');
+    expect(pageBody).toContain("remote clipboard ready");
+    expect(pageBody).toContain("clipboardPasteFrom");
+    expect(pageBody).toContain('target === "macos"');
+    expect(pageBody).toContain("MetaLeft");
+    expect(pageBody).toContain("ControlLeft");
     expect(pageBody).toContain("position:sticky");
     expect(pageBody).toContain('data-provider="hetzner"');
     expect(pageBody).toContain('data-target="linux"');
@@ -1580,11 +1588,37 @@ describe("fleet lease identity and idle", () => {
     );
     expect(status.status).toBe(200);
     await expect(status.json()).resolves.toMatchObject({
+      leaseID: "cbx_000000000001",
+      slug: "blue-lobster",
       bridgeConnected: false,
       viewerConnected: false,
       command: "crabbox webvnc --provider hetzner --target linux --id blue-lobster --open",
+      events: [],
       message:
         "no bridge connected; run: crabbox webvnc --provider hetzner --target linux --id blue-lobster --open",
+    });
+
+    const apiStatus = await fleet.fetch(
+      request("GET", "/v1/leases/blue-lobster/webvnc/status", { headers }),
+    );
+    expect(apiStatus.status).toBe(200);
+    await expect(apiStatus.json()).resolves.toMatchObject({
+      leaseID: "cbx_000000000001",
+      bridgeConnected: false,
+      viewerConnected: false,
+      events: [],
+    });
+
+    const reset = await fleet.fetch(
+      request("POST", "/v1/leases/blue-lobster/webvnc/reset", { headers, body: {} }),
+    );
+    expect(reset.status).toBe(200);
+    await expect(reset.json()).resolves.toMatchObject({
+      leaseID: "cbx_000000000001",
+      bridgeWasConnected: false,
+      viewerWasConnected: false,
+      command: "crabbox webvnc --provider hetzner --target linux --id blue-lobster --open",
+      events: [{ event: "reset", reason: "WebVNC reset requested" }],
     });
 
     const plain = await fleet.fetch(

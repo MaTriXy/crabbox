@@ -11,7 +11,12 @@ crabbox warmup --desktop
 crabbox webvnc --id blue-lobster
 crabbox webvnc --id blue-lobster --network tailscale
 crabbox webvnc --id blue-lobster --open
-crabbox webvnc --id blue-lobster --daemon --open
+crabbox webvnc daemon start --id blue-lobster --open
+crabbox webvnc daemon status --id blue-lobster
+crabbox webvnc daemon stop --id blue-lobster
+crabbox webvnc status --id blue-lobster
+crabbox webvnc status --id blue-lobster --network tailscale
+crabbox webvnc reset --id blue-lobster --open
 ```
 
 ## How It Works
@@ -53,11 +58,42 @@ This keeps the security boundary the same as `crabbox vnc`:
 - The local `crabbox webvnc` process must keep running while the browser uses
   the desktop.
 
-Use `--daemon` (or `--background`) to keep the bridge running without a tmux or
-foreground shell. Crabbox writes the bridge log and pid file under its local
-state directory and prints both paths. Use `--status` to print those paths
-again, and `--stop` to kill the background bridge for that lease. Shutdown
-terminates both the daemon supervisor and the active child bridge process.
+Use `crabbox webvnc daemon start --id <lease> --open` to keep the bridge
+running without a tmux or foreground shell. Crabbox writes the bridge log and
+pid file under its local state directory and prints both paths. Use
+`crabbox webvnc daemon status --id <lease>` for the local pid/log check, and
+`crabbox webvnc daemon stop --id <lease>` to kill the background bridge for
+that lease. Shutdown terminates both the daemon supervisor and the active child
+bridge process.
+
+The older `crabbox webvnc --id <lease> --daemon`, `--background`, `--status`,
+and `--stop` forms remain accepted as compatibility aliases, but new docs and
+automation should use the explicit `daemon` subcommands.
+
+Use `crabbox webvnc status --id <lease>` for the full health view: local daemon
+pid/log, SSH tunnel command, target VNC reachability, coordinator bridge/viewer
+state, recent bridge events, portal URL/password, and the exact native VNC
+fallback command. If status or reset is run with `--network public` or
+`--network tailscale`, the printed native VNC fallback carries the same network
+selection.
+
+Typical status output is meant to be directly actionable:
+
+```text
+webvnc daemon: pid=12345 log=...
+vnc target: reachable 127.0.0.1:5900 managed=true
+ssh tunnel: ssh ... -L 5901:127.0.0.1:5900 ...
+portal bridge: connected=true viewer=false
+event: 2026-05-07T12:00:00Z bridge_connected
+webvnc: https://crabbox.openclaw.ai/portal/leases/cbx_.../vnc#password=...
+fallback: crabbox vnc --provider aws --target linux --network tailscale --id cbx_... --open
+```
+
+Use `crabbox webvnc reset --id <lease> --open` when the portal is stuck on a
+stale bridge/viewer/session. Reset closes only that lease's coordinator
+WebVNC sockets, stops only that lease's local daemon pid after verifying it is
+a Crabbox WebVNC process, restarts the target desktop helper/VNC services, then
+starts a fresh background bridge and prints the new portal URL.
 
 `--network tailscale` changes only the SSH endpoint used for the local tunnel.
 The runner VNC service stays bound to loopback.
@@ -81,6 +117,11 @@ crabbox webvnc --id <lease-id-or-slug>
 
 in a terminal and leave it running.
 
+For human demos, prefer WebVNC over native VNC because `crabbox webvnc --open`
+preloads the per-lease password in the local browser URL fragment. Use native
+VNC only as the fallback printed by `crabbox webvnc status` or
+`crabbox webvnc reset`.
+
 ## Flags
 
 Flags:
@@ -97,10 +138,11 @@ Flags:
 --network auto|tailscale|public
 --local-port <port>
 --open
---daemon
---background
---status
---stop
+status
+reset
+daemon start
+daemon status
+daemon stop
 --reclaim
 ```
 
@@ -138,6 +180,17 @@ The browser can reach the coordinator, but no local bridge is currently paired
 with that lease. Start or restart `crabbox webvnc --id <lease>` locally and keep
 the process running. If the command is still running, wait for the portal retry
 or reload the browser tab.
+
+Another viewer is active
+
+Close old WebVNC tabs first. If the portal still reports a stale viewer, run:
+
+```sh
+crabbox webvnc reset --id <lease-id-or-slug> --open
+```
+
+If WebVNC remains unreliable, use the exact native fallback command printed by
+`crabbox webvnc status --id <lease-id-or-slug>`.
 
 VNC authentication fails
 

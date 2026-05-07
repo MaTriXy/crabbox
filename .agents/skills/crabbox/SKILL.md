@@ -68,6 +68,17 @@ crabbox stop <cbx_id-or-slug>
 ```sh
 crabbox status --id <id-or-slug> --wait
 crabbox inspect --id <id-or-slug> --json
+crabbox webvnc --id <id-or-slug> --open
+crabbox webvnc daemon start --id <id-or-slug> --open
+crabbox webvnc daemon status --id <id-or-slug>
+crabbox webvnc daemon stop --id <id-or-slug>
+crabbox webvnc status --id <id-or-slug>
+crabbox webvnc reset --id <id-or-slug> --open
+crabbox desktop doctor --id <id-or-slug>
+crabbox desktop click --id <id-or-slug> --x 640 --y 420
+crabbox desktop paste --id <id-or-slug> --text "peter@example.com"
+crabbox desktop type --id <id-or-slug> --text "peter+qa@example.com"
+crabbox desktop key --id <id-or-slug> ctrl+l
 crabbox sync-plan
 crabbox history --lease <id-or-slug>
 crabbox events <run_id> --json
@@ -79,6 +90,15 @@ crabbox ssh --id <id-or-slug>
 crabbox usage --scope org
 CRABBOX_LIVE=1 CRABBOX_LIVE_REPO=/path/to/openclaw scripts/live-smoke.sh
 ```
+
+For human desktop demos, prefer WebVNC over native VNC because
+`crabbox webvnc --open` preloads the lease password in the browser fragment.
+Use native `crabbox vnc --id <id-or-slug> --open` as the fallback printed by
+`crabbox webvnc status` or `crabbox webvnc reset`. For input automation, use
+`crabbox desktop click/paste/type/key` instead of hand-written `xdotool`;
+`desktop type` switches to clipboard paste for symbol-heavy text such as emails
+and passwords. `desktop key` accepts both `--id <lease> <keys>` and positional
+`<lease> <keys>` forms for shortcuts.
 
 ## Run Inspection Workflow
 

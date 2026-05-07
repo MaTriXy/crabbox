@@ -4,6 +4,9 @@ Read when:
 
 - choosing a desktop target for browser/UI QA;
 - opening a lease with VNC or WebVNC;
+- diagnosing stale WebVNC viewers, bridge disconnects, or broken desktop
+  sessions;
+- driving desktop input from agents without hand-written `xdotool`;
 - deciding which layer owns desktop setup, browser state, screenshots, or
   credentials.
 
@@ -17,8 +20,10 @@ boundary.
 
 ```sh
 crabbox warmup --desktop --browser
-crabbox vnc --id blue-lobster --open
 crabbox webvnc --id blue-lobster --open
+crabbox webvnc status --id blue-lobster
+crabbox desktop doctor --id blue-lobster
+crabbox vnc --id blue-lobster --open
 crabbox screenshot --id blue-lobster --output desktop.png
 ```
 
@@ -73,18 +78,23 @@ Scenario systems such as Mantis own:
 
 ## Commands
 
-Use `crabbox vnc` for a native VNC client:
+Use `crabbox webvnc` for the authenticated coordinator portal. This is the
+preferred path for human demos because `--open` preloads the VNC password in
+the local browser fragment:
+
+```sh
+crabbox webvnc --id blue-lobster --open
+crabbox webvnc status --id blue-lobster
+crabbox webvnc reset --id blue-lobster --open
+```
+
+Use `crabbox vnc` for a native VNC client when WebVNC status/reset says the
+portal/browser path is unhealthy or when you need a native client feature:
 
 ```sh
 crabbox vnc --id blue-lobster
 crabbox vnc --id blue-lobster --network tailscale
 crabbox vnc --id blue-lobster --open
-```
-
-Use `crabbox webvnc` for the authenticated coordinator portal:
-
-```sh
-crabbox webvnc --id blue-lobster --open
 ```
 
 WebVNC uses the same runner-side VNC service as `crabbox vnc`. The difference
@@ -111,6 +121,28 @@ panel, title bar, and surrounding session remain visible. Use
 `desktop launch --fullscreen` only when you intentionally want browser-only
 video or capture output.
 
+Use `crabbox desktop doctor --id <lease>` before blaming WebVNC. It checks the
+lease's desktop session, VNC service, input tooling, browser binary, ffmpeg,
+screen geometry, and screenshot capture, then separately reports WebVNC
+bridge/viewer status with one-line repair suggestions.
+
+Use first-class input helpers instead of hand-rolled `xdotool`:
+
+```sh
+crabbox desktop click --id blue-lobster --x 640 --y 420
+crabbox desktop paste --id blue-lobster --text "peter@example.com"
+printf 'peter@example.com' | crabbox desktop paste --id blue-lobster
+crabbox desktop type --id blue-lobster --text "hello"
+crabbox desktop key --id blue-lobster ctrl+l
+crabbox desktop key blue-lobster ctrl+l
+```
+
+Prefer `desktop paste` or symbol-aware `desktop type` for emails, passwords,
+URLs, and text containing characters such as `@` or `+`; raw key-symbol typing
+can vary with the target X keyboard layout. `desktop key` is for shortcuts and
+special keys, and supports both `--id <lease> <keys>` and positional
+`<lease> <keys>` forms.
+
 ## Network Model
 
 Managed VNC is tunnel-first:
@@ -126,6 +158,14 @@ Managed VNC is tunnel-first:
   the coordinator Durable Object; if the browser view disconnects, the local
   command reconnects a fresh bridge for the portal retry. If the local process
   exits, the browser view disconnects until you start it again.
+- `crabbox webvnc status` reports the local daemon pid/log, SSH tunnel command,
+  target VNC reachability, coordinator bridge/viewer state, recent bridge
+  events, portal URL/password, and the exact native `crabbox vnc ... --open`
+  fallback. The fallback preserves explicit `--network public` or
+  `--network tailscale` selections.
+- `crabbox webvnc reset` closes only the selected lease's WebVNC sockets,
+  stops only that lease's verified local WebVNC daemon, restarts the target
+  desktop/VNC services, then prints the fresh portal URL.
 
 Crabbox does not bind managed VNC directly to a public IP or Tailscale 100.x
 address. Static hosts can expose direct `host:5900` only when the operator has

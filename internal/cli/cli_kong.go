@@ -197,8 +197,28 @@ type cleanupKongCmd struct {
 
 type desktopKongCmd struct {
 	Launch desktopLaunchKongCmd `cmd:"" passthrough:"" help:"Start an app inside a desktop lease."`
+	Doctor desktopDoctorKongCmd `cmd:"" passthrough:"" help:"Check desktop session readiness for a lease."`
+	Click  desktopClickKongCmd  `cmd:"" passthrough:"" help:"Click inside a desktop lease."`
+	Paste  desktopPasteKongCmd  `cmd:"" passthrough:"" help:"Paste text into a desktop lease."`
+	Type   desktopTypeKongCmd   `cmd:"" passthrough:"" help:"Type text into a desktop lease."`
+	Key    desktopKeyKongCmd    `cmd:"" passthrough:"" help:"Send keys to a desktop lease."`
 }
 type desktopLaunchKongCmd struct {
+	Args []string `arg:"" optional:""`
+}
+type desktopDoctorKongCmd struct {
+	Args []string `arg:"" optional:""`
+}
+type desktopClickKongCmd struct {
+	Args []string `arg:"" optional:""`
+}
+type desktopPasteKongCmd struct {
+	Args []string `arg:"" optional:""`
+}
+type desktopTypeKongCmd struct {
+	Args []string `arg:"" optional:""`
+}
+type desktopKeyKongCmd struct {
 	Args []string `arg:"" optional:""`
 }
 
@@ -329,6 +349,21 @@ func (c *cleanupKongCmd) Run(ctx context.Context, app App) error { return app.cl
 
 func (c *desktopLaunchKongCmd) Run(ctx context.Context, app App) error {
 	return app.desktopLaunch(ctx, c.Args)
+}
+func (c *desktopDoctorKongCmd) Run(ctx context.Context, app App) error {
+	return app.desktopDoctor(ctx, c.Args)
+}
+func (c *desktopClickKongCmd) Run(ctx context.Context, app App) error {
+	return app.desktopClick(ctx, c.Args)
+}
+func (c *desktopPasteKongCmd) Run(ctx context.Context, app App) error {
+	return app.desktopPaste(ctx, c.Args)
+}
+func (c *desktopTypeKongCmd) Run(ctx context.Context, app App) error {
+	return app.desktopType(ctx, c.Args)
+}
+func (c *desktopKeyKongCmd) Run(ctx context.Context, app App) error {
+	return app.desktopKey(ctx, c.Args)
 }
 
 func (c *mediaPreviewKongCmd) Run(ctx context.Context, app App) error {

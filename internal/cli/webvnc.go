@@ -18,17 +18,48 @@ import (
 )
 
 func (a App) webvnc(ctx context.Context, args []string) error {
+	if len(args) > 0 {
+		switch args[0] {
+		case "status":
+			return a.webVNCStatusCommand(ctx, args[1:])
+		case "reset":
+			return a.webVNCResetCommand(ctx, args[1:])
+		case "daemon":
+			return a.webVNCDaemonCommand(ctx, args[1:])
+		}
+	}
 	defaults := defaultConfig()
 	fs := newFlagSet("webvnc", a.Stderr)
+	fs.Usage = func() {
+		fmt.Fprintln(fs.Output(), "Usage:")
+		fmt.Fprintln(fs.Output(), "  crabbox webvnc --id <lease-id-or-slug> [--open]")
+		fmt.Fprintln(fs.Output(), "  crabbox webvnc status --id <lease-id-or-slug>")
+		fmt.Fprintln(fs.Output(), "  crabbox webvnc reset --id <lease-id-or-slug> [--open]")
+		fmt.Fprintln(fs.Output(), "  crabbox webvnc daemon start|status|stop --id <lease-id-or-slug>")
+		fmt.Fprintln(fs.Output(), "")
+		fmt.Fprintln(fs.Output(), "Bridge flags:")
+		fmt.Fprintln(fs.Output(), "  --id <lease-id-or-slug>")
+		fmt.Fprintln(fs.Output(), "  --provider hetzner|aws")
+		fmt.Fprintln(fs.Output(), "  --target linux|macos|windows")
+		fmt.Fprintln(fs.Output(), "  --windows-mode normal|wsl2")
+		fmt.Fprintln(fs.Output(), "  --static-host <host>")
+		fmt.Fprintln(fs.Output(), "  --static-user <user>")
+		fmt.Fprintln(fs.Output(), "  --static-port <port>")
+		fmt.Fprintln(fs.Output(), "  --static-work-root <path>")
+		fmt.Fprintln(fs.Output(), "  --network auto|tailscale|public")
+		fmt.Fprintln(fs.Output(), "  --local-port <port>")
+		fmt.Fprintln(fs.Output(), "  --open")
+		fmt.Fprintln(fs.Output(), "  --reclaim")
+	}
 	provider := fs.String("provider", defaults.Provider, "provider: hetzner or aws")
 	id := fs.String("id", "", "lease id or slug")
 	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
 	localPort := fs.String("local-port", "", "local VNC tunnel port")
 	openPortal := fs.Bool("open", false, "open the web portal VNC page")
-	daemon := fs.Bool("daemon", false, "start the WebVNC bridge in the background")
-	background := fs.Bool("background", false, "alias for --daemon")
-	daemonStatus := fs.Bool("status", false, "show WebVNC background bridge pid/log paths")
-	stopDaemon := fs.Bool("stop", false, "stop the WebVNC background bridge for this lease")
+	daemon := fs.Bool("daemon", false, "compatibility alias for daemon start")
+	background := fs.Bool("background", false, "compatibility alias for daemon start")
+	daemonStatus := fs.Bool("status", false, "compatibility alias for daemon status")
+	stopDaemon := fs.Bool("stop", false, "compatibility alias for daemon stop")
 	networkFlags := registerNetworkModeFlag(fs, defaults)
 	targetFlags := registerTargetFlags(fs, defaults)
 	if err := parseFlags(fs, args); err != nil {
@@ -45,7 +76,7 @@ func (a App) webvnc(ctx context.Context, args []string) error {
 		return a.stopWebVNCDaemon(*id)
 	}
 	if *daemon || *background {
-		return a.startWebVNCDaemon(args, *id)
+		return a.webVNCDaemonStart(ctx, stripLegacyWebVNCDaemonFlags(args))
 	}
 	cfg, err := loadLeaseTargetConfig(fs, *provider, targetFlags, networkFlags, leaseTargetConfigOptions{Desktop: true})
 	if err != nil {
@@ -159,10 +190,268 @@ func (a App) webvnc(ctx context.Context, args []string) error {
 	}
 }
 
+func (a App) webVNCDaemonCommand(ctx context.Context, args []string) error {
+	if len(args) == 0 {
+		return exit(2, "usage: crabbox webvnc daemon start|status|stop --id <lease-id-or-slug>")
+	}
+	if isHelpArg(args[0]) {
+		fmt.Fprintln(a.Stdout, "Usage: crabbox webvnc daemon start|status|stop --id <lease-id-or-slug>")
+		return nil
+	}
+	switch args[0] {
+	case "start":
+		return a.webVNCDaemonStart(ctx, args[1:])
+	case "status":
+		return a.webVNCDaemonStatusCommand(args[1:])
+	case "stop":
+		return a.webVNCDaemonStopCommand(args[1:])
+	default:
+		return exit(2, "usage: crabbox webvnc daemon start|status|stop --id <lease-id-or-slug>")
+	}
+}
+
+func (a App) webVNCDaemonStart(_ context.Context, args []string) error {
+	defaults := defaultConfig()
+	fs := newFlagSet("webvnc daemon start", a.Stderr)
+	provider := fs.String("provider", defaults.Provider, "provider: hetzner or aws")
+	id := fs.String("id", "", "lease id or slug")
+	localPort := fs.String("local-port", "", "local VNC tunnel port")
+	openPortal := fs.Bool("open", false, "open the web portal VNC page")
+	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
+	targetFlags := registerTargetFlags(fs, defaults)
+	networkFlags := registerNetworkModeFlag(fs, defaults)
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
+	setIDFromFirstArg(fs, id)
+	if *id == "" {
+		return exit(2, "usage: crabbox webvnc daemon start --id <lease-id-or-slug>")
+	}
+	cfg, err := loadLeaseTargetConfig(fs, *provider, targetFlags, networkFlags, leaseTargetConfigOptions{Desktop: true})
+	if err != nil {
+		return err
+	}
+	target := SSHTarget{TargetOS: cfg.TargetOS, WindowsMode: cfg.WindowsMode}
+	daemonArgs := webVNCBridgeArgs(cfg, target, *id, *openPortal)
+	if strings.TrimSpace(*localPort) != "" {
+		daemonArgs = append(daemonArgs, "--local-port", strings.TrimSpace(*localPort))
+	}
+	if *reclaim {
+		daemonArgs = append(daemonArgs, "--reclaim")
+	}
+	return a.startWebVNCDaemon(daemonArgs, *id)
+}
+
+func (a App) webVNCDaemonStatusCommand(args []string) error {
+	fs := newFlagSet("webvnc daemon status", a.Stderr)
+	id := fs.String("id", "", "lease id or slug")
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
+	setIDFromFirstArg(fs, id)
+	if *id == "" {
+		return exit(2, "usage: crabbox webvnc daemon status --id <lease-id-or-slug>")
+	}
+	return a.webVNCDaemonStatus(*id)
+}
+
+func (a App) webVNCDaemonStopCommand(args []string) error {
+	fs := newFlagSet("webvnc daemon stop", a.Stderr)
+	id := fs.String("id", "", "lease id or slug")
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
+	setIDFromFirstArg(fs, id)
+	if *id == "" {
+		return exit(2, "usage: crabbox webvnc daemon stop --id <lease-id-or-slug>")
+	}
+	return a.stopWebVNCDaemon(*id)
+}
+
+func (a App) webVNCStatusCommand(ctx context.Context, args []string) error {
+	defaults := defaultConfig()
+	fs := newFlagSet("webvnc status", a.Stderr)
+	provider := fs.String("provider", defaults.Provider, "provider: hetzner or aws")
+	id := fs.String("id", "", "lease id or slug")
+	localPort := fs.String("local-port", "", "local VNC tunnel port")
+	targetFlags := registerTargetFlags(fs, defaults)
+	networkFlags := registerNetworkModeFlag(fs, defaults)
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
+	setIDFromFirstArg(fs, id)
+	if *id == "" {
+		return exit(2, "usage: crabbox webvnc status --id <lease-id-or-slug>")
+	}
+	cfg, err := loadLeaseTargetConfig(fs, *provider, targetFlags, networkFlags, leaseTargetConfigOptions{Desktop: true})
+	if err != nil {
+		return err
+	}
+	if isBlacksmithProvider(cfg.Provider) || isStaticProvider(cfg.Provider) {
+		return exit(2, "webvnc status currently supports coordinator-backed hetzner/aws desktop leases")
+	}
+	coord, useCoordinator, err := newTargetCoordinatorClient(cfg)
+	if err != nil {
+		return err
+	}
+	if !useCoordinator || coord == nil || coord.Token == "" {
+		return exit(2, "webvnc status requires a configured coordinator login; run crabbox login first")
+	}
+	server, target, leaseID, err := a.resolveNetworkLeaseTarget(ctx, cfg, *id, false)
+	if err != nil {
+		return err
+	}
+	if err := enforceManagedLeaseCapabilities(cfg, server, leaseID); err != nil {
+		return err
+	}
+	if *localPort == "" {
+		*localPort = availableLocalVNCPort()
+	}
+	endpoint, endpointErr := resolveVNCEndpoint(ctx, cfg, &target)
+	password := ""
+	username := ""
+	if endpointErr == nil && endpoint.Managed {
+		password, _ = runSSHOutput(ctx, target, vncPasswordCommand(target))
+		if target.TargetOS == targetMacOS {
+			username = target.User
+		}
+	}
+	status, statusErr := coord.WebVNCStatus(ctx, leaseID)
+	daemon, daemonErr := localWebVNCDaemonStatus(leaseID)
+	if daemonErr == nil && leaseID != *id {
+		if aliasDaemon, err := localWebVNCDaemonStatus(*id); err == nil && !aliasDaemon.Missing {
+			daemon = aliasDaemon
+		}
+	}
+	fmt.Fprintf(a.Stdout, "lease: %s slug=%s provider=%s target=%s\n", leaseID, blank(serverSlug(server), "-"), blank(server.Provider, cfg.Provider), blank(target.TargetOS, cfg.TargetOS))
+	if daemonErr != nil {
+		fmt.Fprintf(a.Stdout, "webvnc daemon: error=%v\n", daemonErr)
+	} else {
+		printLocalWebVNCDaemonStatus(a.Stdout, daemon)
+	}
+	if endpointErr != nil {
+		fmt.Fprintf(a.Stdout, "vnc target: unreachable 127.0.0.1:5900 (%v)\n", endpointErr)
+		fmt.Fprintln(a.Stdout, "repair: run crabbox desktop doctor --id "+shellQuote(leaseID))
+	} else {
+		fmt.Fprintf(a.Stdout, "vnc target: reachable %s:%s managed=%t\n", endpoint.Host, endpoint.Port, endpoint.Managed)
+		if endpoint.Direct {
+			fmt.Fprintln(a.Stdout, "ssh tunnel: not required")
+		} else {
+			fmt.Fprintf(a.Stdout, "ssh tunnel: %s\n", vncTunnelCommand(target, *localPort))
+		}
+	}
+	if statusErr != nil {
+		fmt.Fprintf(a.Stdout, "portal bridge: unknown (%v)\n", statusErr)
+	} else {
+		fmt.Fprintf(a.Stdout, "portal bridge: connected=%t viewer=%t\n", status.BridgeConnected, status.ViewerConnected)
+		if strings.TrimSpace(status.Message) != "" {
+			fmt.Fprintf(a.Stdout, "portal message: %s\n", status.Message)
+		}
+		for _, event := range status.Events {
+			fmt.Fprintf(a.Stdout, "event: %s %s%s\n", event.At, event.Event, optionalReason(event.Reason))
+		}
+	}
+	for _, line := range recentWebVNCLogEvents(daemon.LogPath, 6) {
+		fmt.Fprintf(a.Stdout, "log event: %s\n", line)
+	}
+	portal := webVNCPortalURL(coord.BaseURL, leaseID, username, password)
+	fmt.Fprintf(a.Stdout, "webvnc: %s\n", portal)
+	if strings.TrimSpace(password) != "" {
+		fmt.Fprintf(a.Stdout, "password: %s\n", strings.TrimSpace(password))
+		if strings.TrimSpace(username) != "" {
+			fmt.Fprintf(a.Stdout, "username: %s\n", strings.TrimSpace(username))
+		}
+	}
+	fmt.Fprintf(a.Stdout, "fallback: %s\n", nativeVNCOpenCommand(cfg, target, leaseID))
+	if statusErr == nil && status.ViewerConnected {
+		fmt.Fprintln(a.Stdout, "repair: close stale WebVNC tabs or run crabbox webvnc reset --id "+shellQuote(leaseID)+" --open")
+	} else if statusErr == nil && !status.BridgeConnected {
+		fmt.Fprintln(a.Stdout, "repair: start crabbox webvnc daemon start --id "+shellQuote(leaseID)+" --open")
+	}
+	return nil
+}
+
+func (a App) webVNCResetCommand(ctx context.Context, args []string) error {
+	defaults := defaultConfig()
+	fs := newFlagSet("webvnc reset", a.Stderr)
+	provider := fs.String("provider", defaults.Provider, "provider: hetzner or aws")
+	id := fs.String("id", "", "lease id or slug")
+	openPortal := fs.Bool("open", false, "open the web portal VNC page")
+	targetFlags := registerTargetFlags(fs, defaults)
+	networkFlags := registerNetworkModeFlag(fs, defaults)
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
+	setIDFromFirstArg(fs, id)
+	if *id == "" {
+		return exit(2, "usage: crabbox webvnc reset --id <lease-id-or-slug>")
+	}
+	cfg, err := loadLeaseTargetConfig(fs, *provider, targetFlags, networkFlags, leaseTargetConfigOptions{Desktop: true})
+	if err != nil {
+		return err
+	}
+	if isBlacksmithProvider(cfg.Provider) || isStaticProvider(cfg.Provider) {
+		return exit(2, "webvnc reset currently supports coordinator-backed hetzner/aws desktop leases")
+	}
+	coord, useCoordinator, err := newTargetCoordinatorClient(cfg)
+	if err != nil {
+		return err
+	}
+	if !useCoordinator || coord == nil || coord.Token == "" {
+		return exit(2, "webvnc reset requires a configured coordinator login; run crabbox login first")
+	}
+	server, target, leaseID, err := a.resolveNetworkLeaseTarget(ctx, cfg, *id, false)
+	if err != nil {
+		return err
+	}
+	if err := enforceManagedLeaseCapabilities(cfg, server, leaseID); err != nil {
+		return err
+	}
+	if _, err := coord.ResetWebVNC(ctx, leaseID); err != nil {
+		fmt.Fprintf(a.Stdout, "portal reset: skipped (%v)\n", err)
+	}
+	if leaseID != *id {
+		_, _ = a.stopWebVNCDaemonIfRunning(*id)
+	}
+	if _, err := a.stopWebVNCDaemonIfRunning(leaseID); err != nil {
+		return err
+	}
+	if err := runSSHQuiet(ctx, target, webVNCResetRemoteCommand(target)); err != nil {
+		return exit(5, "reset target WebVNC/input stack: %v", err)
+	}
+	password := ""
+	username := ""
+	if target.TargetOS == targetMacOS {
+		username = target.User
+	}
+	password, _ = runSSHOutput(ctx, target, vncPasswordCommand(target))
+	portal := webVNCPortalURL(coord.BaseURL, leaseID, username, password)
+	daemonArgs := webVNCBridgeArgs(cfg, target, leaseID, *openPortal)
+	daemonName := *id
+	if strings.TrimSpace(daemonName) == "" {
+		daemonName = leaseID
+	}
+	if err := a.startWebVNCDaemon(daemonArgs, daemonName); err != nil {
+		return err
+	}
+	fmt.Fprintf(a.Stdout, "webvnc reset: lease=%s slug=%s\n", leaseID, blank(serverSlug(server), "-"))
+	fmt.Fprintf(a.Stdout, "webvnc: %s\n", portal)
+	if strings.TrimSpace(password) != "" {
+		fmt.Fprintf(a.Stdout, "password: %s\n", strings.TrimSpace(password))
+	}
+	fmt.Fprintf(a.Stdout, "fallback: %s\n", nativeVNCOpenCommand(cfg, target, leaseID))
+	return nil
+}
+
 func (a App) startWebVNCDaemon(args []string, leaseID string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return exit(2, "resolve crabbox executable: %v", err)
+	}
+	if stopped, err := a.stopWebVNCDaemonIfRunning(leaseID); err != nil {
+		return err
+	} else if stopped {
+		fmt.Fprintln(a.Stdout, "webvnc daemon: replacing previous daemon")
 	}
 	logPath, pidPath, err := webVNCDaemonPaths(leaseID)
 	if err != nil {
@@ -176,7 +465,7 @@ func (a App) startWebVNCDaemon(args []string, leaseID string) error {
 		return exit(2, "open WebVNC daemon log: %v", err)
 	}
 	defer logFile.Close()
-	childArgs := append([]string{"webvnc"}, stripWebVNCDaemonFlags(args)...)
+	childArgs := append([]string{"webvnc"}, args...)
 	cmd := exec.Command("sh", "-c", webVNCDaemonSupervisorScript(exe, childArgs))
 	cmd.Stdin = nil
 	cmd.Stdout = logFile
@@ -194,7 +483,7 @@ func (a App) startWebVNCDaemon(args []string, leaseID string) error {
 		return exit(5, "release WebVNC daemon process: %v", err)
 	}
 	fmt.Fprintf(a.Stdout, "webvnc daemon: pid=%d log=%s\n", pid, logPath)
-	fmt.Fprintln(a.Stdout, "webvnc daemon: stop with crabbox webvnc --id <lease-id-or-slug> --stop")
+	fmt.Fprintln(a.Stdout, "webvnc daemon: stop with crabbox webvnc daemon stop --id <lease-id-or-slug>")
 	return nil
 }
 
@@ -226,63 +515,108 @@ func webVNCDaemonSupervisorScript(exe string, args []string) string {
 }
 
 func (a App) webVNCDaemonStatus(leaseID string) error {
-	logPath, pidPath, err := webVNCDaemonPaths(leaseID)
+	status, err := localWebVNCDaemonStatus(leaseID)
 	if err != nil {
 		return err
 	}
+	printLocalWebVNCDaemonStatus(a.Stdout, status)
+	return nil
+}
+
+type localWebVNCDaemon struct {
+	LeaseID string
+	LogPath string
+	PIDPath string
+	PID     int
+	Command string
+	Alive   bool
+	Stale   bool
+	Missing bool
+}
+
+func localWebVNCDaemonStatus(leaseID string) (localWebVNCDaemon, error) {
+	logPath, pidPath, err := webVNCDaemonPaths(leaseID)
+	if err != nil {
+		return localWebVNCDaemon{}, err
+	}
+	status := localWebVNCDaemon{LeaseID: leaseID, LogPath: logPath, PIDPath: pidPath}
 	pid, err := readWebVNCDaemonPID(pidPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			fmt.Fprintf(a.Stdout, "webvnc daemon: no pid file for %s\n", leaseID)
-			fmt.Fprintf(a.Stdout, "webvnc daemon: expected log=%s\n", logPath)
-			return nil
+			status.Missing = true
+			return status, nil
 		}
+		return localWebVNCDaemon{}, err
+	}
+	status.PID = pid
+	command, alive := webVNCDaemonProcessCommand(pid)
+	status.Command = strings.TrimSpace(command)
+	status.Alive = alive
+	if !alive {
+		status.Stale = true
+		return status, nil
+	}
+	return status, nil
+}
+
+func printLocalWebVNCDaemonStatus(w io.Writer, status localWebVNCDaemon) {
+	if status.Missing {
+		fmt.Fprintf(w, "webvnc daemon: no pid file for %s\n", status.LeaseID)
+		fmt.Fprintf(w, "webvnc daemon: expected log=%s\n", status.LogPath)
+		return
+	}
+	if status.Stale {
+		fmt.Fprintf(w, "webvnc daemon: stale pid=%d log=%s\n", status.PID, status.LogPath)
+		return
+	}
+	fmt.Fprintf(w, "webvnc daemon: pid=%d log=%s\n", status.PID, status.LogPath)
+	if strings.TrimSpace(status.Command) != "" {
+		fmt.Fprintf(w, "webvnc daemon: command=%s\n", strings.TrimSpace(status.Command))
+	}
+}
+
+func (a App) stopWebVNCDaemon(leaseID string) error {
+	stopped, err := a.stopWebVNCDaemonIfRunning(leaseID)
+	if err != nil {
 		return err
 	}
-	command, alive := webVNCDaemonProcessCommand(pid)
-	if !alive {
-		fmt.Fprintf(a.Stdout, "webvnc daemon: stale pid=%d log=%s\n", pid, logPath)
-		return nil
-	}
-	fmt.Fprintf(a.Stdout, "webvnc daemon: pid=%d log=%s\n", pid, logPath)
-	if strings.TrimSpace(command) != "" {
-		fmt.Fprintf(a.Stdout, "webvnc daemon: command=%s\n", strings.TrimSpace(command))
+	if !stopped {
+		fmt.Fprintf(a.Stdout, "webvnc daemon: no pid file for %s\n", leaseID)
 	}
 	return nil
 }
 
-func (a App) stopWebVNCDaemon(leaseID string) error {
+func (a App) stopWebVNCDaemonIfRunning(leaseID string) (bool, error) {
 	_, pidPath, err := webVNCDaemonPaths(leaseID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	pid, err := readWebVNCDaemonPID(pidPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			fmt.Fprintf(a.Stdout, "webvnc daemon: no pid file for %s\n", leaseID)
-			return nil
+			return false, nil
 		}
-		return err
+		return false, err
 	}
 	command, alive := webVNCDaemonProcessCommand(pid)
 	if !alive {
 		_ = os.Remove(pidPath)
 		fmt.Fprintf(a.Stdout, "webvnc daemon: removed stale pid=%d\n", pid)
-		return nil
+		return true, nil
 	}
 	if !isWebVNCDaemonCommand(command) {
-		return exit(5, "refusing to stop pid %d; command does not look like crabbox webvnc: %s", pid, strings.TrimSpace(command))
+		return false, exit(5, "refusing to stop pid %d; command does not look like crabbox webvnc: %s", pid, strings.TrimSpace(command))
 	}
 	process, err := os.FindProcess(pid)
 	if err != nil {
-		return exit(5, "find WebVNC daemon pid %d: %v", pid, err)
+		return false, exit(5, "find WebVNC daemon pid %d: %v", pid, err)
 	}
 	if err := stopDaemonProcess(process, pid); err != nil {
-		return exit(5, "stop WebVNC daemon pid %d: %v", pid, err)
+		return false, exit(5, "stop WebVNC daemon pid %d: %v", pid, err)
 	}
 	_ = os.Remove(pidPath)
 	fmt.Fprintf(a.Stdout, "webvnc daemon: stopped pid=%d\n", pid)
-	return nil
+	return true, nil
 }
 
 func webVNCDaemonProcessCommand(pid int) (string, bool) {
@@ -311,7 +645,39 @@ func readWebVNCDaemonPID(pidPath string) (int, error) {
 	return pid, nil
 }
 
-func stripWebVNCDaemonFlags(args []string) []string {
+func stripWebVNCOpenFlags(args []string) []string {
+	out := make([]string, 0, len(args))
+	for _, arg := range args {
+		if arg == "--open" || strings.HasPrefix(arg, "--open=") {
+			continue
+		}
+		out = append(out, arg)
+	}
+	return out
+}
+
+func optionalReason(reason string) string {
+	if strings.TrimSpace(reason) == "" {
+		return ""
+	}
+	return " reason=" + strings.TrimSpace(reason)
+}
+
+func nativeVNCOpenCommand(cfg Config, target SSHTarget, leaseID string) string {
+	targetOS := firstNonBlank(target.TargetOS, cfg.TargetOS)
+	args := []string{"crabbox", "vnc", "--provider", cfg.Provider, "--target", targetOS}
+	if cfg.Network != "" && cfg.Network != NetworkAuto {
+		args = append(args, "--network", string(cfg.Network))
+	}
+	windowsMode := firstNonBlank(target.WindowsMode, cfg.WindowsMode)
+	if targetOS == targetWindows && windowsMode != "" {
+		args = append(args, "--windows-mode", windowsMode)
+	}
+	args = append(args, "--id", leaseID, "--open")
+	return strings.Join(readableShellWords(args), " ")
+}
+
+func stripLegacyWebVNCDaemonFlags(args []string) []string {
 	out := make([]string, 0, len(args))
 	for _, arg := range args {
 		if arg == "--daemon" || arg == "--background" ||
@@ -323,15 +689,85 @@ func stripWebVNCDaemonFlags(args []string) []string {
 	return out
 }
 
-func stripWebVNCOpenFlags(args []string) []string {
-	out := make([]string, 0, len(args))
-	for _, arg := range args {
-		if arg == "--open" || strings.HasPrefix(arg, "--open=") {
-			continue
+func readableShellWords(words []string) []string {
+	out := make([]string, 0, len(words))
+	for _, word := range words {
+		if shellBareWord(word) {
+			out = append(out, word)
+		} else {
+			out = append(out, shellQuote(word))
 		}
-		out = append(out, arg)
 	}
 	return out
+}
+
+func shellBareWord(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || strings.ContainsRune("_./:@=-", r) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func webVNCBridgeArgs(cfg Config, target SSHTarget, leaseID string, openPortal bool) []string {
+	targetOS := firstNonBlank(target.TargetOS, cfg.TargetOS)
+	args := []string{"--provider", cfg.Provider, "--target", targetOS}
+	if cfg.Network != "" && cfg.Network != NetworkAuto {
+		args = append(args, "--network", string(cfg.Network))
+	}
+	windowsMode := firstNonBlank(target.WindowsMode, cfg.WindowsMode)
+	if targetOS == targetWindows && windowsMode != "" {
+		args = append(args, "--windows-mode", windowsMode)
+	}
+	args = append(args, "--id", leaseID)
+	if openPortal {
+		args = append(args, "--open")
+	}
+	return args
+}
+
+func recentWebVNCLogEvents(path string, limit int) []string {
+	if strings.TrimSpace(path) == "" || limit <= 0 {
+		return nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	out := make([]string, 0, limit)
+	for i := len(lines) - 1; i >= 0 && len(out) < limit; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		if strings.Contains(line, "viewer") || strings.Contains(line, "reconnect") || strings.Contains(line, "connected") || strings.Contains(line, "reset") {
+			out = append(out, line)
+		}
+	}
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
+	}
+	return out
+}
+
+func webVNCResetRemoteCommand(target SSHTarget) string {
+	if isWindowsNativeTarget(target) {
+		return `$ErrorActionPreference = "SilentlyContinue"
+Restart-Service -Name tvnserver -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 1`
+	}
+	if target.TargetOS == targetMacOS {
+		return `set -eu
+sudo launchctl kickstart -k system/com.apple.screensharing >/dev/null 2>&1 || true`
+	}
+	return `set -eu
+sudo systemctl restart crabbox-desktop-session.service crabbox-x11vnc.service`
 }
 
 func webVNCDaemonPaths(leaseID string) (string, string, error) {

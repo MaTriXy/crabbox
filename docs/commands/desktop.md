@@ -9,6 +9,13 @@ crabbox desktop launch --id blue-lobster --browser --url https://example.com
 crabbox desktop launch --id blue-lobster --browser --url https://example.com --webvnc --open
 crabbox desktop launch --id blue-lobster --browser --url https://discord.com/login --egress discord --webvnc --open
 crabbox desktop launch --id blue-lobster -- xterm
+crabbox desktop doctor --id blue-lobster
+crabbox desktop click --id blue-lobster --x 640 --y 420
+crabbox desktop paste --id blue-lobster --text "peter@example.com"
+printf 'peter@example.com' | crabbox desktop paste --id blue-lobster
+crabbox desktop type --id blue-lobster --text "hello"
+crabbox desktop key --id blue-lobster ctrl+l
+crabbox desktop key blue-lobster ctrl+l
 ```
 
 The command resolves and touches the lease, verifies `desktop=true`, waits for
@@ -34,6 +41,26 @@ launcher minimizes existing windows, starts the app, and tries to foreground
 the new process. On Linux and macOS, the command is detached with `setsid` or
 `nohup`.
 
+`crabbox desktop doctor` checks the selected lease without syncing the repo.
+For Linux desktop leases it reports VM/session health separately from portal
+health: `DISPLAY`, Xvfb/window manager/panel, VNC listener, `xdotool`,
+clipboard tool, browser binary, `ffmpeg`, screen size, screenshot capture, and
+WebVNC bridge/viewer state. Failures include a one-line repair suggestion so
+you can tell session bugs from WebVNC/browser-portal bugs.
+
+Input helpers also operate on the selected lease over SSH without repo sync.
+Use them instead of hand-written `xdotool` snippets. `desktop type` uses raw
+`xdotool type` only for simple alphanumeric text; text with emails, passwords,
+symbols such as `@` or `+`, URLs, whitespace, or long payloads goes through the
+remote clipboard and paste path because keyboard layouts can otherwise corrupt
+special characters.
+
+`desktop paste` accepts `--text` or stdin. `desktop key` accepts either
+`--id <lease> <keys>` or the positional lease form `<lease> <keys>`; the key
+sequence is parsed after lease flags so common forms such as
+`crabbox desktop key blue-lobster ctrl+l` and
+`crabbox desktop key -id blue-lobster ctrl+l` send `ctrl+l`, not the lease id.
+
 Flags:
 
 ```text
@@ -53,6 +80,19 @@ Flags:
 --egress <profile>
 --egress-proxy <host:port>
 --reclaim
+```
+
+Input helper flags:
+
+```text
+desktop doctor --id <lease-id-or-slug>
+desktop click --id <lease-id-or-slug> --x <n> --y <n>
+desktop paste --id <lease-id-or-slug> --text <text>
+desktop paste --id <lease-id-or-slug> < input.txt
+desktop type --id <lease-id-or-slug> --text <text>
+desktop key --id <lease-id-or-slug> <keys>
+desktop key <lease-id-or-slug> <keys>
+desktop key --id <lease-id-or-slug> --keys <keys>
 ```
 
 Related docs:

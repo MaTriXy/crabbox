@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -179,8 +180,81 @@ func TestRetryBridgeTicketInQuery(t *testing.T) {
 	}
 }
 
-func TestWebVNCDaemonArgsStripBackgroundFlags(t *testing.T) {
-	got := strings.Join(stripWebVNCDaemonFlags([]string{
+func TestWebVNCDaemonStatusSubcommandStaysLocalDaemonCheck(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	var stdout bytes.Buffer
+	app := App{Stdout: &stdout, Stderr: io.Discard}
+	if err := app.webvnc(context.Background(), []string{"daemon", "status", "--id", "pearl-krill"}); err != nil {
+		t.Fatal(err)
+	}
+	got := stdout.String()
+	if !strings.Contains(got, "webvnc daemon: no pid file for pearl-krill") {
+		t.Fatalf("status output=%q", got)
+	}
+	if strings.Contains(got, "requires a configured coordinator") {
+		t.Fatalf("daemon status must not require coordinator: %q", got)
+	}
+}
+
+func TestWebVNCLegacyStatusAndStopFlagsStayLocalDaemonChecks(t *testing.T) {
+	for _, args := range [][]string{
+		{"--id", "pearl-krill", "--status"},
+		{"--id", "pearl-krill", "--stop"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			t.Setenv("XDG_STATE_HOME", t.TempDir())
+			var stdout bytes.Buffer
+			app := App{Stdout: &stdout, Stderr: io.Discard}
+			if err := app.webvnc(context.Background(), args); err != nil {
+				t.Fatal(err)
+			}
+			got := stdout.String()
+			if !strings.Contains(got, "webvnc daemon: no pid file for pearl-krill") {
+				t.Fatalf("legacy daemon output=%q", got)
+			}
+			if strings.Contains(got, "requires a configured coordinator") {
+				t.Fatalf("legacy daemon flag must not require coordinator: %q", got)
+			}
+		})
+	}
+}
+
+func TestNativeVNCFallbackCommand(t *testing.T) {
+	got := nativeVNCOpenCommand(
+		Config{Provider: "aws", TargetOS: targetWindows, WindowsMode: windowsModeWSL2},
+		SSHTarget{TargetOS: targetWindows, WindowsMode: windowsModeWSL2},
+		"cbx_1",
+	)
+	if got != "crabbox vnc --provider aws --target windows --windows-mode wsl2 --id cbx_1 --open" {
+		t.Fatalf("fallback=%q", got)
+	}
+}
+
+func TestNativeVNCFallbackCommandCarriesNetworkOverride(t *testing.T) {
+	got := nativeVNCOpenCommand(
+		Config{Provider: "aws", TargetOS: targetLinux, Network: NetworkTailscale},
+		SSHTarget{TargetOS: targetLinux},
+		"cbx_1",
+	)
+	if got != "crabbox vnc --provider aws --target linux --network tailscale --id cbx_1 --open" {
+		t.Fatalf("fallback=%q", got)
+	}
+}
+
+func TestWebVNCBridgeArgsCarriesNetworkOverride(t *testing.T) {
+	got := strings.Join(webVNCBridgeArgs(
+		Config{Provider: "aws", TargetOS: targetLinux, Network: NetworkTailscale},
+		SSHTarget{TargetOS: targetLinux},
+		"cbx_1",
+		true,
+	), " ")
+	if got != "--provider aws --target linux --network tailscale --id cbx_1 --open" {
+		t.Fatalf("bridge args=%q", got)
+	}
+}
+
+func TestStripLegacyWebVNCDaemonFlags(t *testing.T) {
+	got := strings.Join(stripLegacyWebVNCDaemonFlags([]string{
 		"--provider",
 		"aws",
 		"--daemon",

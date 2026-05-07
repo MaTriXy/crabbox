@@ -135,6 +135,31 @@ type CoordinatorWebVNCTicket struct {
 	ExpiresAt string `json:"expiresAt"`
 }
 
+type CoordinatorWebVNCEvent struct {
+	At     string `json:"at"`
+	Event  string `json:"event"`
+	Reason string `json:"reason,omitempty"`
+}
+
+type CoordinatorWebVNCStatus struct {
+	LeaseID         string                   `json:"leaseID"`
+	Slug            string                   `json:"slug,omitempty"`
+	BridgeConnected bool                     `json:"bridgeConnected"`
+	ViewerConnected bool                     `json:"viewerConnected"`
+	Command         string                   `json:"command"`
+	Message         string                   `json:"message,omitempty"`
+	Events          []CoordinatorWebVNCEvent `json:"events,omitempty"`
+}
+
+type CoordinatorWebVNCReset struct {
+	LeaseID            string                   `json:"leaseID"`
+	Slug               string                   `json:"slug,omitempty"`
+	BridgeWasConnected bool                     `json:"bridgeWasConnected"`
+	ViewerWasConnected bool                     `json:"viewerWasConnected"`
+	Command            string                   `json:"command"`
+	Events             []CoordinatorWebVNCEvent `json:"events,omitempty"`
+}
+
 type CoordinatorEgressTicket struct {
 	Ticket    string `json:"ticket"`
 	LeaseID   string `json:"leaseID"`
@@ -555,6 +580,18 @@ func (c *CoordinatorClient) PollGitHubLogin(ctx context.Context, loginID, pollSe
 func (c *CoordinatorClient) CreateWebVNCTicket(ctx context.Context, leaseID string) (CoordinatorWebVNCTicket, error) {
 	var res CoordinatorWebVNCTicket
 	err := c.do(ctx, http.MethodPost, "/v1/leases/"+url.PathEscape(leaseID)+"/webvnc/ticket", map[string]any{}, &res)
+	return res, err
+}
+
+func (c *CoordinatorClient) WebVNCStatus(ctx context.Context, leaseID string) (CoordinatorWebVNCStatus, error) {
+	var res CoordinatorWebVNCStatus
+	err := c.do(ctx, http.MethodGet, "/v1/leases/"+url.PathEscape(leaseID)+"/webvnc/status", nil, &res)
+	return res, err
+}
+
+func (c *CoordinatorClient) ResetWebVNC(ctx context.Context, leaseID string) (CoordinatorWebVNCReset, error) {
+	var res CoordinatorWebVNCReset
+	err := c.do(ctx, http.MethodPost, "/v1/leases/"+url.PathEscape(leaseID)+"/webvnc/reset", map[string]any{}, &res)
 	return res, err
 }
 

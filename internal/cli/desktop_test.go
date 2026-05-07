@@ -30,9 +30,85 @@ func TestDesktopLaunchRemoteCommandUsesDetachedPOSIXSession(t *testing.T) {
 	}
 }
 
+func TestDesktopTypeUsesPasteForSymbolHeavyText(t *testing.T) {
+	for _, text := range []string{"peter@example.com", "token+secret", "line one\nline two", "https://example.com"} {
+		if !desktopShouldPasteForType(text) {
+			t.Fatalf("expected paste fallback for %q", text)
+		}
+	}
+	if desktopShouldPasteForType("helloWorld123") {
+		t.Fatal("plain alphanumeric text should use xdotool type")
+	}
+}
+
+func TestDesktopPasteRemoteCommandPrefersClipboardTools(t *testing.T) {
+	got := desktopPasteRemoteCommand()
+	for _, want := range []string{
+		"timeout 5s xclip -selection clipboard -loops 1",
+		"timeout 5s xsel --clipboard --input",
+		"wl-copy --paste-once",
+		"xdotool key --clearmodifiers ctrl+v",
+		"wait \"$clip_pid\" || true",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("paste command missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestDesktopKeySequenceArgSkipsLeaseID(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "positional id",
+			args: []string{"blue-lobster", "ctrl+l"},
+			want: "ctrl+l",
+		},
+		{
+			name: "single dash id",
+			args: []string{"-id", "blue-lobster", "ctrl+l"},
+			want: "ctrl+l",
+		},
+		{
+			name: "double dash id",
+			args: []string{"--id", "blue-lobster", "ctrl+l"},
+			want: "ctrl+l",
+		},
+		{
+			name: "equals id",
+			args: []string{"--id=blue-lobster", "ctrl+l"},
+			want: "ctrl+l",
+		},
+		{
+			name: "explicit keys",
+			args: []string{"--id", "blue-lobster", "--keys", "ctrl+l"},
+			want: "ctrl+l",
+		},
+		{
+			name: "single dash explicit keys",
+			args: []string{"-id", "blue-lobster", "-keys", "ctrl+l"},
+			want: "ctrl+l",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := desktopKeySequenceArg(tt.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.want {
+				t.Fatalf("keys=%q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDesktopLaunchWebVNCArgsCarriesTargetDetails(t *testing.T) {
 	got := desktopLaunchWebVNCArgs(
-		Config{Provider: "aws", TargetOS: targetWindows, WindowsMode: windowsModeWSL2},
+		Config{Provider: "aws", TargetOS: targetWindows, WindowsMode: windowsModeWSL2, Network: NetworkTailscale},
 		SSHTarget{TargetOS: targetWindows, WindowsMode: windowsModeWSL2},
 		"cbx_1",
 		true,
@@ -41,6 +117,7 @@ func TestDesktopLaunchWebVNCArgsCarriesTargetDetails(t *testing.T) {
 	for _, want := range []string{
 		"--provider aws",
 		"--target windows",
+		"--network tailscale",
 		"--windows-mode wsl2",
 		"--id cbx_1",
 		"--open",

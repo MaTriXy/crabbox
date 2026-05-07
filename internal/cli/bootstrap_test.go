@@ -58,7 +58,7 @@ func TestCloudInitDesktopProfile(t *testing.T) {
 	for _, want := range []string{
 		"xvfb xfce4-session xfwm4 xfce4-panel xfdesktop4 xfce4-terminal",
 		"xfconf xfce4-settings x11vnc xauth dbus-x11",
-		"x11-xserver-utils xterm scrot ffmpeg xdotool wmctrl",
+		"x11-xserver-utils xterm scrot ffmpeg xdotool wmctrl xclip xsel",
 		"/etc/systemd/system/crabbox-xvfb.service",
 		"/etc/systemd/system/crabbox-desktop.service",
 		"/usr/local/bin/crabbox-desktop-session",
@@ -95,12 +95,12 @@ func TestCloudInitBrowserProfile(t *testing.T) {
 		"apt-cache show chromium-browser",
 		"/etc/opt/chrome/policies/managed/crabbox.json",
 		"/usr/local/bin/crabbox-browser",
-		"--no-first-run --no-default-browser-check --disable-default-apps",
+		"--no-first-run --no-default-browser-check --disable-default-apps --window-size=1500,900 --window-position=80,80",
 		"/var/lib/crabbox/browser.env",
 		"test -x \"$BROWSER\"",
 		"\"$BROWSER\" --version >/dev/null",
 		"printf '%s\\n' '{\"DefaultBrowserSettingEnabled\":false,\"MetricsReportingEnabled\":false,\"PromotionalTabsEnabled\":false}' > /etc/opt/chrome/policies/managed/crabbox.json",
-		"printf '%s\\n' '#!/bin/sh' \"exec \\\"$browser_path\\\" --no-first-run --no-default-browser-check --disable-default-apps \\\"\\$@\\\"\" > \"$browser_wrapper\"",
+		"printf '%s\\n' '#!/bin/sh' \"exec \\\"$browser_path\\\" --no-first-run --no-default-browser-check --disable-default-apps --window-size=1500,900 --window-position=80,80 \\\"\\$@\\\"\" > \"$browser_wrapper\"",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("cloudInit(browser) missing %q", want)

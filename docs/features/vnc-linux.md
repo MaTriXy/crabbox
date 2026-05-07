@@ -15,6 +15,8 @@ bind x11vnc to loopback, and let the CLI create an SSH tunnel.
 ```sh
 crabbox warmup --desktop --browser
 crabbox run --id blue-lobster --desktop --browser -- google-chrome --version
+crabbox desktop doctor --id blue-lobster
+crabbox webvnc --id blue-lobster --open
 crabbox vnc --id blue-lobster --open
 crabbox screenshot --id blue-lobster --output linux.png
 ```
@@ -25,6 +27,7 @@ Managed Linux desktop leases include:
 - a lightweight desktop/window-manager session;
 - x11vnc bound to `127.0.0.1:5900`;
 - screenshot and video capture tools (`scrot` and `ffmpeg`);
+- input helpers (`xdotool`) and clipboard paste tools (`xclip`/`xsel`);
 - a generated per-lease VNC password at `/var/lib/crabbox/vnc.password`;
 - optional Chrome stable or Chromium fallback, first-run suppression, and native
   addon build helpers when `--browser` is requested;
@@ -80,10 +83,29 @@ use:
 crabbox desktop launch --id blue-lobster --browser --url https://example.com
 ```
 
+Run `crabbox desktop doctor --id blue-lobster` to separate session problems
+from WebVNC/browser-portal problems. Missing `xfwm4`, `xfce4-panel`, x11vnc,
+clipboard tools, browser, ffmpeg, screen size, or screenshot capture each get a
+specific repair line.
+
+Input symbols are wrong
+
+Use Crabbox's desktop helpers instead of raw `xdotool type`:
+
+```sh
+crabbox desktop paste --id blue-lobster --text "peter+qa@example.com"
+crabbox desktop type --id blue-lobster --text "peter+qa@example.com"
+```
+
+`desktop type` uses clipboard paste for symbol-heavy text, so `@`, `+`,
+password-like values, and URLs do not depend on the target X keyboard layout.
+
 Related docs:
 
 - [Interactive desktop and VNC](interactive-desktop-vnc.md)
 - [Hetzner](hetzner.md)
 - [AWS](aws.md)
 - [vnc command](../commands/vnc.md)
+- [webvnc command](../commands/webvnc.md)
+- [desktop command](../commands/desktop.md)
 - [screenshot command](../commands/screenshot.md)

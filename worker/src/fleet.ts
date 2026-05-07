@@ -191,10 +191,17 @@ type BridgeAttachment =
   | { kind: "egress-host"; leaseID: string; sessionID: string }
   | { kind: "egress-client"; leaseID: string; sessionID: string };
 
+interface WebVNCEvent {
+  at: string;
+  event: string;
+  reason?: string;
+}
+
 export class FleetDurableObject implements DurableObject {
   private readonly webVNCAgents = new Map<string, WebSocket>();
   private readonly webVNCViewers = new Map<string, WebSocket>();
   private readonly pendingWebVNCToViewer = new Map<string, WebVNCBuffer>();
+  private readonly webVNCEvents = new Map<string, WebVNCEvent[]>();
   private readonly codeAgents = new Map<string, WebSocket>();
   private readonly codeViewers = new Map<string, WebSocket>();
   private readonly pendingCodeRequests = new Map<string, CodePendingRequest>();
@@ -320,6 +327,24 @@ export class FleetDurableObject implements DurableObject {
         parts[4] === "ticket"
       ) {
         return await this.createWebVNCTicket(request, parts[2]);
+      }
+      if (
+        parts[0] === "v1" &&
+        parts[1] === "leases" &&
+        parts[2] &&
+        parts[3] === "webvnc" &&
+        parts[4] === "status"
+      ) {
+        return await this.webVNCStatus(request, parts[2]);
+      }
+      if (
+        parts[0] === "v1" &&
+        parts[1] === "leases" &&
+        parts[2] &&
+        parts[3] === "webvnc" &&
+        parts[4] === "reset"
+      ) {
+        return await this.webVNCReset(request, parts[2]);
       }
       if (
         parts[0] === "v1" &&
@@ -1029,9 +1054,13 @@ export class FleetDurableObject implements DurableObject {
     const client = pair[0];
     const agent = pair[1];
 
+    if (this.webVNCAgents.get(lease.id)?.readyState === WebSocket.OPEN) {
+      this.recordWebVNCEvent(lease.id, "bridge_replaced", "replaced by a newer WebVNC bridge");
+    }
     closeSocket(this.webVNCAgents.get(lease.id), 1012, "replaced by a newer WebVNC bridge");
     this.pendingWebVNCToViewer.delete(lease.id);
     this.webVNCAgents.set(lease.id, agent);
+    this.recordWebVNCEvent(lease.id, "bridge_connected");
     this.acceptBridgeWebSocket(agent, { kind: "webvnc-agent", leaseID: lease.id });
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -1199,7 +1228,9 @@ export class FleetDurableObject implements DurableObject {
   }
 
   private async webVNCStatus(request: Request, identifier: string): Promise<Response> {
-    const lease = await this.resolvePortalLease(identifier, request);
+    const lease = request.url.includes("/portal/")
+      ? await this.resolvePortalLease(identifier, request)
+      : await this.resolveLease(identifier, request, false);
     if (!lease) {
       return notFound();
     }
@@ -1213,14 +1244,51 @@ export class FleetDurableObject implements DurableObject {
     const viewerConnected = viewer?.readyState === WebSocket.OPEN;
     const command = webVNCBridgeCommand(lease);
     return json({
+      leaseID: lease.id,
+      slug: lease.slug ?? "",
       bridgeConnected,
       viewerConnected,
       command,
+      events: this.recentWebVNCEvents(lease.id),
       message: bridgeConnected
         ? viewerConnected
           ? "bridge connected; another viewer is active"
           : "bridge connected"
         : `no bridge connected; run: ${command}`,
+    });
+  }
+
+  private async webVNCReset(request: Request, identifier: string): Promise<Response> {
+    if (request.method.toUpperCase() !== "POST") {
+      return json({ error: "not_found" }, { status: 404 });
+    }
+    const lease = await this.resolveLease(identifier, request, false);
+    if (!lease) {
+      return notFound();
+    }
+    const error = webVNCLeaseError(lease);
+    if (error) {
+      return json({ error: "webvnc_unavailable", message: error }, { status: 409 });
+    }
+    const bridgeWasConnected = this.webVNCAgents.get(lease.id)?.readyState === WebSocket.OPEN;
+    const viewerWasConnected = this.webVNCViewers.get(lease.id)?.readyState === WebSocket.OPEN;
+    closeSocket(this.webVNCViewers.get(lease.id), 1012, "WebVNC reset requested");
+    this.webVNCViewers.delete(lease.id);
+    resetWebVNCBridge(
+      this.webVNCAgents,
+      this.pendingWebVNCToViewer,
+      lease.id,
+      1012,
+      "WebVNC reset requested",
+    );
+    this.recordWebVNCEvent(lease.id, "reset", "WebVNC reset requested");
+    return json({
+      leaseID: lease.id,
+      slug: lease.slug ?? "",
+      bridgeWasConnected,
+      viewerWasConnected,
+      command: webVNCBridgeCommand(lease),
+      events: this.recentWebVNCEvents(lease.id),
     });
   }
 
@@ -1665,6 +1733,7 @@ export class FleetDurableObject implements DurableObject {
     const viewer = pair[1];
 
     this.webVNCViewers.set(lease.id, viewer);
+    this.recordWebVNCEvent(lease.id, "viewer_connected");
     this.acceptBridgeWebSocket(viewer, { kind: "webvnc-viewer", leaseID: lease.id });
     flushPendingWebVNC(this.pendingWebVNCToViewer, lease.id, viewer);
     return new Response(null, { status: 101, webSocket: client });
@@ -1678,6 +1747,7 @@ export class FleetDurableObject implements DurableObject {
     this.pendingWebVNCToViewer.delete(leaseID);
     closeSocket(this.webVNCViewers.get(leaseID), 1011, "WebVNC bridge disconnected");
     this.webVNCViewers.delete(leaseID);
+    this.recordWebVNCEvent(leaseID, "bridge_disconnected");
   }
 
   private clearWebVNCViewer(leaseID: string, socket: WebSocket): void {
@@ -1685,6 +1755,7 @@ export class FleetDurableObject implements DurableObject {
       return;
     }
     this.webVNCViewers.delete(leaseID);
+    this.recordWebVNCEvent(leaseID, "viewer_disconnected");
     resetWebVNCBridge(
       this.webVNCAgents,
       this.pendingWebVNCToViewer,
@@ -1692,6 +1763,21 @@ export class FleetDurableObject implements DurableObject {
       1011,
       "WebVNC viewer disconnected",
     );
+    this.recordWebVNCEvent(leaseID, "bridge_reset", "WebVNC viewer disconnected");
+  }
+
+  private recordWebVNCEvent(leaseID: string, event: string, reason?: string): void {
+    const events = this.webVNCEvents.get(leaseID) ?? [];
+    const record: WebVNCEvent = { at: new Date().toISOString(), event };
+    if (reason) {
+      record.reason = reason;
+    }
+    events.push(record);
+    this.webVNCEvents.set(leaseID, events.slice(-12));
+  }
+
+  private recentWebVNCEvents(leaseID: string): WebVNCEvent[] {
+    return this.webVNCEvents.get(leaseID) ?? [];
   }
 
   private async consumeWebVNCTicket(request: Request): Promise<WebVNCTicketRecord | undefined> {

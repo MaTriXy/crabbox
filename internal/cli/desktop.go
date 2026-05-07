@@ -21,6 +21,7 @@ func (a App) desktopLaunch(ctx context.Context, args []string) error {
 	egressProxy := fs.String("egress-proxy", defaultEgressListen, "lease-local egress proxy for --egress")
 	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
 	targetFlags := registerTargetFlags(fs, defaults)
+	networkFlags := registerNetworkModeFlag(fs, defaults)
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
@@ -45,6 +46,9 @@ func (a App) desktopLaunch(ctx context.Context, args []string) error {
 	if err := applyTargetFlagOverrides(&cfg, fs, targetFlags); err != nil {
 		return err
 	}
+	if err := applyNetworkModeFlagOverride(&cfg, fs, networkFlags); err != nil {
+		return err
+	}
 	if err := validateRequestedCapabilities(cfg); err != nil {
 		return err
 	}
@@ -54,7 +58,7 @@ func (a App) desktopLaunch(ctx context.Context, args []string) error {
 	if *id == "" && !isStaticProvider(cfg.Provider) {
 		return exit(2, "usage: crabbox desktop launch --id <lease-id-or-slug> [--browser] [--url <url>] -- <command...>")
 	}
-	server, target, leaseID, err := a.resolveLeaseTarget(ctx, cfg, *id)
+	server, target, leaseID, err := a.resolveNetworkLeaseTarget(ctx, cfg, *id, false)
 	if err != nil {
 		return err
 	}
@@ -118,6 +122,9 @@ func (a App) desktopLaunch(ctx context.Context, args []string) error {
 func desktopLaunchWebVNCArgs(cfg Config, target SSHTarget, leaseID string, openPortal bool) []string {
 	targetOS := firstNonBlank(target.TargetOS, cfg.TargetOS)
 	args := []string{"--provider", cfg.Provider, "--target", targetOS, "--id", leaseID}
+	if cfg.Network != "" && cfg.Network != NetworkAuto {
+		args = append(args, "--network", string(cfg.Network))
+	}
 	windowsMode := firstNonBlank(target.WindowsMode, cfg.WindowsMode)
 	if targetOS == targetWindows && windowsMode != "" {
 		args = append(args, "--windows-mode", windowsMode)

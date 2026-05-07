@@ -436,6 +436,7 @@ export function portalVNC(lease: LeaseRecord): Response {
   const bridgeCmd = webVNCBridgeCommand(lease);
   const fullscreenIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/></svg>`;
   const reconnectIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>`;
+  const pasteIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2h6a2 2 0 0 1 2 2v1H7V4a2 2 0 0 1 2-2Z"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11v6"/><path d="m9 14 3 3 3-3"/></svg>`;
   return html(
     title,
     `<main class="vnc-page">
@@ -444,6 +445,8 @@ export function portalVNC(lease: LeaseRecord): Response {
         meta: `<span>WebVNC ${escapeHTML(slug)}</span><span class="vnc-dot"></span>${providerBadge(lease.provider)}<span class="vnc-dot"></span>${targetBadge(target, lease.windowsMode)}<span class="vnc-dot"></span><span class="vnc-id">${escapeHTML(lease.id)}</span>`,
         actions: `
           <span id="status" class="status-pill">waiting for bridge</span>
+          <button id="vnc-copy-remote" class="icon-btn" type="button" title="copy remote clipboard" aria-label="copy remote clipboard" disabled>${copyIcon}</button>
+          <button id="vnc-paste" class="icon-btn" type="button" title="paste clipboard" aria-label="paste clipboard">${pasteIcon}</button>
           <button id="vnc-reconnect" class="icon-btn" type="button" title="reconnect" aria-label="reconnect">${reconnectIcon}</button>
           <button id="vnc-fullscreen" class="icon-btn" type="button" title="fullscreen" aria-label="toggle fullscreen">${fullscreenIcon}</button>
           <a class="button secondary" href="/portal">leases</a>
@@ -466,6 +469,7 @@ export function portalVNC(lease: LeaseRecord): Response {
       wsURL.protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const statusURL = new URL(${JSON.stringify(statusPath)}, window.location.href);
       const fragment = new URLSearchParams(window.location.hash.slice(1));
+      const target = ${JSON.stringify(target)};
       const username = fragment.get("username") || "";
       const password = fragment.get("password") || "";
       const credentials = {};
@@ -481,8 +485,32 @@ export function portalVNC(lease: LeaseRecord): Response {
       let retryAttempt = 0;
       let connected = false;
       let stopped = false;
+      let remoteClipboardText = "";
       function retryDelay() {
         return Math.min(5000, 500 * 2 ** retryAttempt);
+      }
+      function fallbackCopyText(text) {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          document.execCommand("copy");
+        } finally {
+          ta.remove();
+        }
+      }
+      async function writeClipboardText(text) {
+        if (navigator.clipboard?.writeText) {
+          try {
+            await navigator.clipboard.writeText(text);
+            return;
+          } catch (_) {}
+        }
+        fallbackCopyText(text);
       }
       async function bridgeState() {
         try {
@@ -523,6 +551,15 @@ export function portalVNC(lease: LeaseRecord): Response {
             connected = true;
             retryAttempt = 0;
             setStatus("connected", "ok");
+          });
+          rfb.addEventListener("clipboard", (event) => {
+            remoteClipboardText = event.detail?.text || "";
+            if (copyRemoteBtn) {
+              copyRemoteBtn.disabled = !remoteClipboardText;
+            }
+            if (remoteClipboardText) {
+              setStatus("remote clipboard ready", "ok");
+            }
           });
           rfb.addEventListener("disconnect", () => {
             scheduleRetry(connected ? "bridge disconnected" : "waiting for bridge");
@@ -568,13 +605,70 @@ export function portalVNC(lease: LeaseRecord): Response {
           document.documentElement.requestFullscreen?.().catch(() => {});
         }
       });
+      async function readClipboardText() {
+        if (navigator.clipboard?.readText) {
+          try {
+            return await navigator.clipboard.readText();
+          } catch (_) {}
+        }
+        return window.prompt("Text to paste") || "";
+      }
+      function pasteModifier() {
+        return target === "macos"
+          ? { keysym: 0xffeb, code: "MetaLeft" }
+          : { keysym: 0xffe3, code: "ControlLeft" };
+      }
+      function sendPasteShortcut() {
+        if (!rfb?.sendKey) return;
+        const modifier = pasteModifier();
+        rfb.sendKey(modifier.keysym, modifier.code, true);
+        rfb.sendKey(0x0076, "KeyV");
+        rfb.sendKey(modifier.keysym, modifier.code, false);
+      }
+      const pasteBtn = document.getElementById("vnc-paste");
+      let pasteResetTimer;
+      pasteBtn?.addEventListener("click", async () => {
+        if (!rfb || !connected) {
+          setStatus("connect before paste", "warn");
+          return;
+        }
+        const text = await readClipboardText();
+        if (!text) return;
+        try {
+          rfb.clipboardPasteFrom(text);
+          window.setTimeout(sendPasteShortcut, 80);
+          pasteBtn.dataset.state = "ok";
+          setStatus("pasted clipboard", "ok");
+        } catch (error) {
+          setStatus(error instanceof Error ? error.message : String(error), "bad");
+        }
+        window.clearTimeout(pasteResetTimer);
+        pasteResetTimer = window.setTimeout(() => { delete pasteBtn.dataset.state; }, 1200);
+      });
+      const copyRemoteBtn = document.getElementById("vnc-copy-remote");
+      let copyRemoteResetTimer;
+      copyRemoteBtn?.addEventListener("click", async () => {
+        if (!remoteClipboardText) {
+          setStatus("no remote clipboard yet", "warn");
+          return;
+        }
+        try {
+          await writeClipboardText(remoteClipboardText);
+          copyRemoteBtn.dataset.state = "ok";
+          setStatus("copied remote clipboard", "ok");
+        } catch (error) {
+          setStatus(error instanceof Error ? error.message : String(error), "bad");
+        }
+        window.clearTimeout(copyRemoteResetTimer);
+        copyRemoteResetTimer = window.setTimeout(() => { delete copyRemoteBtn.dataset.state; }, 1200);
+      });
       const copyBtn = document.getElementById("vnc-copy");
       const cmdEl = document.getElementById("vnc-bridge-cmd");
       let copyResetTimer;
       copyBtn?.addEventListener("click", async () => {
         const text = cmdEl?.textContent || "";
         try {
-          await navigator.clipboard.writeText(text);
+          await writeClipboardText(text);
         } catch (_) {
           const range = document.createRange();
           if (cmdEl) {
