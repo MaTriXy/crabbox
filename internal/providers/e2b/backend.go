@@ -293,23 +293,23 @@ func (b *e2bBackend) Stop(ctx context.Context, req StopRequest) error {
 func (b *e2bBackend) createSandbox(ctx context.Context, client e2bAPI, repo Repo, keep, reclaim bool) (string, e2bSandbox, string, error) {
 	leaseID := newLeaseID()
 	slug := newLeaseSlug(leaseID)
+	template := blank(b.cfg.E2B.Template, "base")
 	cfg := b.cfg
-	cfg.Provider = e2bProvider
-	cfg.ServerType = blank(cfg.E2B.Template, "base")
+	cfg.ServerType = template
 	labels := directLeaseLabels(cfg, leaseID, slug, e2bProvider, "", keep, b.now().UTC())
 	labels["state"] = "ready"
 	labels["workdir"] = e2bWorkspacePath(cfg)
-	labels["template"] = cfg.ServerType
+	labels["template"] = template
 	if repo.Name != "" {
 		labels["repo"] = repo.Name
 	}
-	timeoutSeconds := durationSecondsCeil(cfg.TTL)
+	timeoutSeconds := durationSecondsCeil(b.cfg.TTL)
 	if timeoutSeconds <= 0 {
 		timeoutSeconds = 300
 	}
-	fmt.Fprintf(b.rt.Stderr, "provisioning provider=e2b lease=%s slug=%s template=%s timeout=%ds\n", leaseID, slug, cfg.ServerType, timeoutSeconds)
+	fmt.Fprintf(b.rt.Stderr, "provisioning provider=e2b lease=%s slug=%s template=%s timeout=%ds\n", leaseID, slug, template, timeoutSeconds)
 	sandbox, err := client.CreateSandbox(ctx, e2bCreateSandboxRequest{
-		TemplateID:          cfg.ServerType,
+		TemplateID:          template,
 		TimeoutSeconds:      timeoutSeconds,
 		Metadata:            labels,
 		AllowInternetAccess: true,
@@ -409,7 +409,7 @@ func e2bSandboxToServer(sandbox e2bSandbox) Server {
 		Status:   sandbox.State,
 		Labels:   labels,
 	}
-	server.ServerType.Name = blank(sandbox.TemplateID, sandbox.Alias)
+	server.ServerType.Name = blank(sandbox.Alias, sandbox.TemplateID)
 	if server.ServerType.Name == "" {
 		server.ServerType.Name = "base"
 	}

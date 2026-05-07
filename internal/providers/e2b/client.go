@@ -446,7 +446,7 @@ func parseE2BProcessStream(r io.Reader, stdout, stderr io.Writer) (int, error) {
 		if event.Event.End != nil {
 			exitCode = event.Event.End.ExitCode
 			seenEnd = true
-			if event.Event.End.Error != "" {
+			if !event.Event.End.Exited && event.Event.End.Error != "" {
 				fmt.Fprintln(stderr, event.Event.End.Error)
 			}
 		}
