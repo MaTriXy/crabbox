@@ -86,6 +86,7 @@ Common:
 ```text
 --listen 127.0.0.1:3128
 --daemon
+--coordinator <public-coordinator-url>
 --target linux
 --network auto|tailscale|public
 ```

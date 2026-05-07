@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- Fixed `egress start --coordinator` so live public-route egress starts work when the local default coordinator is Cloudflare Access-protected.
 - Fixed Tailscale exit-node bootstrap paths to prefer tailnet metadata and fail clearly when remote exit-node egress is not active.
 - Fixed `run --no-sync` timing summaries so they report `sync_skipped=true`.
 - Fixed native Windows command output so first-use PowerShell progress records do not leak CLIXML into run logs.

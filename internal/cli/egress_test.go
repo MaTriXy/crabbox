@@ -62,6 +62,26 @@ func TestEgressCoordinatorNeedsAccess(t *testing.T) {
 	}
 }
 
+func TestEgressStartCoordinatorOverrideUsesPublicRoute(t *testing.T) {
+	cfg := Config{
+		Coordinator: "https://crabbox-access.openclaw.ai",
+		Access:      AccessConfig{ClientID: "client", ClientSecret: "secret", Token: "jwt"},
+	}
+	got, err := egressStartCoordinatorConfig(cfg, "https://crabbox.openclaw.ai/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Coordinator != "https://crabbox.openclaw.ai" {
+		t.Fatalf("coordinator=%q", got.Coordinator)
+	}
+	if egressCoordinatorNeedsAccess(got.Access) {
+		t.Fatalf("override should clear access headers for remote-safe start: %#v", got.Access)
+	}
+	if _, err := egressStartCoordinatorConfig(cfg, ""); err == nil {
+		t.Fatal("expected access-protected coordinator without override to be rejected")
+	}
+}
+
 func TestEgressClientBinaryRejectsNonLinuxTargets(t *testing.T) {
 	_, cleanup, err := egressClientBinaryForTarget(context.Background(), SSHTarget{TargetOS: targetWindows})
 	defer cleanup()

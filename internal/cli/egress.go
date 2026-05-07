@@ -159,6 +159,7 @@ func (a App) egressStart(ctx context.Context, args []string) error {
 	profile := fs.String("profile", "", "egress profile name")
 	allowCSV := fs.String("allow", "", "comma-separated allowed host patterns")
 	listen := fs.String("listen", defaultEgressListen, "lease-local proxy listen address")
+	coordinatorURL := fs.String("coordinator", "", "coordinator URL override")
 	daemon := fs.Bool("daemon", false, "start the local host bridge in the background")
 	targetFlags := registerTargetFlags(fs, defaults)
 	networkFlags := registerNetworkModeFlag(fs, defaults)
@@ -180,8 +181,9 @@ func (a App) egressStart(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if egressCoordinatorNeedsAccess(cfg.Access) {
-		return exit(2, "egress start cannot install a remote client when coordinator Access credentials are configured; use a public coordinator route or run egress client manually with safe credentials")
+	cfg, err = egressStartCoordinatorConfig(cfg, *coordinatorURL)
+	if err != nil {
+		return err
 	}
 	coord, useCoordinator, err := newTargetCoordinatorClient(cfg)
 	if err != nil {
@@ -720,6 +722,18 @@ func egressCoordinatorNeedsAccess(access AccessConfig) bool {
 	return strings.TrimSpace(access.ClientID) != "" ||
 		strings.TrimSpace(access.ClientSecret) != "" ||
 		strings.TrimSpace(access.Token) != ""
+}
+
+func egressStartCoordinatorConfig(cfg Config, coordinatorURL string) (Config, error) {
+	if override := strings.TrimSpace(coordinatorURL); override != "" {
+		cfg.Coordinator = strings.TrimRight(override, "/")
+		cfg.Access = AccessConfig{}
+		return cfg, nil
+	}
+	if egressCoordinatorNeedsAccess(cfg.Access) {
+		return cfg, exit(2, "egress start cannot install a remote client when coordinator Access credentials are configured; use --coordinator with a public coordinator route or run egress client manually with safe credentials")
+	}
+	return cfg, nil
 }
 
 func egressAgentURL(base, leaseID, role, ticket string) string {
