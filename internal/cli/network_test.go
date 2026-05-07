@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -62,6 +63,24 @@ func TestBootstrapNetworkHonorsExplicitPublic(t *testing.T) {
 	got := bootstrapNetworkTarget(cfg, server, target)
 	if got.Host != "203.0.113.10" || got.NetworkKind != "" {
 		t.Fatalf("bootstrap target = host=%s network=%s", got.Host, got.NetworkKind)
+	}
+}
+
+func TestTailscaleExitNodeEgressCheckFailsClosed(t *testing.T) {
+	script := tailscaleExitNodeEgressCheckScript()
+	for _, want := range []string{
+		"command -v tailscale",
+		"tailscale debug prefs",
+		"tailscale prefs unavailable",
+		"tailscale prefs did not include ExitNodeID",
+		"exit node is not selected",
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("egress check script missing %q:\n%s", want, script)
+		}
+	}
+	if strings.Contains(script, "debug prefs 2>/dev/null || true") {
+		t.Fatalf("egress check script must not ignore tailscale prefs failures:\n%s", script)
 	}
 }
 

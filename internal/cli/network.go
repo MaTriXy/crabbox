@@ -401,12 +401,37 @@ func validateTailscaleExitNodeEgress(ctx context.Context, server Server, target 
 	if strings.TrimSpace(meta.ExitNode) == "" {
 		return nil
 	}
-	command := `set -eu
-prefs="$(tailscale debug prefs 2>/dev/null || true)"
+	command := tailscaleExitNodeEgressCheckScript()
+	if out, err := runSSHCombinedOutput(ctx, target, command); err != nil {
+		detail := strings.TrimSpace(out)
+		if detail == "" {
+			detail = err.Error()
+		}
+		return exit(5, "tailscale exit node %s joined but remote internet egress failed; verify the exit node is approved and forwarding internet traffic: %s", meta.ExitNode, detail)
+	}
+	return nil
+}
+
+func tailscaleExitNodeEgressCheckScript() string {
+	return `set -eu
+if ! command -v tailscale >/dev/null 2>&1; then
+  printf '%s\n' "tailscale is not installed for exit-node egress check" >&2
+  exit 87
+fi
+prefs="$(tailscale debug prefs 2>/dev/null)" || {
+  printf '%s\n' "tailscale prefs unavailable for exit-node egress check" >&2
+  exit 88
+}
 case "$prefs" in
   *'"ExitNodeID": ""'*|*'"ExitNodeID":""'*)
     printf '%s\n' "exit node is not selected in tailscale prefs" >&2
     exit 86
+    ;;
+  *'"ExitNodeID":'*)
+    ;;
+  *)
+    printf '%s\n' "tailscale prefs did not include ExitNodeID" >&2
+    exit 89
     ;;
 esac
 if command -v curl >/dev/null 2>&1; then
@@ -417,12 +442,4 @@ else
 fi
 test -s /tmp/crabbox-exit-node-ip
 `
-	if out, err := runSSHCombinedOutput(ctx, target, command); err != nil {
-		detail := strings.TrimSpace(out)
-		if detail == "" {
-			detail = err.Error()
-		}
-		return exit(5, "tailscale exit node %s joined but remote internet egress failed; verify the exit node is approved and forwarding internet traffic: %s", meta.ExitNode, detail)
-	}
-	return nil
 }

@@ -1,10 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.6.1 - Unreleased
 
 ### Fixed
 
 - Fixed Tailscale exit-node bootstrap paths to prefer tailnet metadata and fail clearly when remote exit-node egress is not active.
+- Fixed `run --no-sync` timing summaries so they report `sync_skipped=true`.
 
 ## 0.6.0 - 2026-05-07
 

@@ -48,6 +48,21 @@ func TestFormatRunSummaryIncludesGitHydrateSkipReason(t *testing.T) {
 	}
 }
 
+func TestFormatRunSummaryNoSync(t *testing.T) {
+	got := formatRunSummary(runTimings{
+		syncSkipped: true,
+	}, 500*time.Millisecond, 0)
+	for _, want := range []string{
+		"sync=0s",
+		"sync_skipped=true",
+		"exit=0",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("summary missing %q in %q", want, got)
+		}
+	}
+}
+
 func TestTimingJSONShape(t *testing.T) {
 	var buf bytes.Buffer
 	err := writeTimingJSON(&buf, timingReportFromRun("aws", "cbx_123", "blue-crab", runTimings{

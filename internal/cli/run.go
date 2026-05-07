@@ -464,6 +464,7 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 		fmt.Fprintf(a.Stderr, "sync complete in %s\n", timings.sync.Round(time.Millisecond))
 		recorder.Event("sync.finished", "synced", fmt.Sprintf("duration=%s skipped=false", timings.sync.Round(time.Millisecond)))
 	} else {
+		timings.syncSkipped = true
 		recorder.Event("sync.finished", "synced", "skipped by --no-sync")
 	}
 afterSync:
