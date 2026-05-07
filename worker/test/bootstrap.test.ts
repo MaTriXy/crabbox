@@ -221,6 +221,9 @@ describe("cloud-init bootstrap", () => {
     expect(got).toContain("#!/bin/bash");
     expect(got).toContain("/Users/ec2-user/crabbox");
     expect(got).toContain("/var/db/crabbox/vnc.password");
+    expect(got).toContain("set +o pipefail");
+    expect(got).toContain("set -o pipefail");
+    expect(got).toContain("failed to generate vnc password");
     expect(got).toContain("com.apple.screensharing");
     expect(got).toContain("/usr/local/bin/crabbox-ready");
   });

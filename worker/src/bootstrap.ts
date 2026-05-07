@@ -273,7 +273,13 @@ set -euxo pipefail
 install -d -m 0755 ${shellQuote(config.workRoot)} /var/db/crabbox
 chown -R ${shellQuote(config.sshUser)}:staff ${shellQuote(config.workRoot)}
 if [ ! -s /var/db/crabbox/vnc.password ]; then
+  set +o pipefail
   pw="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16)"
+  set -o pipefail
+  if [ "\${#pw}" -ne 16 ]; then
+    echo "failed to generate vnc password" >&2
+    exit 1
+  fi
   printf '%s\\n' "$pw" >/var/db/crabbox/vnc.password
   dscl . -passwd /Users/${shellQuote(config.sshUser)} "$pw"
 fi
