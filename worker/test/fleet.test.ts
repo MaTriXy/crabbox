@@ -1656,6 +1656,7 @@ describe("fleet lease identity and idle", () => {
     expect(pageBody).toContain("WebVNC blue-lobster");
     expect(pageBody).toContain("function scheduleRetry");
     expect(pageBody).toContain("/portal/leases/cbx_000000000001/vnc/status");
+    expect(pageBody).toContain("/portal/leases/cbx_000000000001/share");
     expect(pageBody).toContain("vnc-copy-remote");
     expect(pageBody).toContain("vnc-paste");
     expect(pageBody).toContain("vnc-copy");

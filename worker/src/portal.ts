@@ -528,6 +528,7 @@ export function portalVNC(lease: LeaseRecord): Response {
           <button id="vnc-paste" class="icon-btn" type="button" title="paste clipboard" aria-label="paste clipboard">${pasteIcon}</button>
           <button id="vnc-reconnect" class="icon-btn" type="button" title="reconnect" aria-label="reconnect">${reconnectIcon}</button>
           <button id="vnc-fullscreen" class="icon-btn" type="button" title="fullscreen" aria-label="toggle fullscreen">${fullscreenIcon}</button>
+          <a class="button secondary" href="/portal/leases/${encodeURIComponent(lease.id)}/share">share</a>
           <a class="button secondary" href="/portal">leases</a>
           <a class="button secondary" href="/portal/logout">log out</a>
         `,
