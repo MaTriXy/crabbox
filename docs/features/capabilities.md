@@ -116,6 +116,12 @@ Test runners that read `BROWSER` or `CHROME_BIN` (Vitest, Playwright, etc.)
 work without extra plumbing. If a browser is requested but no binary is
 found, the run aborts before the command starts.
 
+For browser QA where the remote service is sensitive to source IP (Discord
+login, Slack workspace bootstrap, regional CDN behavior), pair `--browser`
+with [mediated egress](egress.md). `crabbox egress start` opens a lease-local
+proxy that exits to the internet through the operator machine, and `crabbox
+desktop launch --egress <profile>` passes that proxy to Chrome.
+
 ## Code
 
 `--code` provisions code-server on managed Linux leases:
@@ -187,5 +193,7 @@ Related docs:
 - [vnc command](../commands/vnc.md)
 - [webvnc command](../commands/webvnc.md)
 - [code command](../commands/code.md)
+- [egress command](../commands/egress.md)
 - [Interactive desktop and VNC](interactive-desktop-vnc.md)
+- [Mediated egress](egress.md)
 - [Browser portal](portal.md)

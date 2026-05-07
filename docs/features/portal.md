@@ -62,22 +62,30 @@ visibility-only detail page.
 The lease detail page shows:
 
 - compact provider/target badges and the lease state pill;
-- bridge status (whether the WebVNC and code-server bridges are up);
+- bridge status for the WebVNC, code-server, and mediated egress bridges,
+  including host/client connection state for an active egress session;
 - the latest Linux telemetry sample as gauges, with sparklines when multiple
   samples are present;
 - stale-telemetry, high-load, high-memory, and high-disk status pills when
   thresholds are exceeded;
 - an access panel with copy-to-clipboard commands for `crabbox ssh`,
-  `crabbox run`, `crabbox webvnc`, and `crabbox code`;
+  `crabbox run`, `crabbox webvnc`, `crabbox code`, and (when an egress
+  session is active) `crabbox egress status` / `crabbox egress stop`;
 - a viewport-fitted "recent runs" grid with state filters;
 - a stop action when the lease is releasable.
 
 `/portal/leases/{id-or-slug}/vnc` and `/portal/leases/{id-or-slug}/code/`
 are bridges, not portal pages. They proxy WebSocket and HTTP traffic to the
 matching capability on the lease so a user does not need an SSH tunnel to
-open the desktop or editor. See
-[Interactive desktop and VNC](interactive-desktop-vnc.md) and
-[code command](../commands/code.md).
+open the desktop or editor. The mediated egress bridge has its own
+ticketed websocket route under `/v1/leases/{id-or-slug}/egress/...` rather
+than a portal path, because egress is operator-driven and never opens an
+HTML view. See [Interactive desktop and VNC](interactive-desktop-vnc.md),
+[code command](../commands/code.md), and [Mediated egress](egress.md).
+
+All bridge tickets travel as `Authorization: Bearer ...` headers on the
+agent websocket upgrade, with a `?ticket=` query string fallback for older
+CLIs. The portal never echoes ticket values back to the browser.
 
 ## Run Detail `/portal/runs/{run-id}`
 
