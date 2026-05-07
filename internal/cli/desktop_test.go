@@ -141,6 +141,35 @@ func TestDesktopLaunchRemoteCommandCanPassEgressProxyToBrowser(t *testing.T) {
 	}
 }
 
+func TestDesktopCommandLooksLikeBrowser(t *testing.T) {
+	if !desktopCommandLooksLikeBrowser([]string{"/usr/bin/google-chrome"}, "") {
+		t.Fatal("google-chrome should be treated as browser")
+	}
+	if !desktopCommandLooksLikeBrowser([]string{"/opt/crabbox-browser"}, "/opt/crabbox-browser") {
+		t.Fatal("BROWSER env wrapper should be treated as browser")
+	}
+	if desktopCommandLooksLikeBrowser([]string{"xterm"}, "/opt/crabbox-browser") {
+		t.Fatal("xterm should not be treated as browser")
+	}
+}
+
+func TestDesktopBrowserLaunchCheckAvoidsSelfMatchingShell(t *testing.T) {
+	got := desktopBrowserLaunchCheckCommand()
+	if strings.Contains(got, "pgrep -f") {
+		t.Fatalf("launch check must not match its own shell text:\n%s", got)
+	}
+	for _, want := range []string{
+		"pgrep -x google-chrome",
+		"pgrep -x chrome",
+		"pgrep -x chromium",
+		"pgrep -x chromium-browser",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("launch check missing process-name probe %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestWindowsDesktopLaunchRemoteCommandUsesInteractiveTask(t *testing.T) {
 	got := desktopLaunchRemoteCommand(
 		SSHTarget{TargetOS: targetWindows, WindowsMode: windowsModeNormal},

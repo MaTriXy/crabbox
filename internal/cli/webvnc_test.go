@@ -164,6 +164,15 @@ func TestRetryableWebVNCBridgeErrors(t *testing.T) {
 	}
 }
 
+func TestClassifyWebVNCBridgeProblem(t *testing.T) {
+	if got := classifyWebVNCBridgeProblem(errors.New(`received close frame: replaced by a newer WebVNC viewer`)); got != rescueVNCStaleViewer {
+		t.Fatalf("problem=%q, want %q", got, rescueVNCStaleViewer)
+	}
+	if got := classifyWebVNCBridgeProblem(errors.New(`failed to read frame header: EOF`)); got != rescueVNCBridgeDisconnected {
+		t.Fatalf("problem=%q, want %q", got, rescueVNCBridgeDisconnected)
+	}
+}
+
 func TestRetryBridgeTicketInQuery(t *testing.T) {
 	resp := &http.Response{
 		StatusCode: http.StatusUnauthorized,

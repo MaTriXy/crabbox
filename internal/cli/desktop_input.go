@@ -25,16 +25,18 @@ func (a App) desktopDoctor(ctx context.Context, args []string) error {
 	}
 	coord, useCoordinator, err := newTargetCoordinatorClient(cfg)
 	if err == nil && useCoordinator && coord != nil && coord.Token != "" {
+		rescueCtx := rescueContext{Cfg: cfg, Target: target, LeaseID: leaseID}
 		status, err := coord.WebVNCStatus(ctx, leaseID)
 		if err != nil {
-			fmt.Fprintf(a.Stdout, "portal failed webvnc %v repair=crabbox webvnc status --id %s\n", err, leaseID)
+			fmt.Fprintf(a.Stdout, "portal failed webvnc %v\n", err)
+			printRescue(a.Stdout, rescueVNCBridgeDisconnected, err.Error(), webVNCStatusRescueCommand(rescueCtx), webVNCResetRescueCommand(rescueCtx))
 		} else {
 			fmt.Fprintf(a.Stdout, "portal ok webvnc bridge=%t viewer=%t\n", status.BridgeConnected, status.ViewerConnected)
 			if status.ViewerConnected {
-				fmt.Fprintf(a.Stdout, "portal warn stale-viewer repair=crabbox webvnc reset --id %s --open\n", leaseID)
+				printRescue(a.Stdout, rescueVNCStaleViewer, "close stale WebVNC tabs or reset this lease's WebVNC session", webVNCResetRescueCommand(rescueCtx))
 			}
 			if !status.BridgeConnected {
-				fmt.Fprintf(a.Stdout, "portal warn no-bridge repair=crabbox webvnc daemon start --id %s --open\n", leaseID)
+				printRescue(a.Stdout, rescueVNCBridgeNotRunning, "portal has no active WebVNC bridge for this lease", webVNCDaemonStartRescueCommand(rescueCtx), webVNCResetRescueCommand(rescueCtx))
 			}
 		}
 	}
@@ -42,7 +44,7 @@ func (a App) desktopDoctor(ctx context.Context, args []string) error {
 }
 
 func (a App) desktopClick(ctx context.Context, args []string) error {
-	target, _, leaseID, err := a.desktopCommandTarget(ctx, "desktop click", args, true)
+	target, cfg, leaseID, err := a.desktopCommandTarget(ctx, "desktop click", args, true)
 	if err != nil {
 		return err
 	}
@@ -51,7 +53,8 @@ func (a App) desktopClick(ctx context.Context, args []string) error {
 	if !xOK || !yOK || x < 0 || y < 0 {
 		return exit(2, "usage: crabbox desktop click --id <lease-id-or-slug> --x <n> --y <n>")
 	}
-	if err := runSSHQuiet(ctx, target, desktopClickRemoteCommand(x, y)); err != nil {
+	if out, err := runSSHCombinedOutput(ctx, target, desktopClickRemoteCommand(x, y)); err != nil {
+		a.printDesktopInputRescue(classifyDesktopFailure(out), out, cfg, target, leaseID)
 		return exit(5, "desktop click failed for %s: %v", leaseID, err)
 	}
 	fmt.Fprintf(a.Stdout, "clicked: lease=%s x=%d y=%d\n", leaseID, x, y)
@@ -59,7 +62,7 @@ func (a App) desktopClick(ctx context.Context, args []string) error {
 }
 
 func (a App) desktopPaste(ctx context.Context, args []string) error {
-	target, _, leaseID, err := a.desktopCommandTarget(ctx, "desktop paste", args, true)
+	target, cfg, leaseID, err := a.desktopCommandTarget(ctx, "desktop paste", args, true)
 	if err != nil {
 		return err
 	}
@@ -67,7 +70,9 @@ func (a App) desktopPaste(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := runSSHInputQuiet(ctx, target, desktopPasteRemoteCommand(), text); err != nil {
+	var stdout, stderr strings.Builder
+	if err := runSSHInput(ctx, target, desktopPasteRemoteCommand(), strings.NewReader(text), &stdout, &stderr); err != nil {
+		a.printDesktopInputRescue(classifyDesktopFailure(stderr.String()+"\n"+stdout.String()), stderr.String()+"\n"+stdout.String(), cfg, target, leaseID)
 		return exit(5, "desktop paste failed for %s: %v", leaseID, err)
 	}
 	fmt.Fprintf(a.Stdout, "pasted: lease=%s bytes=%d\n", leaseID, len(text))
@@ -75,7 +80,7 @@ func (a App) desktopPaste(ctx context.Context, args []string) error {
 }
 
 func (a App) desktopType(ctx context.Context, args []string) error {
-	target, _, leaseID, err := a.desktopCommandTarget(ctx, "desktop type", args, true)
+	target, cfg, leaseID, err := a.desktopCommandTarget(ctx, "desktop type", args, true)
 	if err != nil {
 		return err
 	}
@@ -84,13 +89,16 @@ func (a App) desktopType(ctx context.Context, args []string) error {
 		return err
 	}
 	if desktopShouldPasteForType(text) {
-		if err := runSSHInputQuiet(ctx, target, desktopPasteRemoteCommand(), text); err != nil {
+		var stdout, stderr strings.Builder
+		if err := runSSHInput(ctx, target, desktopPasteRemoteCommand(), strings.NewReader(text), &stdout, &stderr); err != nil {
+			a.printDesktopInputRescue(classifyDesktopFailure(stderr.String()+"\n"+stdout.String()), stderr.String()+"\n"+stdout.String(), cfg, target, leaseID)
 			return exit(5, "desktop type paste fallback failed for %s: %v", leaseID, err)
 		}
 		fmt.Fprintf(a.Stdout, "typed: lease=%s method=paste bytes=%d\n", leaseID, len(text))
 		return nil
 	}
-	if err := runSSHQuiet(ctx, target, desktopTypeRemoteCommand(text)); err != nil {
+	if out, err := runSSHCombinedOutput(ctx, target, desktopTypeRemoteCommand(text)); err != nil {
+		a.printDesktopInputRescue(classifyDesktopFailure(out), out, cfg, target, leaseID)
 		return exit(5, "desktop type failed for %s: %v", leaseID, err)
 	}
 	fmt.Fprintf(a.Stdout, "typed: lease=%s method=xdotool bytes=%d\n", leaseID, len(text))
@@ -98,7 +106,7 @@ func (a App) desktopType(ctx context.Context, args []string) error {
 }
 
 func (a App) desktopKey(ctx context.Context, args []string) error {
-	target, _, leaseID, err := a.desktopCommandTarget(ctx, "desktop key", args, true)
+	target, cfg, leaseID, err := a.desktopCommandTarget(ctx, "desktop key", args, true)
 	if err != nil {
 		return err
 	}
@@ -109,11 +117,17 @@ func (a App) desktopKey(ctx context.Context, args []string) error {
 	if strings.TrimSpace(keys) == "" {
 		return exit(2, "usage: crabbox desktop key --id <lease-id-or-slug> <keys>")
 	}
-	if err := runSSHQuiet(ctx, target, desktopKeyRemoteCommand(keys)); err != nil {
+	if out, err := runSSHCombinedOutput(ctx, target, desktopKeyRemoteCommand(keys)); err != nil {
+		a.printDesktopInputRescue(classifyDesktopFailure(out), out, cfg, target, leaseID)
 		return exit(5, "desktop key failed for %s: %v", leaseID, err)
 	}
 	fmt.Fprintf(a.Stdout, "key: lease=%s keys=%s\n", leaseID, strings.TrimSpace(keys))
 	return nil
+}
+
+func (a App) printDesktopInputRescue(problem, output string, cfg Config, target SSHTarget, leaseID string) {
+	ctx := rescueContext{Cfg: cfg, Target: target, LeaseID: leaseID}
+	printRescue(a.Stdout, problem, trimFailureDetail(output), desktopDoctorCommand(ctx))
 }
 
 func (a App) desktopCommandTarget(ctx context.Context, name string, args []string, requireLinux bool) (SSHTarget, Config, string, error) {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 )
 
@@ -84,12 +85,15 @@ func (a App) desktopLaunch(ctx context.Context, args []string) error {
 	if positionalID && len(command) > 0 && command[0] == *id {
 		command = command[1:]
 	}
+	expectBrowserLaunch := false
 	if *browser {
 		if len(command) == 0 {
 			if env["BROWSER"] == "" {
+				printRescue(a.Stdout, rescueBrowserNotLaunched, "browser=true requested but target did not report BROWSER", desktopDoctorCommand(rescueContext{Cfg: cfg, Target: target, LeaseID: leaseID}))
 				return exit(2, "browser=true requested but target did not report BROWSER")
 			}
 			command = []string{env["BROWSER"]}
+			expectBrowserLaunch = true
 			if strings.TrimSpace(*egress) != "" {
 				command = append(command, "--proxy-server=http://"+strings.TrimSpace(*egressProxy))
 			}
@@ -97,20 +101,32 @@ func (a App) desktopLaunch(ctx context.Context, args []string) error {
 				command = append(command, strings.TrimSpace(*url))
 			}
 		} else if strings.TrimSpace(*url) != "" {
+			expectBrowserLaunch = desktopCommandLooksLikeBrowser(command, env["BROWSER"])
 			if strings.TrimSpace(*egress) != "" {
 				command = append(command, "--proxy-server=http://"+strings.TrimSpace(*egressProxy))
 			}
 			command = append(command, strings.TrimSpace(*url))
 		} else if strings.TrimSpace(*egress) != "" {
+			expectBrowserLaunch = desktopCommandLooksLikeBrowser(command, env["BROWSER"])
 			command = append(command, "--proxy-server=http://"+strings.TrimSpace(*egressProxy))
+		} else {
+			expectBrowserLaunch = desktopCommandLooksLikeBrowser(command, env["BROWSER"])
 		}
 	}
 	if len(command) == 0 {
 		return exit(2, "usage: crabbox desktop launch --id <lease-id-or-slug> -- <command...>")
 	}
 	workdir := remoteJoin(cfg, leaseID, repo.Name)
-	if err := runSSHQuiet(ctx, target, desktopLaunchRemoteCommand(target, workdir, env, command, *browser && !*fullscreen)); err != nil {
+	rescueCtx := rescueContext{Cfg: cfg, Target: target, LeaseID: leaseID}
+	if out, err := runSSHCombinedOutput(ctx, target, desktopLaunchRemoteCommand(target, workdir, env, command, *browser && !*fullscreen)); err != nil {
+		printRescue(a.Stdout, classifyDesktopFailure(out), trimFailureDetail(out), desktopDoctorCommand(rescueCtx), desktopLaunchRetryCommand(rescueCtx, command))
 		return exit(5, "launch desktop command: %v", err)
+	}
+	if expectBrowserLaunch && target.TargetOS == targetLinux {
+		if out, err := runSSHCombinedOutput(ctx, target, desktopBrowserLaunchCheckCommand()); err != nil {
+			printRescue(a.Stdout, rescueBrowserNotLaunched, trimFailureDetail(out), desktopDoctorCommand(rescueCtx), desktopLaunchRetryCommand(rescueCtx, command))
+			return exit(5, "browser not launched for %s: %v", leaseID, err)
+		}
 	}
 	fmt.Fprintf(a.Stdout, "launched: %s\n", strings.Join(command, " "))
 	if *webvnc {
@@ -199,6 +215,45 @@ func posixWindowBrowserCommand() string {
   fi
 ) >/dev/null 2>&1 &
 `
+}
+
+func desktopBrowserLaunchCheckCommand() string {
+	return `set +e
+export DISPLAY="${DISPLAY:-:99}"
+sleep 5
+if command -v xdotool >/dev/null 2>&1; then
+  window="$(xdotool search --onlyvisible --class google-chrome 2>/dev/null | tail -1 || true)"
+  [ -n "$window" ] || window="$(xdotool search --onlyvisible --class chromium 2>/dev/null | tail -1 || true)"
+  if [ -n "$window" ]; then
+    exit 0
+  fi
+  echo "browser window not visible on DISPLAY=$DISPLAY" >&2
+fi
+if command -v pgrep >/dev/null 2>&1 && {
+  pgrep -x google-chrome >/dev/null 2>&1 ||
+  pgrep -x chrome >/dev/null 2>&1 ||
+  pgrep -x chromium >/dev/null 2>&1 ||
+  pgrep -x chromium-browser >/dev/null 2>&1
+}; then
+  exit 0
+fi
+echo "browser process not found" >&2
+exit 1`
+}
+
+func desktopCommandLooksLikeBrowser(command []string, browserEnv string) bool {
+	if len(command) == 0 {
+		return false
+	}
+	first := strings.TrimSpace(command[0])
+	if first == "" {
+		return false
+	}
+	if strings.TrimSpace(browserEnv) != "" && first == strings.TrimSpace(browserEnv) {
+		return true
+	}
+	lower := strings.ToLower(filepath.Base(first))
+	return strings.Contains(lower, "chrome") || strings.Contains(lower, "chromium")
 }
 
 func writeShellArgv(b *bytes.Buffer, command []string) {

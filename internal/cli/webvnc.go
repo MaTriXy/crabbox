@@ -135,6 +135,7 @@ func (a App) webvnc(ctx context.Context, args []string) error {
 	}
 
 	portal := webVNCPortalURL(coord.BaseURL, leaseID, username, password)
+	rescueCtx := rescueContext{Cfg: cfg, Target: target, LeaseID: leaseID}
 	opened := false
 	connectedOnce := false
 	attempt := 0
@@ -142,11 +143,13 @@ func (a App) webvnc(ctx context.Context, args []string) error {
 		bridge, err := connectWebVNCBridge(ctx, coord, leaseID, connHost, connPort)
 		if err != nil {
 			if !connectedOnce {
+				printRescueWithFallback(a.Stdout, rescueVNCBridgeDisconnected, err.Error(), nativeVNCOpenCommand(cfg, target, leaseID), webVNCStatusRescueCommand(rescueCtx), webVNCResetRescueCommand(rescueCtx))
 				return err
 			}
 			attempt++
 			delay := webVNCReconnectDelay(attempt)
-			fmt.Fprintf(a.Stdout, "bridge: reconnect failed: %v; retrying in %s\n", err, delay)
+			printRescueWithFallback(a.Stdout, rescueVNCBridgeDisconnected, err.Error(), nativeVNCOpenCommand(cfg, target, leaseID), webVNCStatusRescueCommand(rescueCtx))
+			fmt.Fprintf(a.Stdout, "bridge: reconnecting in %s\n", delay)
 			if err := waitWebVNCReconnect(ctx, delay); err != nil {
 				return err
 			}
@@ -180,9 +183,11 @@ func (a App) webvnc(ctx context.Context, args []string) error {
 		attempt++
 		delay := webVNCReconnectDelay(attempt)
 		if err != nil {
-			fmt.Fprintf(a.Stdout, "bridge: viewer reset: %v; reconnecting in %s\n", err, delay)
+			printRescueWithFallback(a.Stdout, classifyWebVNCBridgeProblem(err), err.Error(), nativeVNCOpenCommand(cfg, target, leaseID), webVNCStatusRescueCommand(rescueCtx), webVNCResetRescueCommand(rescueCtx))
+			fmt.Fprintf(a.Stdout, "bridge: reconnecting in %s\n", delay)
 		} else {
-			fmt.Fprintf(a.Stdout, "bridge: viewer closed; reconnecting in %s\n", delay)
+			printRescueWithFallback(a.Stdout, rescueVNCBridgeDisconnected, "viewer closed", nativeVNCOpenCommand(cfg, target, leaseID), webVNCStatusRescueCommand(rescueCtx))
+			fmt.Fprintf(a.Stdout, "bridge: reconnecting in %s\n", delay)
 		}
 		if err := waitWebVNCReconnect(ctx, delay); err != nil {
 			return err
@@ -324,14 +329,18 @@ func (a App) webVNCStatusCommand(ctx context.Context, args []string) error {
 		}
 	}
 	fmt.Fprintf(a.Stdout, "lease: %s slug=%s provider=%s target=%s\n", leaseID, blank(serverSlug(server), "-"), blank(server.Provider, cfg.Provider), blank(target.TargetOS, cfg.TargetOS))
+	rescueCtx := rescueContext{Cfg: cfg, Target: target, LeaseID: leaseID}
 	if daemonErr != nil {
 		fmt.Fprintf(a.Stdout, "webvnc daemon: error=%v\n", daemonErr)
 	} else {
 		printLocalWebVNCDaemonStatus(a.Stdout, daemon)
+		if daemon.Missing || daemon.Stale {
+			printRescue(a.Stdout, rescueVNCBridgeNotRunning, "", webVNCDaemonStartRescueCommand(rescueCtx))
+		}
 	}
 	if endpointErr != nil {
 		fmt.Fprintf(a.Stdout, "vnc target: unreachable 127.0.0.1:5900 (%v)\n", endpointErr)
-		fmt.Fprintln(a.Stdout, "repair: run crabbox desktop doctor --id "+shellQuote(leaseID))
+		printRescue(a.Stdout, rescueVNCTargetUnreachable, endpointErr.Error(), desktopDoctorCommand(rescueCtx))
 	} else {
 		fmt.Fprintf(a.Stdout, "vnc target: reachable %s:%s managed=%t\n", endpoint.Host, endpoint.Port, endpoint.Managed)
 		if endpoint.Direct {
@@ -342,6 +351,7 @@ func (a App) webVNCStatusCommand(ctx context.Context, args []string) error {
 	}
 	if statusErr != nil {
 		fmt.Fprintf(a.Stdout, "portal bridge: unknown (%v)\n", statusErr)
+		printRescue(a.Stdout, rescueVNCBridgeDisconnected, statusErr.Error(), webVNCStatusRescueCommand(rescueCtx), webVNCResetRescueCommand(rescueCtx))
 	} else {
 		fmt.Fprintf(a.Stdout, "portal bridge: connected=%t viewer=%t\n", status.BridgeConnected, status.ViewerConnected)
 		if strings.TrimSpace(status.Message) != "" {
@@ -364,9 +374,9 @@ func (a App) webVNCStatusCommand(ctx context.Context, args []string) error {
 	}
 	fmt.Fprintf(a.Stdout, "fallback: %s\n", nativeVNCOpenCommand(cfg, target, leaseID))
 	if statusErr == nil && status.ViewerConnected {
-		fmt.Fprintln(a.Stdout, "repair: close stale WebVNC tabs or run crabbox webvnc reset --id "+shellQuote(leaseID)+" --open")
+		printRescue(a.Stdout, rescueVNCStaleViewer, "close stale WebVNC tabs or reset this lease's WebVNC session", webVNCResetRescueCommand(rescueCtx))
 	} else if statusErr == nil && !status.BridgeConnected {
-		fmt.Fprintln(a.Stdout, "repair: start crabbox webvnc daemon start --id "+shellQuote(leaseID)+" --open")
+		printRescue(a.Stdout, rescueVNCBridgeNotRunning, "portal has no active WebVNC bridge for this lease", webVNCDaemonStartRescueCommand(rescueCtx), webVNCResetRescueCommand(rescueCtx))
 	}
 	return nil
 }
@@ -416,7 +426,9 @@ func (a App) webVNCResetCommand(ctx context.Context, args []string) error {
 	if _, err := a.stopWebVNCDaemonIfRunning(leaseID); err != nil {
 		return err
 	}
-	if err := runSSHQuiet(ctx, target, webVNCResetRemoteCommand(target)); err != nil {
+	rescueCtx := rescueContext{Cfg: cfg, Target: target, LeaseID: leaseID}
+	if out, err := runSSHCombinedOutput(ctx, target, webVNCResetRemoteCommand(target)); err != nil {
+		printRescue(a.Stdout, classifyDesktopFailure(out), trimFailureDetail(out), desktopDoctorCommand(rescueCtx))
 		return exit(5, "reset target WebVNC/input stack: %v", err)
 	}
 	password := ""
@@ -875,6 +887,17 @@ func retryableWebVNCBridgeError(err error) bool {
 		strings.Contains(message, "WebVNC bridge reset") ||
 		strings.Contains(message, "failed to read frame header: EOF") ||
 		strings.Contains(message, "status = StatusNormalClosure")
+}
+
+func classifyWebVNCBridgeProblem(err error) string {
+	if err == nil {
+		return rescueVNCBridgeDisconnected
+	}
+	message := err.Error()
+	if strings.Contains(message, "replaced by a newer WebVNC viewer") || strings.Contains(message, "another viewer") {
+		return rescueVNCStaleViewer
+	}
+	return rescueVNCBridgeDisconnected
 }
 
 func webVNCReconnectDelay(attempt int) time.Duration {
