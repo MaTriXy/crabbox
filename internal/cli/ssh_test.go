@@ -15,6 +15,8 @@ import (
 	"unicode/utf16"
 )
 
+const powerShellEncodedCommandPrefix = "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand "
+
 func TestVersion(t *testing.T) {
 	var out bytes.Buffer
 	app := App{Stdout: &out, Stderr: &bytes.Buffer{}}
@@ -77,8 +79,12 @@ func TestRemoteCommandSourcesActionsEnvFile(t *testing.T) {
 
 func TestWindowsNativeRemoteCommandUsesPowerShell(t *testing.T) {
 	got := windowsRemoteCommandWithEnvFile(`C:\crabbox\cbx\repo`, map[string]string{"CI": "1"}, "", []string{"pwsh", "-NoProfile", "-Command", "echo ok"})
-	if !strings.HasPrefix(got, "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ") {
+	if !strings.HasPrefix(got, powerShellEncodedCommandPrefix) {
 		t.Fatalf("windows command should use encoded powershell: %q", got)
+	}
+	decoded := decodePowerShellCommand(t, got)
+	if !strings.HasPrefix(decoded, "$ProgressPreference = \"SilentlyContinue\"\n") {
+		t.Fatalf("windows command should suppress PowerShell progress records: %q", decoded)
 	}
 }
 
@@ -101,7 +107,7 @@ func TestWindowsNativeRemoteShellRunsScriptDirectly(t *testing.T) {
 
 func decodePowerShellCommand(t *testing.T, command string) string {
 	t.Helper()
-	const prefix = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand "
+	const prefix = powerShellEncodedCommandPrefix
 	if !strings.HasPrefix(command, prefix) {
 		t.Fatalf("command missing encoded powershell prefix: %q", command)
 	}
@@ -123,7 +129,7 @@ func TestWSL2WrapsRemoteCommand(t *testing.T) {
 	target := SSHTarget{TargetOS: targetWindows, WindowsMode: windowsModeWSL2}
 	remote := `printf "ok\n"; echo 'quoted'`
 	got := wrapRemoteForTarget(target, remote)
-	if !strings.HasPrefix(got, "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ") {
+	if !strings.HasPrefix(got, powerShellEncodedCommandPrefix) {
 		t.Fatalf("WSL2 command should use encoded PowerShell: %q", got)
 	}
 	decoded := decodePowerShellCommand(t, got)
