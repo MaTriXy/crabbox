@@ -30,6 +30,8 @@ type crabboxKongCLI struct {
 	Cache      cacheKongCmd      `cmd:"" help:"Inspect, purge, or warm remote caches."`
 	Status     statusKongCmd     `cmd:"" passthrough:"" help:"Show lease state; add --wait to block until ready."`
 	List       listKongCmd       `cmd:"" passthrough:"" help:"List Crabbox machines."`
+	Share      shareKongCmd      `cmd:"" passthrough:"" help:"Share a lease with users or the owning org."`
+	Unshare    unshareKongCmd    `cmd:"" passthrough:"" help:"Remove lease sharing."`
 	Image      imageKongCmd      `cmd:"" help:"Create or promote brokered AWS runner images."`
 	Usage      usageKongCmd      `cmd:"" passthrough:"" help:"Show cost and usage estimates by user, org, or fleet."`
 	Admin      adminKongCmd      `cmd:"" help:"Lease admin controls for trusted operators."`
@@ -159,6 +161,12 @@ type statusKongCmd struct {
 	Args []string `arg:"" optional:""`
 }
 type listKongCmd struct {
+	Args []string `arg:"" optional:""`
+}
+type shareKongCmd struct {
+	Args []string `arg:"" optional:""`
+}
+type unshareKongCmd struct {
 	Args []string `arg:"" optional:""`
 }
 type usageKongCmd struct {
@@ -333,6 +341,8 @@ func (c *attachKongCmd) Run(ctx context.Context, app App) error   { return app.a
 func (c *resultsKongCmd) Run(ctx context.Context, app App) error  { return app.results(ctx, c.Args) }
 func (c *statusKongCmd) Run(ctx context.Context, app App) error   { return app.status(ctx, c.Args) }
 func (c *listKongCmd) Run(ctx context.Context, app App) error     { return app.list(ctx, c.Args) }
+func (c *shareKongCmd) Run(ctx context.Context, app App) error    { return app.share(ctx, c.Args) }
+func (c *unshareKongCmd) Run(ctx context.Context, app App) error  { return app.unshare(ctx, c.Args) }
 func (c *usageKongCmd) Run(ctx context.Context, app App) error    { return app.usage(ctx, c.Args) }
 func (c *sshKongCmd) Run(ctx context.Context, app App) error      { return app.ssh(ctx, c.Args) }
 func (c *vncKongCmd) Run(ctx context.Context, app App) error      { return app.vnc(ctx, c.Args) }

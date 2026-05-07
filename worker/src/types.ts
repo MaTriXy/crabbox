@@ -132,6 +132,7 @@ export interface LeaseRecord {
   region?: string;
   owner: string;
   org: string;
+  share?: LeaseShare | undefined;
   profile: string;
   class: string;
   serverType: string;
@@ -161,6 +162,15 @@ export interface LeaseRecord {
   telemetryHistory?: LeaseTelemetry[];
   releasedAt?: string;
   endedAt?: string;
+}
+
+export type LeaseShareRole = "use" | "manage";
+
+export interface LeaseShare {
+  users?: Record<string, LeaseShareRole> | undefined;
+  org?: LeaseShareRole | undefined;
+  updatedAt?: string | undefined;
+  updatedBy?: string | undefined;
 }
 
 export interface TailscaleMetadata {

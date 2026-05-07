@@ -148,6 +148,8 @@ Commands:
   cache       Inspect, purge, or warm remote caches
   status      Show lease state; add --wait to block until ready
   list        List Crabbox machines
+  share       Share a lease with users or the owning org
+  unshare     Remove lease sharing
   image       Create or promote brokered AWS runner images
   usage       Show cost and usage estimates by user, org, or fleet
   admin       Lease admin controls for trusted operators
@@ -175,6 +177,8 @@ Common Flows:
   crabbox webvnc --id blue-lobster --open
   crabbox code --id blue-lobster --open
   crabbox egress start --id blue-lobster --profile discord --daemon
+  crabbox share --id blue-lobster --user friend@example.com
+  crabbox share --id blue-lobster --org
   crabbox screenshot --id blue-lobster --output desktop.png
   crabbox inspect --id blue-lobster --json
   crabbox history --lease cbx_abcdef123456

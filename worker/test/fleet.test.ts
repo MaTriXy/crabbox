@@ -109,6 +109,97 @@ describe("fleet lease identity and idle", () => {
     expect(found.lease.slug).toBe("blue-lobster");
   });
 
+  it("shares leases with explicit users or the owning org", async () => {
+    const storage = new MemoryStorage();
+    const fleet = testFleet(storage);
+    const ownerHeaders = {
+      "x-crabbox-owner": "peter@example.com",
+      "x-crabbox-org": "openclaw",
+    };
+    const friendHeaders = {
+      "x-crabbox-owner": "friend@example.com",
+      "x-crabbox-org": "openclaw",
+    };
+    const strangerHeaders = {
+      "x-crabbox-owner": "stranger@example.com",
+      "x-crabbox-org": "elsewhere",
+    };
+    storage.seed(
+      "lease:cbx_000000000001",
+      testLease({
+        id: "cbx_000000000001",
+        slug: "blue-lobster",
+        owner: "peter@example.com",
+        org: "openclaw",
+        desktop: true,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      }),
+    );
+
+    const hidden = await fleet.fetch(
+      request("GET", "/v1/leases/blue-lobster", { headers: friendHeaders }),
+    );
+    expect(hidden.status).toBe(404);
+
+    const shared = await fleet.fetch(
+      request("PUT", "/v1/leases/blue-lobster/share", {
+        headers: ownerHeaders,
+        body: { users: { "Friend@Example.com": "use" } },
+      }),
+    );
+    expect(shared.status).toBe(200);
+    await expect(shared.json()).resolves.toMatchObject({
+      leaseID: "cbx_000000000001",
+      share: { users: { "friend@example.com": "use" } },
+    });
+
+    const friendLease = await fleet.fetch(
+      request("GET", "/v1/leases/blue-lobster", { headers: friendHeaders }),
+    );
+    expect(friendLease.status).toBe(200);
+    await expect(friendLease.json()).resolves.toMatchObject({
+      lease: { id: "cbx_000000000001", share: { users: { "friend@example.com": "use" } } },
+    });
+
+    const friendTicket = await fleet.fetch(
+      request("POST", "/v1/leases/blue-lobster/webvnc/ticket", {
+        headers: friendHeaders,
+        body: {},
+      }),
+    );
+    expect(friendTicket.status).toBe(200);
+
+    const friendRelease = await fleet.fetch(
+      request("POST", "/v1/leases/blue-lobster/release", {
+        headers: friendHeaders,
+        body: {},
+      }),
+    );
+    expect(friendRelease.status).toBe(403);
+
+    const orgShared = await fleet.fetch(
+      request("PUT", "/v1/leases/blue-lobster/share", {
+        headers: ownerHeaders,
+        body: { users: { "friend@example.com": "use" }, org: "manage" },
+      }),
+    );
+    expect(orgShared.status).toBe(200);
+    await expect(orgShared.json()).resolves.toMatchObject({
+      share: { users: { "friend@example.com": "use" }, org: "manage" },
+    });
+
+    const friendSharePage = await fleet.fetch(
+      request("GET", "/portal/leases/blue-lobster/share", { headers: friendHeaders }),
+    );
+    expect(friendSharePage.status).toBe(200);
+    expect(await friendSharePage.text()).toContain("share blue-lobster");
+
+    const stranger = await fleet.fetch(
+      request("GET", "/v1/leases/blue-lobster", { headers: strangerHeaders }),
+    );
+    expect(stranger.status).toBe(404);
+  });
+
   it("mints brokered Tailscale keys, records non-secret metadata, and accepts readiness updates", async () => {
     const storage = new MemoryStorage();
     let providerConfig:

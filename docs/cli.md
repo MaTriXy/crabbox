@@ -64,6 +64,8 @@ crabbox actions register --id <lease-id-or-slug> [--repo owner/name]
 crabbox actions dispatch [--workflow <file|name|id>] [-f key=value]
 crabbox status --id <lease-id-or-slug> [--network auto|tailscale|public] [--wait]
 crabbox list [--json]
+crabbox share --id <lease-id-or-slug> [--user <email>] [--org] [--role use|manage] [--list] [--json]
+crabbox unshare --id <lease-id-or-slug> [--user <email>] [--org] [--all] [--json]
 crabbox usage [--scope user|org|all] [--user <email>] [--org <name>] [--month YYYY-MM] [--json]
 crabbox admin leases [--state active|released|expired|failed] [--owner <email>] [--org <name>] [--json]
 crabbox admin release <lease-id-or-slug> [--delete]
@@ -115,6 +117,8 @@ crabbox egress start --id blue-lobster --profile discord --daemon
 crabbox desktop launch --id blue-lobster --browser --url https://discord.com/login --egress discord --webvnc --open
 crabbox egress status --id blue-lobster
 crabbox egress stop --id blue-lobster
+crabbox share --id blue-lobster --user friend@example.com
+crabbox share --id blue-lobster --org
 crabbox screenshot --id blue-lobster --output desktop.png
 crabbox media preview --input desktop.mp4 --output desktop-preview.gif --trimmed-video-output desktop-change.mp4
 crabbox run --id blue-lobster --shell 'pnpm install --frozen-lockfile && pnpm test'

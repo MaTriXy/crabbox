@@ -22,6 +22,8 @@ Command docs live here, one file per top-level command. Keep `docs/cli.md` as th
 - [cache](cache.md)
 - [status](status.md)
 - [list](list.md)
+- [share](share.md)
+- [unshare](unshare.md)
 - [image](image.md)
 - [usage](usage.md)
 - [admin](admin.md)

@@ -16,6 +16,8 @@ client-side JavaScript only for filtering, sorting, and clipboard copy.
 ```text
 GET  /portal
 GET  /portal/leases/{id-or-slug}
+GET  /portal/leases/{id-or-slug}/share
+POST /portal/leases/{id-or-slug}/share
 POST /portal/leases/{id-or-slug}/release
 GET  /portal/leases/{id-or-slug}/vnc
 GET  /portal/leases/{id-or-slug}/code/
@@ -43,7 +45,8 @@ Default view rules:
 
 - Defaults to active leases when any are active.
 - Falls back to all visible leases when the active list is empty.
-- Normal browser sessions see only their own owner/org leases.
+- Normal browser sessions see their own leases plus leases shared directly
+  with them or with their org.
 - Admin sessions also see non-owned runner leases. `mine` and `system`
   filters distinguish personal leases from external runners (Blacksmith
   Testboxes synced from CLI list output) so external rows do not leak to
@@ -73,6 +76,11 @@ The lease detail page shows:
   session is active) `crabbox egress status` / `crabbox egress stop`;
 - a viewport-fitted "recent runs" grid with state filters;
 - a stop action when the lease is releasable.
+
+Owners and users with `manage` access see a share control in the top-right
+lease header. The share page can add individual users, set org-wide access, or
+clear sharing. `use` shares can open visible lease pages and portal bridges;
+`manage` shares can also change sharing and stop the lease.
 
 `/portal/leases/{id-or-slug}/vnc` and `/portal/leases/{id-or-slug}/code/`
 are bridges, not portal pages. They proxy WebSocket and HTTP traffic to the

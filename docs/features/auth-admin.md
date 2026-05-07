@@ -26,6 +26,9 @@ crabbox login --no-browser
 crabbox login --url <url> --token-stdin
 crabbox whoami
 crabbox logout
+crabbox share --id blue-lobster --user friend@example.com
+crabbox share --id blue-lobster --org
+crabbox unshare --id blue-lobster --user friend@example.com
 ```
 
 Trusted operator controls:
@@ -41,14 +44,22 @@ Admin commands require the separate admin token. GitHub browser-login tokens can
 Normal user tokens are owner/org scoped:
 
 ```text
-GET /v1/leases                 own leases only
-GET /v1/leases/{id-or-slug}    exact ID and slug lookup must match owner/org
-POST /v1/leases/{id}/heartbeat own leases only
-POST /v1/leases/{id}/release   own leases only
+GET /v1/leases                 own and shared leases only
+GET /v1/leases/{id-or-slug}    exact ID and slug lookup must be visible
+POST /v1/leases/{id}/heartbeat own or shared leases
+PUT/DELETE /v1/leases/{id}/share owner, manage share, or admin only
+POST /v1/leases/{id}/release   owner, manage share, or admin only
 GET /v1/runs and logs          own runs only
 GET /v1/usage                  own usage only
 GET /v1/pool                   admin token only
 ```
+
+Lease sharing grants coordinator and portal access without distributing the
+shared bearer token or admin token. A `use` share can see the lease and open
+visible portal bridges such as WebVNC/code. A `manage` share can also change
+sharing and stop the lease. `--org` shares with authenticated users whose org
+matches the lease org. SSH-based CLI use still requires a local private key
+accepted by the runner; sharing does not copy SSH private keys between users.
 
 Do not distribute the shared token or admin token to untrusted users. Keep the admin token narrower and more closely held than the shared automation token.
 

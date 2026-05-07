@@ -16,6 +16,7 @@ import {
   portalHome,
   portalLeaseDetail,
   portalRunDetail,
+  portalShareLease,
   portalVNC,
   webVNCBridgeCommand,
 } from "./portal";
@@ -35,6 +36,8 @@ import type {
   ExternalRunnerSyncRequest,
   LeaseRecord,
   LeaseRequest,
+  LeaseShare,
+  LeaseShareRole,
   LeaseTelemetry,
   Provider,
   ProviderImage,
@@ -769,6 +772,9 @@ export class FleetDurableObject implements DurableObject {
     if (method === "POST" && action === "release") {
       return this.releaseLease(request, leaseID, false);
     }
+    if (action === "share") {
+      return await this.shareLeaseRoute(request, leaseID);
+    }
     return json({ error: "not_found" }, { status: 404 });
   }
 
@@ -834,9 +840,53 @@ export class FleetDurableObject implements DurableObject {
     if (!lease) {
       return notFound();
     }
+    if (!this.leaseManageableByRequest(lease, request, admin)) {
+      return json({ error: "forbidden", message: "lease manage access required" }, { status: 403 });
+    }
     const body = await optionalJson<{ delete?: boolean }>(request);
     const shouldDelete = body.delete ?? !lease.keep;
     return json({ lease: await this.releaseResolvedLease(lease, { deleteServer: shouldDelete }) });
+  }
+
+  private async shareLeaseRoute(request: Request, leaseID: string): Promise<Response> {
+    const method = request.method.toUpperCase();
+    const lease = await this.resolveLease(leaseID, request, isAdminRequest(request));
+    if (!lease) {
+      return notFound();
+    }
+    if (method === "GET") {
+      return json({ leaseID: lease.id, share: normalizedLeaseShare(lease.share) });
+    }
+    if (!this.leaseManageableByRequest(lease, request, isAdminRequest(request))) {
+      return json({ error: "forbidden", message: "lease manage access required" }, { status: 403 });
+    }
+    if (method === "PUT") {
+      const input = await readJson<Partial<LeaseShare>>(request);
+      lease.share = sanitizeLeaseShare(input, requestOwner(request));
+      lease.updatedAt = new Date().toISOString();
+      await this.putLease(lease);
+      return json({ leaseID: lease.id, share: normalizedLeaseShare(lease.share) });
+    }
+    if (method === "DELETE") {
+      const input = await optionalJson<{ user?: string; org?: boolean }>(request);
+      const share = normalizedLeaseShare(lease.share);
+      const user = normalizeShareUser(input.user);
+      if (user) {
+        delete share.users[user];
+      }
+      if (input.org) {
+        delete share.org;
+      }
+      if (!user && !input.org) {
+        lease.share = undefined;
+      } else {
+        lease.share = sanitizeLeaseShare(share, requestOwner(request));
+      }
+      lease.updatedAt = new Date().toISOString();
+      await this.putLease(lease);
+      return json({ leaseID: lease.id, share: normalizedLeaseShare(lease.share) });
+    }
+    return json({ error: "not_found" }, { status: 404 });
   }
 
   private whoami(request: Request): Response {
@@ -870,6 +920,12 @@ export class FleetDurableObject implements DurableObject {
     }
     if (method === "GET" && parts[1] === "leases" && parts[2] && parts[3] === undefined) {
       return await this.portalLeasePage(request, parts[2]);
+    }
+    if (method === "GET" && parts[1] === "leases" && parts[2] && parts[3] === "share") {
+      return await this.portalShareLeasePage(request, parts[2]);
+    }
+    if (method === "POST" && parts[1] === "leases" && parts[2] && parts[3] === "share") {
+      return await this.portalShareLeaseAction(request, parts[2]);
     }
     if (
       method === "POST" &&
@@ -978,6 +1034,7 @@ export class FleetDurableObject implements DurableObject {
             },
           }
         : bridgeStatus,
+      { canManage: this.leaseManageableByRequest(lease, request, isAdminRequest(request)) },
     );
   }
 
@@ -990,8 +1047,72 @@ export class FleetDurableObject implements DurableObject {
         404,
       );
     }
+    if (!this.leaseManageableByRequest(lease, request, isAdminRequest(request))) {
+      return portalError("Stop unavailable", "Lease manage access is required.", 403);
+    }
     await this.releaseResolvedLease(lease, { deleteServer: true, keep: false });
     return new Response(null, { status: 303, headers: { location: "/portal" } });
+  }
+
+  private async portalShareLeasePage(request: Request, identifier: string): Promise<Response> {
+    const lease = await this.resolvePortalLease(identifier, request);
+    if (!lease) {
+      return portalError(
+        "Lease not found",
+        "That lease is not active or is not visible to you.",
+        404,
+      );
+    }
+    if (!this.leaseManageableByRequest(lease, request, isAdminRequest(request))) {
+      return portalError("Share unavailable", "Lease manage access is required.", 403);
+    }
+    return portalShareLease(lease);
+  }
+
+  private async portalShareLeaseAction(request: Request, identifier: string): Promise<Response> {
+    const lease = await this.resolvePortalLease(identifier, request);
+    if (!lease) {
+      return portalError(
+        "Lease not found",
+        "That lease is not active or is not visible to you.",
+        404,
+      );
+    }
+    if (!this.leaseManageableByRequest(lease, request, isAdminRequest(request))) {
+      return portalError("Share unavailable", "Lease manage access is required.", 403);
+    }
+    const form = await request.formData();
+    const action = String(form.get("action") || "");
+    const share = normalizedLeaseShare(lease.share);
+    if (action === "add-user") {
+      const user = normalizeShareUser(String(form.get("user") || ""));
+      const role = sanitizeShareRole(String(form.get("role") || "")) || "use";
+      if (user) {
+        share.users[user] = role;
+      }
+    } else if (action === "remove-user") {
+      const user = normalizeShareUser(String(form.get("user") || ""));
+      if (user) {
+        delete share.users[user];
+      }
+    } else if (action === "set-org") {
+      const role = sanitizeShareRole(String(form.get("role") || ""));
+      if (role) {
+        share.org = role;
+      } else {
+        delete share.org;
+      }
+    } else if (action === "clear") {
+      delete share.org;
+      share.users = {};
+    }
+    lease.share = sanitizeLeaseShare(share, requestOwner(request));
+    lease.updatedAt = new Date().toISOString();
+    await this.putLease(lease);
+    return new Response(null, {
+      status: 303,
+      headers: { location: `/portal/leases/${encodeURIComponent(lease.id)}/share` },
+    });
   }
 
   private async portalRunRoute(
@@ -2375,8 +2496,6 @@ export class FleetDurableObject implements DurableObject {
     if (!slug) {
       return undefined;
     }
-    const owner = requestOwner(request);
-    const org = requestOrg(request, this.env);
     const now = Date.now();
     let matches = (await this.leaseRecords()).filter(
       (lease) =>
@@ -2385,7 +2504,7 @@ export class FleetDurableObject implements DurableObject {
         normalizeLeaseSlug(lease.slug) === slug,
     );
     if (!admin) {
-      matches = matches.filter((lease) => lease.owner === owner && lease.org === org);
+      matches = matches.filter((lease) => this.leaseVisibleToRequest(lease, request, false));
     }
     if (matches.length > 1) {
       throw new Error(
@@ -2431,18 +2550,41 @@ export class FleetDurableObject implements DurableObject {
   }
 
   private filterLeasesForRequest(leases: LeaseRecord[], request: Request): LeaseRecord[] {
-    const owner = requestOwner(request);
-    const org = requestOrg(request, this.env);
-    return this.filterLeases(leases, request).filter(
-      (lease) => lease.owner === owner && lease.org === org,
+    return this.filterLeases(leases, request).filter((lease) =>
+      this.leaseVisibleToRequest(lease, request, false),
     );
   }
 
   private leaseVisibleToRequest(lease: LeaseRecord, request: Request, admin: boolean): boolean {
-    return (
+    return this.leaseAccessRole(lease, request, admin) !== undefined;
+  }
+
+  private leaseManageableByRequest(lease: LeaseRecord, request: Request, admin: boolean): boolean {
+    const role = this.leaseAccessRole(lease, request, admin);
+    return role === "owner" || role === "manage";
+  }
+
+  private leaseAccessRole(
+    lease: LeaseRecord,
+    request: Request,
+    admin: boolean,
+  ): "owner" | LeaseShareRole | undefined {
+    if (
       admin ||
       (lease.owner === requestOwner(request) && lease.org === requestOrg(request, this.env))
-    );
+    ) {
+      return "owner";
+    }
+    const share = normalizedLeaseShare(lease.share);
+    const userRole = share.users[normalizeShareUser(requestOwner(request))];
+    const orgRole = lease.org === requestOrg(request, this.env) ? share.org : undefined;
+    if (userRole === "manage" || orgRole === "manage") {
+      return "manage";
+    }
+    if (userRole === "use" || orgRole === "use") {
+      return "use";
+    }
+    return undefined;
   }
 
   private runVisibleToRequest(run: RunRecord, request: Request): boolean {
@@ -3612,6 +3754,58 @@ function activeSlugCollision(
       lease.org === org &&
       normalizeLeaseSlug(lease.slug) === slug,
   );
+}
+
+function normalizeShareUser(value: string | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function sanitizeShareRole(value: string | undefined): LeaseShareRole | undefined {
+  return value === "manage" || value === "use" ? value : undefined;
+}
+
+type NormalizedLeaseShare = {
+  users: Record<string, LeaseShareRole>;
+  org?: LeaseShareRole;
+  updatedAt?: string;
+  updatedBy?: string;
+};
+
+function normalizedLeaseShare(share: LeaseShare | undefined): NormalizedLeaseShare {
+  const users: Record<string, LeaseShareRole> = {};
+  for (const [rawUser, rawRole] of Object.entries(share?.users ?? {})) {
+    const user = normalizeShareUser(rawUser);
+    const role = sanitizeShareRole(rawRole);
+    if (user && role) {
+      users[user] = role;
+    }
+  }
+  const role = sanitizeShareRole(share?.org);
+  const normalized: NormalizedLeaseShare = { users };
+  if (role) {
+    normalized.org = role;
+  }
+  if (share?.updatedAt) {
+    normalized.updatedAt = share.updatedAt;
+  }
+  if (share?.updatedBy) {
+    normalized.updatedBy = share.updatedBy;
+  }
+  return normalized;
+}
+
+function sanitizeLeaseShare(input: Partial<LeaseShare>, updatedBy: string): LeaseShare | undefined {
+  const share = normalizedLeaseShare(input);
+  const hasUsers = Object.keys(share.users).length > 0;
+  if (!hasUsers && !share.org) {
+    return undefined;
+  }
+  return {
+    users: hasUsers ? share.users : undefined,
+    org: share.org,
+    updatedAt: new Date().toISOString(),
+    updatedBy,
+  };
 }
 
 async function optionalJson<T>(request: Request): Promise<T> {

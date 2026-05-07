@@ -37,6 +37,7 @@ type CoordinatorLease struct {
 	Region               string                `json:"region,omitempty"`
 	Owner                string                `json:"owner"`
 	Org                  string                `json:"org"`
+	Share                *CoordinatorShare     `json:"share,omitempty"`
 	Profile              string                `json:"profile"`
 	Class                string                `json:"class"`
 	ServerType           string                `json:"serverType"`
@@ -62,6 +63,20 @@ type CoordinatorLease struct {
 	ExpiresAt            string                `json:"expiresAt"`
 	Telemetry            *LeaseTelemetry       `json:"telemetry,omitempty"`
 	TelemetryHistory     []*LeaseTelemetry     `json:"telemetryHistory,omitempty"`
+}
+
+type CoordinatorShareRole string
+
+const (
+	CoordinatorShareUse    CoordinatorShareRole = "use"
+	CoordinatorShareManage CoordinatorShareRole = "manage"
+)
+
+type CoordinatorShare struct {
+	Users     map[string]CoordinatorShareRole `json:"users,omitempty"`
+	Org       CoordinatorShareRole            `json:"org,omitempty"`
+	UpdatedAt string                          `json:"updatedAt,omitempty"`
+	UpdatedBy string                          `json:"updatedBy,omitempty"`
 }
 
 type ProvisioningAttempt struct {
@@ -472,6 +487,37 @@ func (c *CoordinatorClient) GetLease(ctx context.Context, id string) (Coordinato
 	}
 	err := c.do(ctx, http.MethodGet, "/v1/leases/"+url.PathEscape(id), nil, &res)
 	return res.Lease, err
+}
+
+func (c *CoordinatorClient) LeaseShare(ctx context.Context, id string) (CoordinatorShare, error) {
+	var res struct {
+		Share CoordinatorShare `json:"share"`
+	}
+	err := c.do(ctx, http.MethodGet, "/v1/leases/"+url.PathEscape(id)+"/share", nil, &res)
+	return res.Share, err
+}
+
+func (c *CoordinatorClient) UpdateLeaseShare(ctx context.Context, id string, share CoordinatorShare) (CoordinatorShare, error) {
+	var res struct {
+		Share CoordinatorShare `json:"share"`
+	}
+	err := c.do(ctx, http.MethodPut, "/v1/leases/"+url.PathEscape(id)+"/share", share, &res)
+	return res.Share, err
+}
+
+func (c *CoordinatorClient) DeleteLeaseShare(ctx context.Context, id, user string, org bool) (CoordinatorShare, error) {
+	var res struct {
+		Share CoordinatorShare `json:"share"`
+	}
+	body := map[string]any{}
+	if strings.TrimSpace(user) != "" {
+		body["user"] = strings.TrimSpace(user)
+	}
+	if org {
+		body["org"] = true
+	}
+	err := c.do(ctx, http.MethodDelete, "/v1/leases/"+url.PathEscape(id)+"/share", body, &res)
+	return res.Share, err
 }
 
 func (c *CoordinatorClient) ReleaseLease(ctx context.Context, id string, deleteServer bool) (CoordinatorLease, error) {

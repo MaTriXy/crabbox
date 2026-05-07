@@ -5,6 +5,7 @@ const copyIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" st
 const serverIcon = `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h4"/></svg>`;
 const vncIcon = `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>`;
 const codeIcon = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 8-4 4 4 4"/><path d="m15 8 4 4-4 4"/><path d="m13 5-2 14"/></svg>`;
+const shareIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4"/><path d="m8.6 13.5 6.8 4"/></svg>`;
 const portalBrand = "🦀 crabbox";
 
 interface PortalHeaderOptions {
@@ -118,6 +119,7 @@ export function portalLeaseDetail(
   lease: LeaseRecord,
   runs: RunRecord[],
   bridgeStatus: PortalLeaseBridgeStatus,
+  options: { canManage?: boolean } = {},
 ): Response {
   const slug = lease.slug || lease.id;
   const target = lease.target || "linux";
@@ -159,6 +161,11 @@ export function portalLeaseDetail(
       ${portalHeader({
         meta: `${escapeHTML(slug)} · ${escapeHTML(lease.provider)} ${escapeHTML(target)} lease <span class="mono">${escapeHTML(lease.id)}</span>`,
         actions: `
+          ${
+            options.canManage
+              ? `<a class="icon-btn" href="/portal/leases/${encodeURIComponent(lease.id)}/share" title="share lease" aria-label="share lease">${shareIcon}</a>`
+              : ""
+          }
           <a class="button secondary" href="/portal">leases</a>
           <a class="button secondary" href="/portal/logout">log out</a>
         `,
@@ -181,7 +188,7 @@ export function portalLeaseDetail(
           </dl>
           ${leaseTelemetryTimeline(lease.telemetry, lease.telemetryHistory)}
           ${
-            active
+            active && options.canManage
               ? `<form method="post" action="/portal/leases/${encodeURIComponent(lease.id)}/release" class="stop-form">
                   <button class="button danger" type="submit">stop lease</button>
                 </form>`
@@ -220,6 +227,78 @@ export function portalLeaseDetail(
           <tbody>${runRows}</tbody>
         </table>
       </section>
+    </main>`,
+  );
+}
+
+export function portalShareLease(lease: LeaseRecord): Response {
+  const slug = lease.slug || lease.id;
+  const users = Object.entries(lease.share?.users ?? {}).toSorted(([a], [b]) => a.localeCompare(b));
+  const userRows = users.length
+    ? users
+        .map(
+          ([user, role]) => `<tr>
+            <td>${escapeHTML(user)}</td>
+            <td><span class="pill">${escapeHTML(role)}</span></td>
+            <td>
+              <form method="post" action="/portal/leases/${encodeURIComponent(lease.id)}/share">
+                <input type="hidden" name="action" value="remove-user">
+                <input type="hidden" name="user" value="${escapeHTML(user)}">
+                <button class="button secondary" type="submit">remove</button>
+              </form>
+            </td>
+          </tr>`,
+        )
+        .join("")
+    : `<tr><td colspan="3" class="empty">no shared users</td></tr>`;
+  return html(
+    `Share ${slug}`,
+    `<main class="portal-shell run-shell">
+      ${portalHeader({
+        meta: `share ${escapeHTML(slug)} <span class="mono">${escapeHTML(lease.id)}</span>`,
+        actions: `
+          <a class="button secondary" href="/portal/leases/${encodeURIComponent(lease.id)}">lease</a>
+          <a class="button secondary" href="/portal">leases</a>
+          <a class="button secondary" href="/portal/logout">log out</a>
+        `,
+      })}
+      <section class="panel">
+        <div class="section-head">
+          <h2>org access</h2>
+          <span class="pill">${escapeHTML(lease.share?.org ?? "off")}</span>
+        </div>
+        <form class="share-form" method="post" action="/portal/leases/${encodeURIComponent(lease.id)}/share">
+          <input type="hidden" name="action" value="set-org">
+          <select name="role" aria-label="org role">
+            <option value=""${lease.share?.org ? "" : " selected"}>off</option>
+            <option value="use"${lease.share?.org === "use" ? " selected" : ""}>use</option>
+            <option value="manage"${lease.share?.org === "manage" ? " selected" : ""}>manage</option>
+          </select>
+          <button class="button" type="submit">save</button>
+        </form>
+      </section>
+      <section class="panel">
+        <div class="section-head"><h2>users</h2></div>
+        <form class="share-form" method="post" action="/portal/leases/${encodeURIComponent(lease.id)}/share">
+          <input type="hidden" name="action" value="add-user">
+          <input name="user" type="email" placeholder="friend@example.com" required>
+          <select name="role" aria-label="user role">
+            <option value="use">use</option>
+            <option value="manage">manage</option>
+          </select>
+          <button class="button" type="submit">add</button>
+        </form>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>user</th><th>role</th><th></th></tr></thead>
+            <tbody>${userRows}</tbody>
+          </table>
+        </div>
+      </section>
+      <form method="post" action="/portal/leases/${encodeURIComponent(lease.id)}/share">
+        <input type="hidden" name="action" value="clear">
+        <button class="button danger" type="submit">clear sharing</button>
+      </form>
     </main>`,
   );
 }
@@ -1663,6 +1742,9 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .table-search { width:100%; height:28px; padding:0 9px; border:1px solid var(--line); border-radius:7px; background:#0c0e10; color:var(--fg); font:inherit; font-size:12px; }
     .table-search::placeholder { color:#6b7280; }
     .table-search:focus { outline:2px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset:1px; border-color:color-mix(in srgb, var(--accent) 55%, var(--line)); }
+    .share-form { display:flex; align-items:center; gap:8px; padding:10px; border-bottom:1px solid var(--line-soft); }
+    .share-form input,.share-form select { height:30px; min-width:0; padding:0 9px; border:1px solid var(--line); border-radius:7px; background:#0c0e10; color:var(--fg); font:inherit; font-size:12px; }
+    .share-form input { flex:1; }
     .table-filters { display:flex; align-items:center; gap:3px; min-width:0; overflow-x:auto; padding:2px; border:1px solid var(--line); border-radius:7px; background:#0c0e10; scrollbar-width:none; }
     .table-filters::-webkit-scrollbar { display:none; }
     .table-filter { flex:0 0 auto; min-height:22px; padding:0 7px; border:0; border-radius:5px; background:transparent; color:var(--muted); cursor:pointer; font:inherit; font-size:11px; }
