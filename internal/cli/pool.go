@@ -39,6 +39,16 @@ func (a App) list(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	if *jsonOut {
+		if jsonBackend, ok := backend.(JSONListBackend); ok {
+			view, err := jsonBackend.ListJSON(ctx, ListRequest{Options: leaseOptionsFromConfig(cfg)})
+			if err != nil {
+				return err
+			}
+			a.syncExternalRunnersBestEffort(ctx, cfg, backend)
+			return json.NewEncoder(a.Stdout).Encode(view)
+		}
+	}
 	var servers []Server
 	switch b := backend.(type) {
 	case SSHLeaseBackend:
@@ -53,13 +63,6 @@ func (a App) list(ctx context.Context, args []string) error {
 	}
 	a.syncExternalRunnersBestEffort(ctx, cfg, backend)
 	if *jsonOut {
-		if jsonBackend, ok := backend.(JSONListBackend); ok {
-			view, err := jsonBackend.ListJSON(ctx, ListRequest{Options: leaseOptionsFromConfig(cfg)})
-			if err != nil {
-				return err
-			}
-			return json.NewEncoder(a.Stdout).Encode(view)
-		}
 		return json.NewEncoder(a.Stdout).Encode(servers)
 	}
 	renderServerList(a.Stdout, servers)

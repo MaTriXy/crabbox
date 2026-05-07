@@ -132,7 +132,11 @@ func (b *coordinatorLeaseBackend) Status(ctx context.Context, req StatusRequest)
 func (b *coordinatorLeaseBackend) List(ctx context.Context, req ListRequest) ([]Server, error) {
 	machines, activeLeaseIDs, err := b.listMachines(ctx)
 	if err != nil {
-		return nil, err
+		leases, fallbackErr := b.listLeasesFallback(ctx, err)
+		if fallbackErr != nil {
+			return nil, fallbackErr
+		}
+		return coordinatorLeasesToServers(leases, b.cfg), nil
 	}
 	return coordinatorMachinesToServers(machines, activeLeaseIDs), nil
 }
@@ -141,7 +145,7 @@ func (b *coordinatorLeaseBackend) ListJSON(ctx context.Context, req ListRequest)
 	_ = req
 	machines, _, err := b.listMachines(ctx)
 	if err != nil {
-		return nil, err
+		return b.listLeasesFallback(ctx, err)
 	}
 	return machines, nil
 }
@@ -166,6 +170,51 @@ func (b *coordinatorLeaseBackend) listMachines(ctx context.Context) ([]Coordinat
 		return machines, nil, nil
 	}
 	return machines, activeCoordinatorLeaseIDs(activeLeases), nil
+}
+
+func (b *coordinatorLeaseBackend) listLeasesFallback(ctx context.Context, adminErr error) ([]CoordinatorLease, error) {
+	if b.cfg.CoordToken == "" {
+		return nil, adminErr
+	}
+	if adminErr != nil && isCoordinatorUnauthorized(adminErr) {
+		fmt.Fprintf(b.rt.Stderr, "warning: coordinator admin pool list unauthorized; falling back to user-visible leases\n")
+	} else if adminErr != nil && b.cfg.CoordAdminToken == "" {
+		fmt.Fprintf(b.rt.Stderr, "warning: coordinator admin pool list unavailable; falling back to user-visible leases\n")
+	} else if adminErr != nil {
+		return nil, adminErr
+	}
+	leases, err := b.coord.Leases(ctx, "active", 1000)
+	if err != nil {
+		return nil, err
+	}
+	return filterCoordinatorLeasesForProvider(leases, b.cfg.Provider), nil
+}
+
+func coordinatorLeasesToServers(leases []CoordinatorLease, cfg Config) []Server {
+	servers := make([]Server, 0, len(leases))
+	for _, lease := range leases {
+		server, _, _ := leaseToServerTarget(lease, cfg)
+		servers = append(servers, server)
+	}
+	return servers
+}
+
+func filterCoordinatorLeasesForProvider(leases []CoordinatorLease, provider string) []CoordinatorLease {
+	provider = strings.TrimSpace(provider)
+	if provider == "" {
+		return leases
+	}
+	out := make([]CoordinatorLease, 0, len(leases))
+	for _, lease := range leases {
+		if strings.EqualFold(strings.TrimSpace(lease.Provider), provider) {
+			out = append(out, lease)
+		}
+	}
+	return out
+}
+
+func isCoordinatorUnauthorized(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "http 401")
 }
 
 func (b *coordinatorLeaseBackend) ReleaseLease(ctx context.Context, req ReleaseLeaseRequest) error {

@@ -575,6 +575,25 @@ func (c *CoordinatorClient) Pool(ctx context.Context, cfg Config) ([]Coordinator
 	return res.Machines, err
 }
 
+func (c *CoordinatorClient) Leases(ctx context.Context, state string, limit int) ([]CoordinatorLease, error) {
+	var res struct {
+		Leases []CoordinatorLease `json:"leases"`
+	}
+	values := url.Values{}
+	if state != "" {
+		values.Set("state", state)
+	}
+	if limit > 0 {
+		values.Set("limit", strconv.Itoa(limit))
+	}
+	path := "/v1/leases"
+	if encoded := values.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+	err := c.do(ctx, http.MethodGet, path, nil, &res)
+	return res.Leases, err
+}
+
 func (c *CoordinatorClient) Usage(ctx context.Context, scope, owner, org, month string) (CoordinatorUsageResponse, error) {
 	var res CoordinatorUsageResponse
 	values := url.Values{}
