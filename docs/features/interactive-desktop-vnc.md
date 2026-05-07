@@ -165,4 +165,6 @@ often machine- and user-encrypted.
 - [AWS](aws.md): AWS target matrix, capacity, AMIs, and EC2 Mac host requirements.
 - [Hetzner](hetzner.md): Linux-only managed Hetzner behavior.
 - [Blacksmith Testbox](blacksmith-testbox.md): delegated Testbox behavior and why VNC is not a Crabbox feature there yet.
-- [vnc command](../commands/vnc.md), [webvnc command](../commands/webvnc.md), [screenshot command](../commands/screenshot.md), [desktop command](../commands/desktop.md).
+- [vnc command](../commands/vnc.md), [webvnc command](../commands/webvnc.md), [screenshot command](../commands/screenshot.md), [desktop command](../commands/desktop.md), [egress command](../commands/egress.md).
+- [Mediated egress](egress.md): per-app browser/app egress through the operator
+  machine for Discord, Slack, and similar source-IP-sensitive QA.

@@ -46,7 +46,10 @@ browser
 
 Keep the local `crabbox code` process running while using the editor. The
 coordinator authenticates the browser through portal auth and authenticates the
-local bridge with a one-use, short-lived ticket.
+local bridge with a one-use, short-lived ticket. The CLI sends the ticket as
+an `Authorization: Bearer ...` header so it stays out of websocket URLs and
+proxy/access logs; the coordinator accepts a `?ticket=` query string as a
+fallback for older CLIs.
 
 If the browser opens before the local bridge connects, the Code portal renders a
 waiting state with the exact `crabbox code --id <lease> --open` command, copy
