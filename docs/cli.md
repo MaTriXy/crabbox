@@ -35,8 +35,13 @@ crabbox config path
 crabbox config set-broker --url <url> --token-stdin [--provider hetzner|aws]
 crabbox warmup [--provider hetzner|aws|ssh|blacksmith-testbox|daytona|islo] [--target linux|macos|windows] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--profile <name>] [--idle-timeout <duration>] [--timing-json]
 crabbox run [--id <lease-id-or-slug>] [--provider hetzner|aws|ssh|blacksmith-testbox|daytona|islo] [--target linux|macos|windows] [--windows-mode normal|wsl2] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--shell] [--checksum] [--debug] [--force-sync-large] [--timing-json] [--blacksmith-workflow <workflow>] -- <command...>
-crabbox desktop launch --id <lease-id-or-slug> [--browser] [--url <url>] [--webvnc] [--open] [-- <command...>]
+crabbox desktop launch --id <lease-id-or-slug> [--browser] [--url <url>] [--egress <profile>] [--webvnc] [--open] [-- <command...>]
 crabbox code --id <lease-id-or-slug> [--open]
+crabbox egress start --id <lease-id-or-slug> [--profile <name>|--allow <hosts>] [--listen <addr>] [--coordinator <url>] [--daemon]
+crabbox egress host --id <lease-id-or-slug> [--profile <name>|--allow <hosts>]
+crabbox egress client --id <lease-id-or-slug> [--listen <addr>] [--ticket <ticket>] [--session <id>]
+crabbox egress status --id <lease-id-or-slug>
+crabbox egress stop --id <lease-id-or-slug>
 crabbox media preview --input <video> --output <preview.gif> [--trimmed-video-output <change.mp4>]
 crabbox screenshot --id <lease-id-or-slug> [--output <path>]
 crabbox sync-plan [--limit <n>]
@@ -90,6 +95,10 @@ crabbox vnc --id blue-lobster --open
 crabbox webvnc --id blue-lobster --open
 crabbox code --id blue-lobster --open
 crabbox desktop launch --id blue-lobster --browser --url https://example.com --webvnc --open
+crabbox egress start --id blue-lobster --profile discord --daemon
+crabbox desktop launch --id blue-lobster --browser --url https://discord.com/login --egress discord --webvnc --open
+crabbox egress status --id blue-lobster
+crabbox egress stop --id blue-lobster
 crabbox screenshot --id blue-lobster --output desktop.png
 crabbox media preview --input desktop.mp4 --output desktop-preview.gif --trimmed-video-output desktop-change.mp4
 crabbox run --id blue-lobster --shell 'pnpm install --frozen-lockfile && pnpm test'
