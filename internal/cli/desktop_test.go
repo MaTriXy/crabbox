@@ -51,6 +51,19 @@ func TestDesktopLaunchWebVNCArgsCarriesTargetDetails(t *testing.T) {
 	}
 }
 
+func TestDesktopLaunchRemoteCommandCanPassEgressProxyToBrowser(t *testing.T) {
+	got := desktopLaunchRemoteCommand(
+		SSHTarget{TargetOS: targetLinux},
+		"/work/crabbox/cbx_1/repo",
+		map[string]string{"DISPLAY": ":99", "BROWSER": "/usr/bin/chromium"},
+		[]string{"/usr/bin/chromium", "--proxy-server=http://127.0.0.1:3128", "https://discord.com/login"},
+		true,
+	)
+	if !strings.Contains(got, "'/usr/bin/chromium' '--proxy-server=http://127.0.0.1:3128' 'https://discord.com/login'") {
+		t.Fatalf("desktop launch command missing egress proxy arg:\n%s", got)
+	}
+}
+
 func TestWindowsDesktopLaunchRemoteCommandUsesInteractiveTask(t *testing.T) {
 	got := desktopLaunchRemoteCommand(
 		SSHTarget{TargetOS: targetWindows, WindowsMode: windowsModeNormal},

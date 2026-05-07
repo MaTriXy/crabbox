@@ -26,7 +26,11 @@ export default {
       const id = env.FLEET.idFromName("default");
       return env.FLEET.get(id).fetch(request);
     }
-    if (isWebVNCAgentUpgrade(request, url) || isCodeAgentUpgrade(request, url)) {
+    if (
+      isWebVNCAgentUpgrade(request, url) ||
+      isCodeAgentUpgrade(request, url) ||
+      isEgressAgentUpgrade(request, url)
+    ) {
       const id = env.FLEET.idFromName("default");
       return env.FLEET.get(id).fetch(request);
     }
@@ -77,6 +81,14 @@ function isCodeAgentUpgrade(request: Request, url: URL): boolean {
     request.method === "GET" &&
     request.headers.get("upgrade")?.toLowerCase() === "websocket" &&
     /^\/v1\/leases\/[^/]+\/code\/agent$/.test(url.pathname)
+  );
+}
+
+function isEgressAgentUpgrade(request: Request, url: URL): boolean {
+  return (
+    request.method === "GET" &&
+    request.headers.get("upgrade")?.toLowerCase() === "websocket" &&
+    /^\/v1\/leases\/[^/]+\/egress\/(?:host|client)$/.test(url.pathname)
   );
 }
 

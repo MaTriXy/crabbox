@@ -62,6 +62,7 @@ const maxRunTelemetrySamples = 60;
 const maxExternalRunnerSyncItems = 200;
 const webVNCTicketTTLSeconds = 120;
 const codeTicketTTLSeconds = 120;
+const egressTicketTTLSeconds = 120;
 const maxPendingWebVNCBytes = 1024 * 1024;
 const maxCodeRequestBytes = 10 * 1024 * 1024;
 const maxCodeWebSocketFrameChunkBytes = 15 * 1024;
@@ -84,6 +85,30 @@ interface CodeTicketRecord {
   org: string;
   createdAt: string;
   expiresAt: string;
+}
+
+type EgressRole = "host" | "client";
+
+interface EgressTicketRecord {
+  ticket: string;
+  leaseID: string;
+  owner: string;
+  org: string;
+  role: EgressRole;
+  sessionID: string;
+  profile?: string;
+  allow?: string[];
+  createdAt: string;
+  expiresAt: string;
+}
+
+interface EgressSessionStatus {
+  leaseID: string;
+  sessionID: string;
+  profile?: string;
+  allow: string[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface CodeProxyRequest {
@@ -162,7 +187,9 @@ type BridgeAttachment =
   | { kind: "webvnc-agent"; leaseID: string }
   | { kind: "webvnc-viewer"; leaseID: string }
   | { kind: "code-agent"; leaseID: string }
-  | { kind: "code-viewer"; leaseID: string; id: string };
+  | { kind: "code-viewer"; leaseID: string; id: string }
+  | { kind: "egress-host"; leaseID: string; sessionID: string }
+  | { kind: "egress-client"; leaseID: string; sessionID: string };
 
 export class FleetDurableObject implements DurableObject {
   private readonly webVNCAgents = new Map<string, WebSocket>();
@@ -172,6 +199,9 @@ export class FleetDurableObject implements DurableObject {
   private readonly codeViewers = new Map<string, WebSocket>();
   private readonly pendingCodeRequests = new Map<string, CodePendingRequest>();
   private readonly pendingCodeFrames = new Map<string, CodePendingWebSocketFrame>();
+  private readonly egressHosts = new Map<string, WebSocket>();
+  private readonly egressClients = new Map<string, WebSocket>();
+  private readonly egressSessions = new Map<string, EgressSessionStatus>();
 
   constructor(
     private readonly state: DurableObjectState,
@@ -245,6 +275,42 @@ export class FleetDurableObject implements DurableObject {
       }
       if (method === "POST" && parts.join("/") === "v1/leases") {
         return await this.createLease(request);
+      }
+      if (
+        parts[0] === "v1" &&
+        parts[1] === "leases" &&
+        parts[2] &&
+        parts[3] === "egress" &&
+        parts[4] === "ticket"
+      ) {
+        return await this.createEgressTicket(request, parts[2]);
+      }
+      if (
+        parts[0] === "v1" &&
+        parts[1] === "leases" &&
+        parts[2] &&
+        parts[3] === "egress" &&
+        parts[4] === "host"
+      ) {
+        return await this.egressAgent(request, parts[2], "host");
+      }
+      if (
+        parts[0] === "v1" &&
+        parts[1] === "leases" &&
+        parts[2] &&
+        parts[3] === "egress" &&
+        parts[4] === "client"
+      ) {
+        return await this.egressAgent(request, parts[2], "client");
+      }
+      if (
+        parts[0] === "v1" &&
+        parts[1] === "leases" &&
+        parts[2] &&
+        parts[3] === "egress" &&
+        parts[4] === "status"
+      ) {
+        return await this.egressStatus(request, parts[2]);
       }
       if (
         parts[0] === "v1" &&
@@ -352,7 +418,59 @@ export class FleetDurableObject implements DurableObject {
       case "code-viewer":
         this.codeViewers.set(attachment.id, socket);
         break;
+      case "egress-host":
+        this.egressHosts.set(egressSocketKey(attachment.leaseID, attachment.sessionID), socket);
+        this.trackEgressSession(attachment);
+        break;
+      case "egress-client":
+        this.egressClients.set(egressSocketKey(attachment.leaseID, attachment.sessionID), socket);
+        this.trackEgressSession(attachment);
+        break;
     }
+  }
+
+  private trackEgressSession(attachment: Extract<BridgeAttachment, { sessionID: string }>): void {
+    this.activateEgressSession(
+      attachment.leaseID,
+      attachment.sessionID,
+      undefined,
+      undefined,
+      new Date(),
+    );
+  }
+
+  private activateEgressSession(
+    leaseID: string,
+    sessionID: string,
+    profile: string | undefined,
+    allow: string[] | undefined,
+    nowDate: Date,
+  ): void {
+    const previous = this.egressSessions.get(leaseID);
+    if (!shouldActivateEgressSession(previous, sessionID, nowDate.toISOString())) {
+      return;
+    }
+    if (previous && previous.sessionID !== sessionID) {
+      this.clearEgressSessionSockets(
+        leaseID,
+        previous.sessionID,
+        1012,
+        "replaced by a newer egress session",
+      );
+    }
+    const now = nowDate.toISOString();
+    const sessionStatus: EgressSessionStatus = {
+      leaseID,
+      sessionID,
+      allow: allow && allow.length > 0 ? allow : (previous?.allow ?? []),
+      createdAt: previous?.sessionID === sessionID ? previous.createdAt : now,
+      updatedAt: now,
+    };
+    const sessionProfile = profile || previous?.profile;
+    if (sessionProfile) {
+      sessionStatus.profile = sessionProfile;
+    }
+    this.egressSessions.set(leaseID, sessionStatus);
   }
 
   private async handleBridgeMessage(
@@ -390,6 +508,18 @@ export class FleetDurableObject implements DurableObject {
         });
         break;
       }
+      case "egress-host":
+        await forwardEgress(
+          message,
+          this.egressClients.get(egressSocketKey(attachment.leaseID, attachment.sessionID)),
+        );
+        break;
+      case "egress-client":
+        await forwardEgress(
+          message,
+          this.egressHosts.get(egressSocketKey(attachment.leaseID, attachment.sessionID)),
+        );
+        break;
     }
     void socket;
   }
@@ -411,6 +541,12 @@ export class FleetDurableObject implements DurableObject {
         break;
       case "code-viewer":
         this.clearCodeViewer(attachment.leaseID, attachment.id, socket, code, reason);
+        break;
+      case "egress-host":
+        this.clearEgressHost(attachment.leaseID, attachment.sessionID, socket);
+        break;
+      case "egress-client":
+        this.clearEgressClient(attachment.leaseID, attachment.sessionID, socket);
         break;
     }
   }
@@ -791,11 +927,33 @@ export class FleetDurableObject implements DurableObject {
       .filter((run) => run.leaseID === lease.id && this.runVisibleToRequest(run, request))
       .toSorted((a, b) => b.startedAt.localeCompare(a.startedAt))
       .slice(0, 12);
-    return portalLeaseDetail(lease, runs, {
+    const egress = this.egressSessions.get(lease.id);
+    const egressKey = egress ? egressSocketKey(lease.id, egress.sessionID) : undefined;
+    const bridgeStatus = {
       webVNCBridgeConnected: this.webVNCAgents.get(lease.id)?.readyState === WebSocket.OPEN,
       webVNCViewerConnected: this.webVNCViewers.get(lease.id)?.readyState === WebSocket.OPEN,
       codeBridgeConnected: this.codeAgents.get(lease.id)?.readyState === WebSocket.OPEN,
-    });
+    };
+    return portalLeaseDetail(
+      lease,
+      runs,
+      egress
+        ? {
+            ...bridgeStatus,
+            egress: {
+              profile: egress.profile ?? "",
+              allow: egress.allow,
+              hostConnected: egressKey
+                ? this.egressHosts.get(egressKey)?.readyState === WebSocket.OPEN
+                : false,
+              clientConnected: egressKey
+                ? this.egressClients.get(egressKey)?.readyState === WebSocket.OPEN
+                : false,
+              updatedAt: egress.updatedAt,
+            },
+          }
+        : bridgeStatus,
+    );
   }
 
   private async portalReleaseLease(request: Request, identifier: string): Promise<Response> {
@@ -876,6 +1034,138 @@ export class FleetDurableObject implements DurableObject {
     this.webVNCAgents.set(lease.id, agent);
     this.acceptBridgeWebSocket(agent, { kind: "webvnc-agent", leaseID: lease.id });
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  private async createEgressTicket(request: Request, identifier: string): Promise<Response> {
+    if (request.method.toUpperCase() !== "POST") {
+      return json({ error: "not_found" }, { status: 404 });
+    }
+    const lease = await this.resolveLease(identifier, request, false);
+    if (!lease) {
+      return notFound();
+    }
+    if (lease.state !== "active") {
+      return json({ error: "egress_unavailable", message: "lease is not active" }, { status: 409 });
+    }
+    const input = await optionalJson<{
+      role?: string;
+      sessionID?: string;
+      sessionId?: string;
+      profile?: string;
+      allow?: string[];
+    }>(request);
+    const role = input.role === "host" || input.role === "client" ? input.role : undefined;
+    if (!role) {
+      return json(
+        { error: "invalid_egress_role", message: "egress ticket role must be host or client" },
+        { status: 400 },
+      );
+    }
+    await this.cleanupExpiredEgressTickets();
+    const now = new Date();
+    const requestedSessionID = input.sessionID ?? input.sessionId;
+    const sessionID = validEgressSessionID(requestedSessionID)
+      ? requestedSessionID
+      : newEgressSessionID();
+    const ticket: EgressTicketRecord = {
+      ticket: newEgressTicket(),
+      leaseID: lease.id,
+      owner: requestOwner(request),
+      org: requestOrg(request, this.env),
+      role,
+      sessionID,
+      allow: boundedEgressAllowlist(input.allow),
+      createdAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + egressTicketTTLSeconds * 1000).toISOString(),
+    };
+    const profile = boundedEgressString(input.profile);
+    if (profile) {
+      ticket.profile = profile;
+    }
+    await this.state.storage.put(egressTicketKey(ticket.ticket), ticket);
+    this.activateEgressSession(lease.id, ticket.sessionID, profile, ticket.allow ?? [], now);
+    return json({
+      ticket: ticket.ticket,
+      leaseID: ticket.leaseID,
+      role: ticket.role,
+      sessionID: ticket.sessionID,
+      expiresAt: ticket.expiresAt,
+    });
+  }
+
+  private async egressAgent(
+    request: Request,
+    identifier: string,
+    role: EgressRole,
+  ): Promise<Response> {
+    if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
+      return json(
+        { error: "upgrade_required", message: "egress bridge requires a websocket upgrade" },
+        { status: 426 },
+      );
+    }
+    const ticket = await this.consumeEgressTicket(request);
+    if (!ticket || ticket.role !== role) {
+      return json(
+        { error: "egress_ticket_required", message: "valid egress bridge ticket required" },
+        { status: 401 },
+      );
+    }
+    const lease = await this.getLease(ticket.leaseID);
+    if (!lease || !identifierMatchesLease(identifier, lease)) {
+      return notFound();
+    }
+    if (lease.state !== "active") {
+      return json({ error: "egress_unavailable", message: "lease is not active" }, { status: 409 });
+    }
+    const pair = new WebSocketPair();
+    const client = pair[0];
+    const agent = pair[1];
+    const attachment: BridgeAttachment = {
+      kind: role === "host" ? "egress-host" : "egress-client",
+      leaseID: lease.id,
+      sessionID: ticket.sessionID,
+    };
+    const ticketCreatedAt = new Date(ticket.createdAt);
+    this.activateEgressSession(
+      lease.id,
+      ticket.sessionID,
+      ticket.profile,
+      ticket.allow ?? [],
+      ticketCreatedAt,
+    );
+    const key = egressSocketKey(lease.id, ticket.sessionID);
+    if (role === "host") {
+      closeSocket(this.egressHosts.get(key), 1012, "replaced by a newer egress host");
+      this.egressHosts.set(key, agent);
+    } else {
+      closeSocket(this.egressClients.get(key), 1012, "replaced by a newer egress client");
+      this.egressClients.set(key, agent);
+    }
+    this.acceptBridgeWebSocket(agent, attachment);
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  private async egressStatus(request: Request, identifier: string): Promise<Response> {
+    const lease = await this.resolveLease(identifier, request, false);
+    if (!lease) {
+      return notFound();
+    }
+    const session = this.egressSessions.get(lease.id);
+    const key = session ? egressSocketKey(lease.id, session.sessionID) : undefined;
+    const host = key ? this.egressHosts.get(key) : undefined;
+    const client = key ? this.egressClients.get(key) : undefined;
+    return json({
+      leaseID: lease.id,
+      slug: lease.slug,
+      sessionID: session?.sessionID ?? "",
+      profile: session?.profile ?? "",
+      allow: session?.allow ?? [],
+      hostConnected: host?.readyState === WebSocket.OPEN,
+      clientConnected: client?.readyState === WebSocket.OPEN,
+      createdAt: session?.createdAt ?? "",
+      updatedAt: session?.updatedAt ?? "",
+    });
   }
 
   private async createWebVNCTicket(request: Request, identifier: string): Promise<Response> {
@@ -1281,6 +1571,55 @@ export class FleetDurableObject implements DurableObject {
     this.pendingCodeFrames.clear();
   }
 
+  private clearEgressHost(leaseID: string, sessionID: string, socket: WebSocket): void {
+    const key = egressSocketKey(leaseID, sessionID);
+    if (this.egressHosts.get(key) !== socket) {
+      return;
+    }
+    this.egressHosts.delete(key);
+    closeSocket(this.egressClients.get(key), 1011, "egress host disconnected");
+    this.egressClients.delete(key);
+  }
+
+  private clearEgressClient(leaseID: string, sessionID: string, socket: WebSocket): void {
+    const key = egressSocketKey(leaseID, sessionID);
+    if (this.egressClients.get(key) !== socket) {
+      return;
+    }
+    this.egressClients.delete(key);
+    closeSocket(this.egressHosts.get(key), 1011, "egress client disconnected");
+    this.egressHosts.delete(key);
+  }
+
+  private clearEgressLease(leaseID: string): void {
+    for (const [key, socket] of this.egressHosts) {
+      if (egressSocketLeaseID(key) === leaseID) {
+        closeSocket(socket, 1011, "lease ended");
+        this.egressHosts.delete(key);
+      }
+    }
+    for (const [key, socket] of this.egressClients) {
+      if (egressSocketLeaseID(key) === leaseID) {
+        closeSocket(socket, 1011, "lease ended");
+        this.egressClients.delete(key);
+      }
+    }
+    this.egressSessions.delete(leaseID);
+  }
+
+  private clearEgressSessionSockets(
+    leaseID: string,
+    sessionID: string,
+    code: number,
+    reason: string,
+  ): void {
+    const key = egressSocketKey(leaseID, sessionID);
+    closeSocket(this.egressHosts.get(key), code, reason);
+    closeSocket(this.egressClients.get(key), code, reason);
+    this.egressHosts.delete(key);
+    this.egressClients.delete(key);
+  }
+
   private async webVNCViewer(request: Request, identifier: string): Promise<Response> {
     if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
       return json(
@@ -1404,6 +1743,35 @@ export class FleetDurableObject implements DurableObject {
   private async cleanupExpiredCodeTickets(): Promise<void> {
     const tickets = await this.state.storage.list<CodeTicketRecord>({
       prefix: codeTicketPrefix(),
+    });
+    const now = Date.now();
+    await Promise.all(
+      [...tickets.entries()]
+        .filter(([, ticket]) => Date.parse(ticket.expiresAt) <= now)
+        .map(([key]) => this.state.storage.delete(key)),
+    );
+  }
+
+  private async consumeEgressTicket(request: Request): Promise<EgressTicketRecord | undefined> {
+    const value = bridgeTicketFromRequest(request);
+    if (!validEgressTicket(value)) {
+      return undefined;
+    }
+    const key = egressTicketKey(value);
+    const ticket = await this.state.storage.get<EgressTicketRecord>(key);
+    if (!ticket || ticket.ticket !== value) {
+      return undefined;
+    }
+    await this.state.storage.delete(key);
+    if (Date.parse(ticket.expiresAt) <= Date.now()) {
+      return undefined;
+    }
+    return ticket;
+  }
+
+  private async cleanupExpiredEgressTickets(): Promise<void> {
+    const tickets = await this.state.storage.list<EgressTicketRecord>({
+      prefix: egressTicketPrefix(),
     });
     const now = Date.now();
     await Promise.all(
@@ -2065,6 +2433,7 @@ export class FleetDurableObject implements DurableObject {
     lease: LeaseRecord,
     options: { deleteServer: boolean; keep?: boolean },
   ): Promise<LeaseRecord> {
+    this.clearEgressLease(lease.id);
     if (options.deleteServer && lease.state === "active") {
       await this.deleteLeaseServer(lease);
     }
@@ -2137,6 +2506,14 @@ function codeTicketKey(ticket: string): string {
   return `${codeTicketPrefix()}${ticket}`;
 }
 
+function egressTicketPrefix(): string {
+  return "egress-ticket:";
+}
+
+function egressTicketKey(ticket: string): string {
+  return `${egressTicketPrefix()}${ticket}`;
+}
+
 function newLeaseID(): string {
   const bytes = new Uint8Array(6);
   crypto.getRandomValues(bytes);
@@ -2161,6 +2538,34 @@ function newCodeTicket(): string {
   return `code_${[...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }
 
+function newEgressTicket(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return `egress_${[...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function newEgressSessionID(): string {
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  return `egress_${[...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function egressSocketKey(leaseID: string, sessionID: string): string {
+  return `${leaseID}\u0000${sessionID}`;
+}
+
+function egressSocketLeaseID(key: string): string {
+  return key.split("\u0000", 1)[0] ?? key;
+}
+
+export function shouldActivateEgressSession(
+  previous: { sessionID: string; createdAt: string } | undefined,
+  sessionID: string,
+  createdAt: string,
+): boolean {
+  return !previous || previous.sessionID === sessionID || previous.createdAt <= createdAt;
+}
+
 function validLeaseID(value: string | undefined): value is string {
   return typeof value === "string" && /^cbx_[a-f0-9]{12}$/.test(value);
 }
@@ -2180,6 +2585,14 @@ export function bridgeTicketFromRequest(request: Request): string {
     return match[1].trim();
   }
   return new URL(request.url).searchParams.get("ticket") ?? "";
+}
+
+function validEgressTicket(value: string | undefined): value is string {
+  return typeof value === "string" && /^egress_[a-f0-9]{32}$/.test(value);
+}
+
+function validEgressSessionID(value: string | undefined): value is string {
+  return typeof value === "string" && /^egress_[A-Za-z0-9_.:-]{6,80}$/.test(value);
 }
 
 function validImageID(value: string | undefined): value is string {
@@ -2488,12 +2901,20 @@ function bridgeAttachment(socket: WebSocket): BridgeAttachment | undefined {
       return typeof attachment.leaseID === "string" && typeof attachment.id === "string"
         ? attachment
         : undefined;
+    case "egress-host":
+    case "egress-client":
+      return typeof attachment.leaseID === "string" && typeof attachment.sessionID === "string"
+        ? attachment
+        : undefined;
     default:
       return undefined;
   }
 }
 
 function bridgeTags(attachment: BridgeAttachment): string[] {
+  if (attachment.kind === "egress-host" || attachment.kind === "egress-client") {
+    return [`lease:${attachment.leaseID}`, `session:${attachment.sessionID}`, attachment.kind];
+  }
   return [`lease:${attachment.leaseID}`, attachment.kind];
 }
 
@@ -2582,6 +3003,14 @@ async function forwardWebVNC(rawData: unknown, socket: WebSocket | undefined): P
   socket.send(data);
 }
 
+async function forwardEgress(rawData: unknown, socket: WebSocket | undefined): Promise<void> {
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  const data = await normalizeWebVNCData(rawData);
+  socket.send(data);
+}
+
 async function normalizeWebVNCData(data: unknown): Promise<string | ArrayBuffer> {
   if (typeof data === "string" || data instanceof ArrayBuffer) {
     return data;
@@ -2623,6 +3052,34 @@ function finiteNumber(value: number | undefined): number | undefined {
 function finiteQueryNumber(value: string | null): number | undefined {
   const parsed = Number(value ?? "");
   return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : undefined;
+}
+
+function boundedEgressString(value: string | undefined): string | undefined {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    return undefined;
+  }
+  return normalized.slice(0, 80);
+}
+
+function boundedEgressAllowlist(values: string[] | undefined): string[] {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+  const out: string[] = [];
+  for (const value of values) {
+    const normalized = String(value ?? "")
+      .trim()
+      .toLowerCase();
+    if (!normalized || normalized.length > 253 || out.includes(normalized)) {
+      continue;
+    }
+    out.push(normalized);
+    if (out.length >= 100) {
+      break;
+    }
+  }
+  return out;
 }
 
 function normalizeRunLogInput(input: RunFinishRequest): {

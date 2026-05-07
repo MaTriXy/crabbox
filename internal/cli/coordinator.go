@@ -135,6 +135,26 @@ type CoordinatorWebVNCTicket struct {
 	ExpiresAt string `json:"expiresAt"`
 }
 
+type CoordinatorEgressTicket struct {
+	Ticket    string `json:"ticket"`
+	LeaseID   string `json:"leaseID"`
+	Role      string `json:"role"`
+	SessionID string `json:"sessionID"`
+	ExpiresAt string `json:"expiresAt"`
+}
+
+type CoordinatorEgressStatus struct {
+	LeaseID         string   `json:"leaseID"`
+	Slug            string   `json:"slug,omitempty"`
+	SessionID       string   `json:"sessionID,omitempty"`
+	Profile         string   `json:"profile,omitempty"`
+	Allow           []string `json:"allow,omitempty"`
+	HostConnected   bool     `json:"hostConnected"`
+	ClientConnected bool     `json:"clientConnected"`
+	CreatedAt       string   `json:"createdAt,omitempty"`
+	UpdatedAt       string   `json:"updatedAt,omitempty"`
+}
+
 type CoordinatorRunsResponse struct {
 	Runs []CoordinatorRun `json:"runs"`
 }
@@ -535,6 +555,30 @@ func (c *CoordinatorClient) PollGitHubLogin(ctx context.Context, loginID, pollSe
 func (c *CoordinatorClient) CreateWebVNCTicket(ctx context.Context, leaseID string) (CoordinatorWebVNCTicket, error) {
 	var res CoordinatorWebVNCTicket
 	err := c.do(ctx, http.MethodPost, "/v1/leases/"+url.PathEscape(leaseID)+"/webvnc/ticket", map[string]any{}, &res)
+	return res, err
+}
+
+func (c *CoordinatorClient) CreateEgressTicket(ctx context.Context, leaseID, role, sessionID, profile string, allow []string) (CoordinatorEgressTicket, error) {
+	var res CoordinatorEgressTicket
+	body := map[string]any{
+		"role": role,
+	}
+	if strings.TrimSpace(sessionID) != "" {
+		body["sessionID"] = strings.TrimSpace(sessionID)
+	}
+	if strings.TrimSpace(profile) != "" {
+		body["profile"] = strings.TrimSpace(profile)
+	}
+	if len(allow) > 0 {
+		body["allow"] = allow
+	}
+	err := c.do(ctx, http.MethodPost, "/v1/leases/"+url.PathEscape(leaseID)+"/egress/ticket", body, &res)
+	return res, err
+}
+
+func (c *CoordinatorClient) EgressStatus(ctx context.Context, leaseID string) (CoordinatorEgressStatus, error) {
+	var res CoordinatorEgressStatus
+	err := c.do(ctx, http.MethodGet, "/v1/leases/"+url.PathEscape(leaseID)+"/egress/status", nil, &res)
 	return res, err
 }
 

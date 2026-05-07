@@ -8,6 +8,7 @@ import {
   flushPendingWebVNC,
   forwardOrBufferWebVNC,
   resetWebVNCBridge,
+  shouldActivateEgressSession,
   type WebVNCBuffer,
 } from "../src/fleet";
 import type {
@@ -1362,6 +1363,164 @@ describe("fleet lease identity and idle", () => {
     expect(headers["cookie"]).toBe("vscode-tkn=remote-token");
     expect(headers["cookie"]).not.toContain("crabbox_session");
     expect(headers.origin).toBe("https://crabbox.openclaw.ai");
+  });
+
+  it("creates scoped egress tickets and reports bridge status", async () => {
+    const storage = new MemoryStorage();
+    const fleet = testFleet(storage);
+    const headers = {
+      "x-crabbox-owner": "peter@example.com",
+      "x-crabbox-org": "openclaw",
+    };
+    storage.seed(
+      "lease:cbx_000000000001",
+      testLease({
+        id: "cbx_000000000001",
+        slug: "blue-lobster",
+        owner: "peter@example.com",
+        org: "openclaw",
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      }),
+    );
+
+    const invalidRole = await fleet.fetch(
+      request("POST", "/v1/leases/blue-lobster/egress/ticket", {
+        headers,
+        body: { role: "viewer" },
+      }),
+    );
+    expect(invalidRole.status).toBe(400);
+
+    const ticket = await fleet.fetch(
+      request("POST", "/v1/leases/blue-lobster/egress/ticket", {
+        headers,
+        body: {
+          role: "host",
+          sessionID: "egress_test123",
+          profile: "discord",
+          allow: ["discord.com", "*.discordcdn.com"],
+        },
+      }),
+    );
+    expect(ticket.status).toBe(200);
+    const ticketBody = (await ticket.json()) as {
+      ticket: string;
+      leaseID: string;
+      role: string;
+      sessionID: string;
+    };
+    expect(ticketBody.ticket).toMatch(/^egress_[a-f0-9]{32}$/);
+    expect(ticketBody.leaseID).toBe("cbx_000000000001");
+    expect(ticketBody.role).toBe("host");
+    expect(ticketBody.sessionID).toBe("egress_test123");
+
+    const camelTicket = await fleet.fetch(
+      request("POST", "/v1/leases/blue-lobster/egress/ticket", {
+        headers,
+        body: {
+          role: "client",
+          sessionId: "egress_camel123",
+          allow: ["discord.com"],
+        },
+      }),
+    );
+    expect(camelTicket.status).toBe(200);
+    await expect(camelTicket.json()).resolves.toMatchObject({
+      role: "client",
+      sessionID: "egress_camel123",
+    });
+
+    const status = await fleet.fetch(
+      request("GET", "/v1/leases/blue-lobster/egress/status", { headers }),
+    );
+    expect(status.status).toBe(200);
+    await expect(status.json()).resolves.toMatchObject({
+      leaseID: "cbx_000000000001",
+      hostConnected: false,
+      clientConnected: false,
+    });
+
+    const portalPage = await fleet.fetch(
+      request("GET", "/portal/leases/blue-lobster", { headers }),
+    );
+    expect(portalPage.status).toBe(200);
+    const portalBody = await portalPage.text();
+    expect(portalBody).toContain("<strong>egress</strong><small>waiting for host</small>");
+    expect(portalBody).toContain("discord · discord.com");
+    expect(portalBody).toContain("crabbox egress status --id blue-lobster");
+    expect(portalBody).toContain("crabbox egress stop --id blue-lobster");
+
+    const missingTicket = await fleet.fetch(
+      request("GET", "/v1/leases/blue-lobster/egress/host", {
+        headers: { upgrade: "websocket" },
+      }),
+    );
+    expect(missingTicket.status).toBe(401);
+  });
+
+  it("keeps egress status on the latest ticketed session", async () => {
+    const storage = new MemoryStorage();
+    const fleet = testFleet(storage);
+    const headers = {
+      "x-crabbox-owner": "peter@example.com",
+      "x-crabbox-org": "openclaw",
+    };
+    storage.seed(
+      "lease:cbx_000000000001",
+      testLease({
+        id: "cbx_000000000001",
+        slug: "blue-lobster",
+        owner: "peter@example.com",
+        org: "openclaw",
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      }),
+    );
+
+    const staleTicket = await fleet.fetch(
+      request("POST", "/v1/leases/blue-lobster/egress/ticket", {
+        headers,
+        body: { role: "host", sessionID: "egress_old001", allow: ["example.com"] },
+      }),
+    );
+    expect(staleTicket.status).toBe(200);
+    const staleTicketBody = (await staleTicket.json()) as { ticket: string };
+    await new Promise((resolve) => setTimeout(resolve, 2));
+
+    const currentTicket = await fleet.fetch(
+      request("POST", "/v1/leases/blue-lobster/egress/ticket", {
+        headers,
+        body: { role: "client", sessionID: "egress_new001", allow: ["example.com"] },
+      }),
+    );
+    expect(currentTicket.status).toBe(200);
+
+    const status = await fleet.fetch(
+      request("GET", "/v1/leases/blue-lobster/egress/status", { headers }),
+    );
+    expect(status.status).toBe(200);
+    await expect(status.json()).resolves.toMatchObject({
+      sessionID: "egress_new001",
+      hostConnected: false,
+      clientConnected: false,
+    });
+    expect(staleTicketBody.ticket).toMatch(/^egress_[a-f0-9]{32}$/);
+  });
+
+  it("does not let an older egress session replace a newer current session", () => {
+    expect(
+      shouldActivateEgressSession(
+        { sessionID: "egress_new", createdAt: "2026-05-07T10:00:00.000Z" },
+        "egress_old",
+        "2026-05-07T09:59:59.000Z",
+      ),
+    ).toBe(false);
+    expect(
+      shouldActivateEgressSession(
+        { sessionID: "egress_new", createdAt: "2026-05-07T10:00:00.000Z" },
+        "egress_new",
+        "2026-05-07T09:59:59.000Z",
+      ),
+    ).toBe(true);
   });
 
   it("serves WebVNC pages only for desktop leases and requires an agent upgrade", async () => {

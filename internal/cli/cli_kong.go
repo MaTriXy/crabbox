@@ -38,6 +38,7 @@ type crabboxKongCLI struct {
 	Vnc        vncKongCmd        `cmd:"" name:"vnc" passthrough:"" help:"Print or open VNC connection details for a desktop lease."`
 	Webvnc     webvncKongCmd     `cmd:"" name:"webvnc" passthrough:"" help:"Bridge a desktop lease into the authenticated web portal."`
 	Code       codeKongCmd       `cmd:"" passthrough:"" help:"Bridge a code lease into the authenticated web portal."`
+	Egress     egressKongCmd     `cmd:"" passthrough:"" help:"Bridge lease browser/app traffic through this machine."`
 	Screenshot screenshotKongCmd `cmd:"" passthrough:"" help:"Capture a PNG from a desktop lease."`
 	Inspect    inspectKongCmd    `cmd:"" passthrough:"" help:"Print lease/provider details; add --json for scripts."`
 	Stop       stopKongCmd       `cmd:"" passthrough:"" help:"Release a lease or delete a direct-provider machine."`
@@ -173,6 +174,9 @@ type webvncKongCmd struct {
 	Args []string `arg:"" optional:""`
 }
 type codeKongCmd struct {
+	Args []string `arg:"" optional:""`
+}
+type egressKongCmd struct {
 	Args []string `arg:"" optional:""`
 }
 type screenshotKongCmd struct {
@@ -314,6 +318,7 @@ func (c *sshKongCmd) Run(ctx context.Context, app App) error      { return app.s
 func (c *vncKongCmd) Run(ctx context.Context, app App) error      { return app.vnc(ctx, c.Args) }
 func (c *webvncKongCmd) Run(ctx context.Context, app App) error   { return app.webvnc(ctx, c.Args) }
 func (c *codeKongCmd) Run(ctx context.Context, app App) error     { return app.webCode(ctx, c.Args) }
+func (c *egressKongCmd) Run(ctx context.Context, app App) error   { return app.egress(ctx, c.Args) }
 func (c *screenshotKongCmd) Run(ctx context.Context, app App) error {
 	return app.screenshot(ctx, c.Args)
 }

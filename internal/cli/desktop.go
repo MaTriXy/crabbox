@@ -17,6 +17,8 @@ func (a App) desktopLaunch(ctx context.Context, args []string) error {
 	webvnc := fs.Bool("webvnc", false, "bridge the launched desktop into the authenticated WebVNC portal")
 	openPortal := fs.Bool("open", false, "open the WebVNC portal when --webvnc is set")
 	fullscreen := fs.Bool("fullscreen", false, "leave launched browser fullscreen for capture/video workflows")
+	egress := fs.String("egress", "", "egress profile; passes the active lease-local proxy to the browser")
+	egressProxy := fs.String("egress-proxy", defaultEgressListen, "lease-local egress proxy for --egress")
 	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
 	targetFlags := registerTargetFlags(fs, defaults)
 	if err := parseFlags(fs, args); err != nil {
@@ -24,6 +26,9 @@ func (a App) desktopLaunch(ctx context.Context, args []string) error {
 	}
 	if *openPortal && !*webvnc {
 		return exit(2, "desktop launch --open requires --webvnc")
+	}
+	if strings.TrimSpace(*egress) != "" && !*browser {
+		return exit(2, "desktop launch --egress currently requires --browser")
 	}
 	positionalID := false
 	if *id == "" && fs.NArg() > 0 {
@@ -81,11 +86,19 @@ func (a App) desktopLaunch(ctx context.Context, args []string) error {
 				return exit(2, "browser=true requested but target did not report BROWSER")
 			}
 			command = []string{env["BROWSER"]}
+			if strings.TrimSpace(*egress) != "" {
+				command = append(command, "--proxy-server=http://"+strings.TrimSpace(*egressProxy))
+			}
 			if strings.TrimSpace(*url) != "" {
 				command = append(command, strings.TrimSpace(*url))
 			}
 		} else if strings.TrimSpace(*url) != "" {
+			if strings.TrimSpace(*egress) != "" {
+				command = append(command, "--proxy-server=http://"+strings.TrimSpace(*egressProxy))
+			}
 			command = append(command, strings.TrimSpace(*url))
+		} else if strings.TrimSpace(*egress) != "" {
+			command = append(command, "--proxy-server=http://"+strings.TrimSpace(*egressProxy))
 		}
 	}
 	if len(command) == 0 {

@@ -251,6 +251,37 @@ tailscale:
   exitNodeAllowLanAccess: false
 ```
 
+### Mediated Egress
+
+Mediated egress is a browser/app QA feature where a lease exits to the internet
+through an operator machine over the Cloudflare Worker mediator. The first
+implementation is opt-in and profile-based.
+
+```yaml
+egress:
+  enabled: false
+  listen: 127.0.0.1:3128
+  browserProxy: true
+  profiles:
+    discord:
+      allow:
+        - discord.com
+        - "*.discord.com"
+        - discordcdn.com
+        - "*.discordcdn.com"
+    slack:
+      allow:
+        - slack.com
+        - "*.slack.com"
+        - slack-edge.com
+        - "*.slack-edge.com"
+```
+
+See [Mediated egress](egress.md) for the design, security model, and command
+surface. The current CLI ships built-in `discord` and `slack` profiles; the
+YAML shape is the intended config surface for making those profiles
+user-configurable.
+
 ## Profiles
 
 Profiles are named bundles of config that get applied as a layer on top of

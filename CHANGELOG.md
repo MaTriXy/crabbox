@@ -2,6 +2,10 @@
 
 ## 0.6.2 - Unreleased
 
+### Added
+
+- Added mediated egress commands and browser wiring so Linux desktop leases can proxy selected app traffic through the operator machine via the coordinator bridge.
+
 ### Fixed
 
 - Fixed Tailscale exit-node bootstrap paths to prefer tailnet metadata and fail clearly when remote exit-node egress is not active.

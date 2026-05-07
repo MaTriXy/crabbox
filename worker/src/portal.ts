@@ -17,6 +17,13 @@ export interface PortalLeaseBridgeStatus {
   webVNCBridgeConnected: boolean;
   webVNCViewerConnected: boolean;
   codeBridgeConnected: boolean;
+  egress?: {
+    profile: string;
+    allow: string[];
+    hostConnected: boolean;
+    clientConnected: boolean;
+    updatedAt: string;
+  };
 }
 
 export function portalHome(
@@ -126,12 +133,22 @@ export function portalLeaseDetail(
     active && lease.code
       ? `<a class="button" href="/portal/leases/${encodeURIComponent(lease.id)}/code/">open code</a>`
       : `<span class="muted">no code</span>`;
+  const egressAction =
+    active && bridgeStatus.egress
+      ? `<span class="muted">${escapeHTML(egressSummary(bridgeStatus.egress))}</span>`
+      : `<span class="muted">no egress</span>`;
   const commands = active
     ? [
         commandBlock("shell", `crabbox ssh --id ${shellArg(slug)}`),
         commandBlock("run", `crabbox run --id ${shellArg(slug)} -- <command>`),
         lease.desktop ? commandBlock("WebVNC bridge", webVNCBridgeCommand(lease)) : "",
         lease.code ? commandBlock("code bridge", codeBridgeCommand(lease)) : "",
+        bridgeStatus.egress
+          ? commandBlock("egress status", `crabbox egress status --id ${shellArg(slug)}`)
+          : "",
+        bridgeStatus.egress
+          ? commandBlock("egress stop", `crabbox egress stop --id ${shellArg(slug)}`)
+          : "",
       ]
         .filter(Boolean)
         .join("")
@@ -179,6 +196,7 @@ export function portalLeaseDetail(
           <div class="bridge-grid">
             ${bridgeRow("WebVNC", active && lease.desktop === true, bridgeStatus.webVNCBridgeConnected, bridgeStatus.webVNCViewerConnected, vncAction)}
             ${bridgeRow("code", active && lease.code === true, bridgeStatus.codeBridgeConnected, false, codeAction)}
+            ${bridgeRow("egress", active && Boolean(bridgeStatus.egress), bridgeStatus.egress?.hostConnected ?? false, bridgeStatus.egress?.clientConnected ?? false, egressAction, "host", "client")}
           </div>
           <div class="access-commands">${commands}</div>
         </div>
@@ -1366,13 +1384,15 @@ function bridgeRow(
   bridgeConnected: boolean,
   viewerConnected: boolean,
   action: string,
+  bridgeLabel = "bridge",
+  viewerLabel = "viewer",
 ): string {
   const status = enabled
     ? bridgeConnected
       ? viewerConnected
-        ? "viewer active"
-        : "bridge ready"
-      : "waiting for bridge"
+        ? `${viewerLabel} active`
+        : `${bridgeLabel} ready`
+      : `waiting for ${bridgeLabel}`
     : "unavailable";
   const tone = enabled ? (bridgeConnected ? "ok" : "warn") : "";
   return `<div class="bridge-row">
@@ -1380,6 +1400,15 @@ function bridgeRow(
     <span class="pill" data-tone="${tone}">${escapeHTML(enabled ? (bridgeConnected ? "connected" : "waiting") : "off")}</span>
     ${action}
   </div>`;
+}
+
+function egressSummary(egress: NonNullable<PortalLeaseBridgeStatus["egress"]>): string {
+  const profile = egress.profile || "custom";
+  const allow = egress.allow.length
+    ? egress.allow.slice(0, 3).join(", ") + (egress.allow.length > 3 ? " +" : "")
+    : "no allowlist";
+  const updated = egress.updatedAt ? ` · ${relativeTime(egress.updatedAt)}` : "";
+  return `${profile} · ${allow}${updated}`;
 }
 
 function commandBlock(label: string, command: string): string {

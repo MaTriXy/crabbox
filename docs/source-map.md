@@ -65,6 +65,7 @@ This page maps user-facing behavior back to implementation files. Keep docs desc
 - VNC tunnel command: `internal/cli/vnc.go`
 - WebVNC portal bridge: `internal/cli/webvnc.go`, `worker/src/portal.ts`, `worker/src/fleet.ts`
 - Web code portal bridge: `internal/cli/code.go`, `worker/src/portal.ts`, `worker/src/fleet.ts`
+- Mediated egress bridge: `internal/cli/egress.go`, `internal/cli/coordinator.go`, `internal/cli/desktop.go`, `worker/src/index.ts`, `worker/src/fleet.ts`, `docs/features/egress.md`
 - Desktop screenshot command: `internal/cli/screenshot.go`
 - Interactive desktop/VNC contract: `docs/features/interactive-desktop-vnc.md`, `docs/features/vnc-linux.md`, `docs/features/vnc-windows.md`, `docs/features/vnc-macos.md`
 
@@ -114,6 +115,7 @@ repository-owned setup, usually through Actions hydration or repo scripts.
 - Network and reachability: `docs/features/network.md` (code in `internal/cli/network.go`)
 - Lease capabilities: `docs/features/capabilities.md` (code in `internal/cli/capabilities.go`)
 - Environment forwarding: `docs/features/env-forwarding.md` (forwarding logic in `internal/cli/run.go`)
+- Mediated egress: `docs/features/egress.md` (CLI/Worker bridge for browser/app egress through an operator machine)
 - Capacity and fallback: `docs/features/capacity-fallback.md` (code in `internal/cli/aws.go`, `worker/src/aws.ts`, class maps in `internal/cli/config.go`)
 - Telemetry: `docs/features/telemetry.md` (code in `internal/cli/telemetry.go`)
 - Browser portal: `docs/features/portal.md` (code in `worker/src/portal.ts`)
