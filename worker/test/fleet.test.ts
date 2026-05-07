@@ -1668,8 +1668,10 @@ describe("fleet lease identity and idle", () => {
     expect(pageBody).toContain("position:sticky");
     expect(pageBody).toContain('data-provider="hetzner"');
     expect(pageBody).toContain('data-target="linux"');
-    expect(pageBody).toContain("no bridge connected; run the bridge command below");
-    expect(pageBody).toContain("another viewer is connected; close stale WebVNC tabs");
+    expect(pageBody).toContain("WebVNC daemon not running; run the bridge command below");
+    expect(pageBody).toContain(
+      "WebVNC viewer already active; close stale WebVNC tabs or run reset",
+    );
     expect(pageBody).toContain('fragment.get("username")');
     expect(pageBody).toContain('types.includes("username")');
     expect(pageBody).not.toContain("cdn.jsdelivr.net");
@@ -1686,7 +1688,7 @@ describe("fleet lease identity and idle", () => {
       command: "crabbox webvnc --provider hetzner --target linux --id blue-lobster --open",
       events: [],
       message:
-        "no bridge connected; run: crabbox webvnc --provider hetzner --target linux --id blue-lobster --open",
+        "WebVNC daemon not running; run: crabbox webvnc --provider hetzner --target linux --id blue-lobster --open",
     });
 
     const apiStatus = await fleet.fetch(

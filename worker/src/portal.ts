@@ -614,11 +614,11 @@ export function portalVNC(lease: LeaseRecord): Response {
         try {
           const state = await bridgeState();
           if (state && !state.bridgeConnected) {
-            scheduleRetry(state.message || "no bridge connected; run the bridge command below");
+            scheduleRetry(state.message || "WebVNC daemon not running; run the bridge command below");
             return;
           }
           if (state?.viewerConnected) {
-            scheduleRetry("another viewer is connected; close stale WebVNC tabs");
+            scheduleRetry("WebVNC viewer already active; close stale WebVNC tabs or run reset");
             return;
           }
           setStatus(retryAttempt ? "bridge connected; opening viewer" : "connecting");
@@ -641,7 +641,7 @@ export function portalVNC(lease: LeaseRecord): Response {
             }
           });
           rfb.addEventListener("disconnect", () => {
-            scheduleRetry(connected ? "bridge disconnected" : "waiting for bridge");
+            scheduleRetry(connected ? "VNC bridge disconnected" : "waiting for VNC bridge");
           });
           rfb.addEventListener("credentialsrequired", (event) => {
             const types = event.detail?.types || ["password"];
@@ -657,7 +657,7 @@ export function portalVNC(lease: LeaseRecord): Response {
           rfb.addEventListener("securityfailure", () => {
             stopped = true;
             window.clearTimeout(retryTimer);
-            setStatus("VNC authentication failed", "bad");
+            setStatus("VNC authentication failed; reopen WebVNC or copy the password from crabbox webvnc status", "bad");
           });
         } catch (error) {
           scheduleRetry(error instanceof Error ? error.message : String(error));

@@ -1373,9 +1373,9 @@ export class FleetDurableObject implements DurableObject {
       events: this.recentWebVNCEvents(lease.id),
       message: bridgeConnected
         ? viewerConnected
-          ? "bridge connected; another viewer is active"
+          ? "WebVNC viewer already active; close stale WebVNC tabs or run reset"
           : "bridge connected"
-        : `no bridge connected; run: ${command}`,
+        : `WebVNC daemon not running; run: ${command}`,
     });
   }
 
@@ -1830,7 +1830,7 @@ export class FleetDurableObject implements DurableObject {
       return json(
         {
           error: "webvnc_bridge_missing",
-          message: `start the bridge with: ${command}`,
+          message: `WebVNC daemon not running; start the bridge with: ${command}`,
           command,
         },
         { status: 409 },
@@ -1842,7 +1842,7 @@ export class FleetDurableObject implements DurableObject {
       return json(
         {
           error: "webvnc_viewer_active",
-          message: `another viewer is active; close stale WebVNC tabs or wait before reconnecting with: ${command}`,
+          message: `WebVNC viewer already active; close stale WebVNC tabs or run reset before reconnecting with: ${command}`,
           command,
         },
         { status: 409 },
