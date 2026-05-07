@@ -7,10 +7,11 @@ Read when:
 - reviewing delegated provider behavior.
 
 `provider: islo` delegates sandbox setup and command execution to Islo. Crabbox
-uses the Islo Go SDK for auth, sandbox lifecycle, list, status, and stop. The
-SDK's current exec stream helper coalesces output, so Crabbox keeps a small SSE
-reader for `POST /sandboxes/{name}/exec/stream` while still using the SDK auth
-provider.
+uses the Islo Go SDK for auth, sandbox lifecycle, list, status, and stop. It
+builds the normal Crabbox sync manifest and uploads it as a gzipped archive into
+the sandbox workdir before executing the command. The SDK's current exec stream
+helper coalesces output, so Crabbox keeps a small SSE reader for
+`POST /sandboxes/{name}/exec/stream` while still using the SDK auth provider.
 
 ## Auth
 
@@ -49,11 +50,12 @@ crabbox stop --provider islo <slug>
 
 - `warmup` creates a `crabbox-...` Islo sandbox and stores a local lease ID of
   the form `isb_<crabbox-sandbox-name>` plus a Crabbox slug.
-- `run` creates or reuses a sandbox, streams stdout/stderr from Islo's SSE exec
+- `run` creates or reuses a sandbox, syncs the local Git-managed working set
+  into `/workspace/<islo.workdir>`, streams stdout/stderr from Islo's SSE exec
   endpoint, and returns the remote exit code.
-- Sync is delegated to Islo. `--sync-only`, `--checksum`, and
-  `--force-sync-large` are rejected because Crabbox cannot honor those local
-  rsync options.
+- `--sync-only` and `--checksum` are rejected because Islo does not expose a
+  Crabbox SSH/rsync target. Large-sync guardrails still apply, and
+  `--force-sync-large` is honored for intentional large archive syncs.
 - `list`, `status`, and `stop` use the Islo SDK and return core-rendered
   Crabbox views for Crabbox-created sandboxes only.
 

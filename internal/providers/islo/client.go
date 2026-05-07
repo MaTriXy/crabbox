@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +24,7 @@ type isloAPI interface {
 	GetSandbox(context.Context, string) (*gosdk.SandboxResponse, error)
 	ListSandboxes(context.Context) ([]*gosdk.SandboxResponse, error)
 	DeleteSandbox(context.Context, string) error
+	UploadArchive(context.Context, string, string, io.Reader) error
 	ExecStream(context.Context, string, *gosdk.ExecRequest, io.Writer, io.Writer) (int, error)
 }
 
@@ -91,6 +93,38 @@ func (c *isloSDKClient) ListSandboxes(ctx context.Context) ([]*gosdk.SandboxResp
 func (c *isloSDKClient) DeleteSandbox(ctx context.Context, name string) error {
 	_, err := c.sdk.Sandboxes.DeleteSandbox(ctx, &gosdk.DeleteSandboxRequest{SandboxName: name})
 	return err
+}
+
+func (c *isloSDKClient) UploadArchive(ctx context.Context, name, targetPath string, archive io.Reader) error {
+	u, err := url.Parse(c.baseURL + "/sandboxes/" + url.PathEscape(name) + "/files-archive")
+	if err != nil {
+		return err
+	}
+	q := u.Query()
+	q.Set("path", targetPath)
+	u.RawQuery = q.Encode()
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), archive)
+	if err != nil {
+		return err
+	}
+	token, err := c.auth.Token(ctx)
+	if err != nil {
+		return fmt.Errorf("islo auth: %w", err)
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+token)
+	httpReq.Header.Set("Content-Type", "application/gzip")
+	httpReq.Header.Set("Accept", "application/json")
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("islo upload archive: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("islo upload archive %s: %s", resp.Status, strings.TrimSpace(string(snippet)))
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return nil
 }
 
 func (c *isloSDKClient) ExecStream(ctx context.Context, name string, req *gosdk.ExecRequest, stdout, stderr io.Writer) (int, error) {

@@ -8,8 +8,9 @@ Read when:
 
 Islo is a delegated run provider. Crabbox uses the Islo SDK for sandbox
 lifecycle and a streaming exec endpoint for command output. Islo owns sandbox
-state and workspace setup; Crabbox owns local config, repo claims, slugs,
-timing summaries, and normalized list/status rendering.
+state and command transport; Crabbox owns local config, repo claims, sync
+manifests and guardrails, slugs, timing summaries, and normalized list/status
+rendering.
 
 ## When To Use
 
@@ -69,23 +70,27 @@ Provider flags:
 
 1. Create or resolve a Crabbox-owned Islo sandbox.
 2. Store a local lease ID with the `isb_` prefix and a friendly slug.
-3. Execute commands through Islo's streaming exec endpoint.
-4. Require an exit event before treating a stream as successful.
-5. Delete the sandbox on release unless kept.
+3. Build the Crabbox sync manifest and upload a gzipped archive into
+   `/workspace/<islo.workdir>`.
+4. Execute commands through Islo's streaming exec endpoint in that workdir.
+5. Require an exit event before treating a stream as successful.
+6. Delete the sandbox on release unless kept.
 
 ## Capabilities
 
 - SSH: no.
-- Crabbox sync: no.
-- Provider sync: yes, Islo-owned.
+- Crabbox sync: yes, archive sync through the Islo API or chunked exec fallback.
+- Provider sync: no separate Islo CLI sync.
 - Desktop/browser/code: no Crabbox VNC/code surface.
 - Actions hydration: no.
 - Coordinator: no.
 
 ## Gotchas
 
-- `--sync-only`, `--checksum`, and `--force-sync-large` are rejected because
-  Crabbox cannot apply local rsync semantics.
+- `--sync-only` and `--checksum` are rejected because Islo does not expose a
+  Crabbox SSH/rsync target.
+- Large-sync guardrails still apply. Use `--force-sync-large` when a large Islo
+  archive sync is intentional.
 - `--shell` passes the raw shell string to the remote shell path.
 - IDs can be Crabbox slugs, `isb_...` lease IDs, or Crabbox-created sandbox
   names. Non-Crabbox Islo sandboxes are rejected.

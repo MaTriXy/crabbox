@@ -299,8 +299,9 @@ short-lived Daytona SSH tokens and redacts those tokens from output. Daytona
 auth can come from `DAYTONA_API_KEY` / `DAYTONA_JWT_TOKEN` env or an
 authenticated Daytona CLI profile created by `daytona login --api-key`. With
 `provider: islo`, Crabbox delegates sandbox setup and command execution to the
-Islo Go SDK; sync is delegated and `--sync-only`, `--checksum`, and
-`--force-sync-large` are unsupported.
+Islo Go SDK, uploads the Crabbox sync manifest as a gzipped archive into the
+Islo workdir, and rejects only the SSH/rsync-specific `--sync-only` and
+`--checksum` modes.
 
 ## Exit Codes
 

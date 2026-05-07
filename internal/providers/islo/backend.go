@@ -142,7 +142,7 @@ func (b *isloBackend) Warmup(ctx context.Context, req WarmupRequest) error {
 }
 
 func (b *isloBackend) Run(ctx context.Context, req RunRequest) (RunResult, error) {
-	if err := rejectDelegatedSyncOptions(isloProvider, req); err != nil {
+	if err := rejectIsloSyncOptions(req); err != nil {
 		return RunResult{}, err
 	}
 	started := b.now()
@@ -176,8 +176,21 @@ func (b *isloBackend) Run(ctx context.Context, req RunRequest) (RunResult, error
 		}()
 	}
 	fmt.Fprintf(b.rt.Stderr, "provider=islo lease=%s sandbox=%s\n", leaseID, name)
+	syncDuration := time.Duration(0)
+	syncPhases := []timingPhase{{Name: "sync", Skipped: true, Reason: "--no-sync"}}
+	workspace := isloWorkspacePath(b.cfg)
+	if !req.NoSync {
+		var err error
+		syncPhases, syncDuration, err = b.syncWorkspace(ctx, client, name, req)
+		if err != nil {
+			return RunResult{}, err
+		}
+		fmt.Fprintf(b.rt.Stderr, "sync complete in %s\n", syncDuration.Round(time.Millisecond))
+	} else if err := b.prepareWorkspace(ctx, client, name, workspace); err != nil {
+		return RunResult{}, err
+	}
 	commandStart := b.now()
-	exitCode, runErr := b.exec(ctx, client, name, req.Command, req.ShellMode)
+	exitCode, runErr := b.exec(ctx, client, name, workspace, req.Command, req.ShellMode)
 	commandDuration := b.now().Sub(commandStart)
 	result := RunResult{
 		ExitCode:      exitCode,
@@ -185,13 +198,19 @@ func (b *isloBackend) Run(ctx context.Context, req RunRequest) (RunResult, error
 		Total:         b.now().Sub(started),
 		SyncDelegated: true,
 	}
-	fmt.Fprintf(b.rt.Stderr, "islo run summary command=%s total=%s exit=%d\n", result.Command.Round(time.Millisecond), result.Total.Round(time.Millisecond), exitCode)
+	if req.NoSync {
+		fmt.Fprintf(b.rt.Stderr, "islo run summary sync_skipped=true command=%s total=%s exit=%d\n", result.Command.Round(time.Millisecond), result.Total.Round(time.Millisecond), exitCode)
+	} else {
+		fmt.Fprintf(b.rt.Stderr, "islo run summary sync=%s command=%s total=%s exit=%d\n", syncDuration.Round(time.Millisecond), result.Command.Round(time.Millisecond), result.Total.Round(time.Millisecond), exitCode)
+	}
 	if req.TimingJSON {
 		if err := writeTimingJSON(b.rt.Stderr, timingReport{
 			Provider:      isloProvider,
 			LeaseID:       leaseID,
 			SyncDelegated: true,
-			SyncPhases:    []timingPhase{{Name: "delegated", Skipped: true, Reason: "islo owns sandbox state"}},
+			SyncMs:        syncDuration.Milliseconds(),
+			SyncPhases:    syncPhases,
+			SyncSkipped:   req.NoSync,
 			CommandMs:     result.Command.Milliseconds(),
 			TotalMs:       result.Total.Milliseconds(),
 			ExitCode:      exitCode,
@@ -318,14 +337,14 @@ func (b *isloBackend) createSandbox(ctx context.Context, client isloAPI, repo Re
 	return leaseID, sandbox.GetName(), slug, nil
 }
 
-func (b *isloBackend) exec(ctx context.Context, client isloAPI, name string, command []string, shellMode bool) (int, error) {
+func (b *isloBackend) exec(ctx context.Context, client isloAPI, name, workdir string, command []string, shellMode bool) (int, error) {
 	execCommand, err := isloExecCommand(command, shellMode)
 	if err != nil {
 		return 2, err
 	}
 	req := &gosdk.ExecRequest{Command: execCommand}
-	if b.cfg.Islo.Workdir != "" {
-		req.Workdir = stringValue(b.cfg.Islo.Workdir)
+	if workdir != "" {
+		req.Workdir = stringValue(workdir)
 	}
 	return client.ExecStream(ctx, name, req, b.rt.Stdout, b.rt.Stderr)
 }

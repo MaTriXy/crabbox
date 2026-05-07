@@ -57,3 +57,19 @@ func resolveLeaseClaim(identifier string) (core.LeaseClaim, bool, error) {
 func removeLeaseClaim(leaseID string) {
 	core.RemoveLeaseClaim(leaseID)
 }
+
+func syncExcludes(root string, cfg Config) ([]string, error) {
+	return core.SyncExcludes(root, cfg)
+}
+
+func syncManifest(root string, excludes []string) (core.SyncManifest, error) {
+	return core.BuildSyncManifest(root, excludes)
+}
+
+func checkSyncPreflight(manifest core.SyncManifest, cfg Config, force bool, stderr io.Writer) error {
+	return core.CheckSyncPreflight(manifest, cfg, force, stderr)
+}
+
+func shellQuote(s string) string {
+	return core.ShellQuote(s)
+}
