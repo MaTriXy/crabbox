@@ -106,6 +106,64 @@ desktop app is launched with:
 The host side opens the real outbound TCP connections. Remote services see the
 operator machine's internet path, not the cloud provider's default egress IP.
 
+## Setup And Traffic Flow
+
+```text
+Operator CLI
+    |
+    |  crabbox egress start --id blue-lobster --profile discord --daemon
+    v
+Resolve lease through coordinator
+    |
+    +-- if local coordinator is Access-protected:
+    |       use --coordinator https://crabbox.openclaw.ai
+    |       so the lease can connect without private Access credentials
+    |
+    v
+Create shared egress session
+    |
+    +--> create client ticket
+    |       |
+    |       v
+    |   SSH to lease
+    |       |
+    |       v
+    |   install/run crabbox egress client
+    |       |
+    |       v
+    |   listen on 127.0.0.1:3128 inside lease
+    |
+    +--> create host ticket
+            |
+            v
+        run local crabbox egress host
+            |
+            v
+        connect outbound to coordinator
+
+Runtime browser request
+    |
+    |  Chrome --proxy-server=http://127.0.0.1:3128
+    v
+Lease-local proxy
+    |
+    |  HTTP CONNECT host:443
+    v
+Cloudflare Worker / Fleet Durable Object
+    |
+    |  pair lease client + host agent by leaseID/sessionID
+    v
+Host egress agent on operator machine
+    |
+    |  enforce allowlist, open TCP connection
+    v
+Internet service sees operator public IP
+```
+
+Teardown runs in the opposite direction: `crabbox egress stop` stops the local
+host daemon and asks the lease to kill the remote client; releasing a lease also
+clears coordinator-side egress sockets and session status.
+
 ## Command Shape
 
 The CLI is explicit enough for debugging but ergonomic for the common
