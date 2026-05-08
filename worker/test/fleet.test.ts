@@ -192,7 +192,24 @@ describe("fleet lease identity and idle", () => {
       request("GET", "/portal/leases/blue-lobster/share", { headers: friendHeaders }),
     );
     expect(friendSharePage.status).toBe(200);
-    expect(await friendSharePage.text()).toContain("share blue-lobster");
+    const friendShareBody = await friendSharePage.text();
+    expect(friendShareBody).toContain("share blue-lobster");
+    expect(friendShareBody).toContain("share-shell");
+    expect(friendShareBody).toContain("back to lease");
+    expect(friendShareBody).toContain('class="button action" type="submit">save</button>');
+    expect(friendShareBody).toContain('class="button action" type="submit">add</button>');
+
+    const embeddedSharePage = await fleet.fetch(
+      request("GET", "/portal/leases/blue-lobster/share?embed=1", { headers: friendHeaders }),
+    );
+    expect(embeddedSharePage.status).toBe(200);
+    expect(embeddedSharePage.headers.get("content-security-policy")).toContain(
+      "frame-ancestors 'self'",
+    );
+    const embeddedShareBody = await embeddedSharePage.text();
+    expect(embeddedShareBody).toContain("share-shell-embedded");
+    expect(embeddedShareBody).toContain("/portal/leases/cbx_000000000001/share?embed=1");
+    expect(embeddedShareBody).not.toContain("back to lease");
 
     const stranger = await fleet.fetch(
       request("GET", "/v1/leases/blue-lobster", { headers: strangerHeaders }),
@@ -1657,12 +1674,17 @@ describe("fleet lease identity and idle", () => {
     expect(pageBody).toContain("function scheduleRetry");
     expect(pageBody).toContain("/portal/leases/cbx_000000000001/vnc/status");
     expect(pageBody).toContain("/portal/leases/cbx_000000000001/share");
+    expect(pageBody).toContain("/portal/leases/cbx_000000000001/share?embed=1");
+    expect(pageBody).toContain("vnc-share-dialog");
+    expect(pageBody).toContain("vnc-share-frame");
+    expect(pageBody).toContain('document.getElementById("vnc-share")');
     expect(pageBody).toContain("vnc-copy-remote");
     expect(pageBody).toContain("vnc-paste");
     expect(pageBody).toContain("vnc-copy");
     expect(pageBody).toContain('addEventListener("clipboard"');
     expect(pageBody).toContain("remote clipboard ready");
     expect(pageBody).toContain("clipboardPasteFrom");
+    expect(pageBody).toContain("rfb.showDotCursor = true");
     expect(pageBody).toContain('target === "macos"');
     expect(pageBody).toContain("MetaLeft");
     expect(pageBody).toContain("ControlLeft");
@@ -1673,6 +1695,11 @@ describe("fleet lease identity and idle", () => {
     expect(pageBody).toContain("waiting for an available WebVNC observer slot");
     expect(pageBody).toContain("/portal/leases/cbx_000000000001/vnc/control");
     expect(pageBody).toContain("vnc-takeover");
+    expect(pageBody).toContain("vnc-control");
+    expect(pageBody).toContain("take control");
+    expect(pageBody).toContain("you control");
+    expect(pageBody).not.toContain("vnc-role");
+    expect(pageBody).not.toContain("status-pill vnc-role");
     expect(pageBody).toContain("rfb.viewOnly = !controlling");
     expect(pageBody).toContain('fragment.get("username")');
     expect(pageBody).toContain('types.includes("username")');

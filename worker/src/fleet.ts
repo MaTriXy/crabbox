@@ -1118,7 +1118,8 @@ export class FleetDurableObject implements DurableObject {
     if (!this.leaseManageableByRequest(lease, request, isAdminRequest(request))) {
       return portalError("Share unavailable", "Lease manage access is required.", 403);
     }
-    return portalShareLease(lease);
+    const embedded = new URL(request.url).searchParams.get("embed") === "1";
+    return portalShareLease(lease, { embedded });
   }
 
   private async portalShareLeaseAction(request: Request, identifier: string): Promise<Response> {
@@ -1161,9 +1162,12 @@ export class FleetDurableObject implements DurableObject {
     lease.share = sanitizeLeaseShare(share, requestOwner(request));
     lease.updatedAt = new Date().toISOString();
     await this.putLease(lease);
+    const embedded = new URL(request.url).searchParams.get("embed") === "1";
     return new Response(null, {
       status: 303,
-      headers: { location: `/portal/leases/${encodeURIComponent(lease.id)}/share` },
+      headers: {
+        location: `/portal/leases/${encodeURIComponent(lease.id)}/share${embedded ? "?embed=1" : ""}`,
+      },
     });
   }
 

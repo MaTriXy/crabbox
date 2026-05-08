@@ -231,8 +231,12 @@ export function portalLeaseDetail(
   );
 }
 
-export function portalShareLease(lease: LeaseRecord): Response {
+export function portalShareLease(
+  lease: LeaseRecord,
+  options: { embedded?: boolean } = {},
+): Response {
   const slug = lease.slug || lease.id;
+  const sharePath = `/portal/leases/${encodeURIComponent(lease.id)}/share${options.embedded ? "?embed=1" : ""}`;
   const users = Object.entries(lease.share?.users ?? {}).toSorted(([a], [b]) => a.localeCompare(b));
   const userRows = users.length
     ? users
@@ -241,7 +245,7 @@ export function portalShareLease(lease: LeaseRecord): Response {
             <td>${escapeHTML(user)}</td>
             <td><span class="pill">${escapeHTML(role)}</span></td>
             <td>
-              <form method="post" action="/portal/leases/${encodeURIComponent(lease.id)}/share">
+              <form method="post" action="${sharePath}">
                 <input type="hidden" name="action" value="remove-user">
                 <input type="hidden" name="user" value="${escapeHTML(user)}">
                 <button class="button secondary" type="submit">remove</button>
@@ -253,40 +257,44 @@ export function portalShareLease(lease: LeaseRecord): Response {
     : `<tr><td colspan="3" class="empty">no shared users</td></tr>`;
   return html(
     `Share ${slug}`,
-    `<main class="portal-shell run-shell">
-      ${portalHeader({
-        meta: `share ${escapeHTML(slug)} <span class="mono">${escapeHTML(lease.id)}</span>`,
-        actions: `
-          <a class="button secondary" href="/portal/leases/${encodeURIComponent(lease.id)}">lease</a>
-          <a class="button secondary" href="/portal">leases</a>
-          <a class="button secondary" href="/portal/logout">log out</a>
-        `,
-      })}
+    `<main class="portal-shell run-shell share-shell${options.embedded ? " share-shell-embedded" : ""}">
+      ${
+        options.embedded
+          ? ""
+          : portalHeader({
+              meta: `share ${escapeHTML(slug)} <span class="mono">${escapeHTML(lease.id)}</span>`,
+              actions: `
+                <a class="button secondary" href="/portal/leases/${encodeURIComponent(lease.id)}">back to lease</a>
+                <a class="button secondary" href="/portal">leases</a>
+                <a class="button secondary" href="/portal/logout">log out</a>
+              `,
+            })
+      }
       <section class="panel">
         <div class="section-head">
           <h2>org access</h2>
           <span class="pill">${escapeHTML(lease.share?.org ?? "off")}</span>
         </div>
-        <form class="share-form" method="post" action="/portal/leases/${encodeURIComponent(lease.id)}/share">
+        <form class="share-form" method="post" action="${sharePath}">
           <input type="hidden" name="action" value="set-org">
           <select name="role" aria-label="org role">
             <option value=""${lease.share?.org ? "" : " selected"}>off</option>
             <option value="use"${lease.share?.org === "use" ? " selected" : ""}>use</option>
             <option value="manage"${lease.share?.org === "manage" ? " selected" : ""}>manage</option>
           </select>
-          <button class="button" type="submit">save</button>
+          <button class="button action" type="submit">save</button>
         </form>
       </section>
       <section class="panel">
         <div class="section-head"><h2>users</h2></div>
-        <form class="share-form" method="post" action="/portal/leases/${encodeURIComponent(lease.id)}/share">
+        <form class="share-form" method="post" action="${sharePath}">
           <input type="hidden" name="action" value="add-user">
           <input name="user" type="email" placeholder="friend@example.com" required>
           <select name="role" aria-label="user role">
             <option value="use">use</option>
             <option value="manage">manage</option>
           </select>
-          <button class="button" type="submit">add</button>
+          <button class="button action" type="submit">add</button>
         </form>
         <div class="table-scroll">
           <table>
@@ -295,11 +303,14 @@ export function portalShareLease(lease: LeaseRecord): Response {
           </table>
         </div>
       </section>
-      <form method="post" action="/portal/leases/${encodeURIComponent(lease.id)}/share">
+      <form method="post" action="${sharePath}">
         <input type="hidden" name="action" value="clear">
         <button class="button danger" type="submit">clear sharing</button>
       </form>
     </main>`,
+    200,
+    "",
+    options.embedded ? { frameAncestors: "'self'" } : {},
   );
 }
 
@@ -513,6 +524,8 @@ export function portalVNC(lease: LeaseRecord): Response {
   const wsPath = `/portal/leases/${encodeURIComponent(lease.id)}/vnc/viewer`;
   const statusPath = `/portal/leases/${encodeURIComponent(lease.id)}/vnc/status`;
   const controlPath = `/portal/leases/${encodeURIComponent(lease.id)}/vnc/control`;
+  const sharePath = `/portal/leases/${encodeURIComponent(lease.id)}/share`;
+  const embeddedSharePath = `${sharePath}?embed=1`;
   const bridgeCmd = webVNCBridgeCommand(lease);
   const fullscreenIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/></svg>`;
   const reconnectIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>`;
@@ -525,13 +538,12 @@ export function portalVNC(lease: LeaseRecord): Response {
         meta: `<span>WebVNC ${escapeHTML(slug)}</span><span class="vnc-dot"></span>${providerBadge(lease.provider)}<span class="vnc-dot"></span>${targetBadge(target, lease.windowsMode)}<span class="vnc-dot"></span><span class="vnc-id">${escapeHTML(lease.id)}</span>`,
         actions: `
           <span id="status" class="status-pill">waiting for bridge</span>
-          <span id="vnc-role" class="status-pill vnc-role" data-tone="warn">observing</span>
-          <button id="vnc-takeover" class="button secondary" type="button">take over</button>
+          <button id="vnc-takeover" class="button secondary vnc-control" type="button" hidden>take control</button>
           <button id="vnc-copy-remote" class="icon-btn" type="button" title="copy remote clipboard" aria-label="copy remote clipboard" disabled>${copyIcon}</button>
           <button id="vnc-paste" class="icon-btn" type="button" title="paste clipboard" aria-label="paste clipboard">${pasteIcon}</button>
           <button id="vnc-reconnect" class="icon-btn" type="button" title="reconnect" aria-label="reconnect">${reconnectIcon}</button>
           <button id="vnc-fullscreen" class="icon-btn" type="button" title="fullscreen" aria-label="toggle fullscreen">${fullscreenIcon}</button>
-          <a class="button secondary" href="/portal/leases/${encodeURIComponent(lease.id)}/share">share</a>
+          <button id="vnc-share" class="button secondary" type="button">share</button>
           <a class="button secondary" href="/portal">leases</a>
           <a class="button secondary" href="/portal/logout">log out</a>
         `,
@@ -542,6 +554,13 @@ export function portalVNC(lease: LeaseRecord): Response {
         <code id="vnc-bridge-cmd" class="vnc-bridge-cmd">${escapeHTML(bridgeCmd)}</code>
         <button id="vnc-copy" class="icon-btn" type="button" title="copy command" aria-label="copy bridge command">${copyIcon}</button>
       </footer>
+      <dialog id="vnc-share-dialog" class="vnc-share-dialog" aria-label="Share lease">
+        <div class="vnc-share-head">
+          <div><strong>share ${escapeHTML(slug)}</strong><small>${escapeHTML(lease.id)}</small></div>
+          <button id="vnc-share-close" class="icon-btn" type="button" title="close share" aria-label="close share">×</button>
+        </div>
+        <iframe id="vnc-share-frame" class="vnc-share-frame" title="Share ${escapeHTML(slug)}" loading="lazy"></iframe>
+      </dialog>
     </main>
     <script type="module" nonce="${nonce}">
       import RFBModule from ${JSON.stringify(novncModuleURL)};
@@ -552,6 +571,7 @@ export function portalVNC(lease: LeaseRecord): Response {
       wsURL.protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const statusURL = new URL(${JSON.stringify(statusPath)}, window.location.href);
       const controlURL = new URL(${JSON.stringify(controlPath)}, window.location.href);
+      const shareURL = new URL(${JSON.stringify(embeddedSharePath)}, window.location.href);
       const viewerID = "viewer_" + (crypto.randomUUID?.() || String(Date.now()) + Math.random()).replace(/[^A-Za-z0-9_.:-]/g, "");
       wsURL.searchParams.set("viewer", viewerID);
       statusURL.searchParams.set("viewer", viewerID);
@@ -613,7 +633,6 @@ export function portalVNC(lease: LeaseRecord): Response {
       function applyCollaborationState(state) {
         if (!state) return;
         const role = state.viewerRole || "none";
-        const roleEl = document.getElementById("vnc-role");
         const takeoverBtn = document.getElementById("vnc-takeover");
         const previousControllerLabel = controllerLabel;
         controllerLabel = state.controllerLabel || "";
@@ -623,17 +642,16 @@ export function portalVNC(lease: LeaseRecord): Response {
         if (rfb) {
           rfb.viewOnly = !controlling;
         }
-        if (roleEl) {
-          roleEl.dataset.tone = controlling ? "ok" : "warn";
-          roleEl.textContent = controlling
-            ? "controlling"
-            : controllerLabel
-              ? "observing · " + controllerLabel + " controls"
-              : "observing";
-        }
         if (takeoverBtn) {
-          takeoverBtn.hidden = controlling || !connectedViewer;
+          takeoverBtn.hidden = !connectedViewer;
           takeoverBtn.disabled = controlling || !connectedViewer;
+          takeoverBtn.dataset.role = controlling ? "controller" : "observer";
+          takeoverBtn.textContent = controlling ? "you control" : "take control";
+          takeoverBtn.title = controlling
+            ? "You are controlling this session"
+            : controllerLabel
+              ? "Currently observing; " + controllerLabel + " controls"
+              : "Currently observing";
         }
         if (!controlling && connectedViewer && previousControllerLabel && controllerLabel && previousControllerLabel !== controllerLabel) {
           setStatus(controllerLabel + " took control", "warn");
@@ -668,6 +686,7 @@ export function portalVNC(lease: LeaseRecord): Response {
           }
           setStatus(retryAttempt ? "bridge connected; opening viewer" : "connecting");
           rfb = new RFB(screen, wsURL.toString(), options);
+          rfb.showDotCursor = true;
           rfb.scaleViewport = true;
           rfb.resizeSession = false;
           rfb.viewOnly = true;
@@ -748,6 +767,24 @@ export function portalVNC(lease: LeaseRecord): Response {
         } else {
           document.documentElement.requestFullscreen?.().catch(() => {});
         }
+      });
+      const shareBtn = document.getElementById("vnc-share");
+      const shareDialog = document.getElementById("vnc-share-dialog");
+      const shareFrame = document.getElementById("vnc-share-frame");
+      const shareCloseBtn = document.getElementById("vnc-share-close");
+      shareBtn?.addEventListener("click", () => {
+        if (shareFrame && !shareFrame.src) {
+          shareFrame.src = shareURL.toString();
+        }
+        if (shareDialog?.showModal) {
+          shareDialog.showModal();
+        } else {
+          window.location.href = ${JSON.stringify(sharePath)};
+        }
+      });
+      shareCloseBtn?.addEventListener("click", () => shareDialog?.close());
+      shareDialog?.addEventListener("click", (event) => {
+        if (event.target === shareDialog) shareDialog.close();
       });
       async function readClipboardText() {
         if (navigator.clipboard?.readText) {
@@ -1671,7 +1708,13 @@ function resultsSummary(run: RunRecord): string {
   </dl>`;
 }
 
-function html(title: string, body: string, status = 200, nonce = ""): Response {
+function html(
+  title: string,
+  body: string,
+  status = 200,
+  nonce = "",
+  options: { frameAncestors?: string } = {},
+): Response {
   const pageNonce = nonce || scriptNonce();
   const scriptSource = `'self' 'nonce-${pageNonce}'`;
   return new Response(
@@ -1720,6 +1763,8 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .button { display:inline-flex; align-items:center; justify-content:center; min-height:28px; padding:0 10px; border-radius:7px; background:var(--accent); color:#001018; text-decoration:none; font-size:12px; font-weight:700; white-space:nowrap; }
     .button.secondary { background:transparent; color:var(--fg); border:1px solid var(--line); font-weight:500; }
     .button.secondary:hover { background:#1b1f24; border-color:#3a4046; }
+    .button.action { min-width:56px; border:1px solid color-mix(in srgb, var(--accent) 42%, var(--line)); background:color-mix(in srgb, var(--accent) 10%, transparent); color:#bae6fd; }
+    .button.action:hover { background:color-mix(in srgb, var(--accent) 16%, transparent); border-color:color-mix(in srgb, var(--accent) 58%, var(--line)); }
     .button:disabled { opacity:0.45; cursor:not-allowed; }
     .button.danger { border:1px solid color-mix(in srgb, var(--bad) 42%, var(--line)); background:color-mix(in srgb, var(--bad) 18%, transparent); color:#fecaca; cursor:pointer; }
     .lease-link { display:block; min-width:0; text-decoration:none; overflow:hidden; text-overflow:ellipsis; }
@@ -1811,8 +1856,12 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .table-search { width:100%; height:28px; padding:0 9px; border:1px solid var(--line); border-radius:7px; background:#0c0e10; color:var(--fg); font:inherit; font-size:12px; }
     .table-search::placeholder { color:#6b7280; }
     .table-search:focus { outline:2px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset:1px; border-color:color-mix(in srgb, var(--accent) 55%, var(--line)); }
-    .share-form { display:flex; align-items:center; gap:8px; padding:10px; border-bottom:1px solid var(--line-soft); }
-    .share-form input,.share-form select { height:30px; min-width:0; padding:0 9px; border:1px solid var(--line); border-radius:7px; background:#0c0e10; color:var(--fg); font:inherit; font-size:12px; }
+    .share-shell { height:auto; min-height:100dvh; align-content:start; grid-auto-rows:max-content; }
+    .share-shell-embedded { width:100%; min-height:0; padding:0; gap:8px; }
+    .share-shell .panel { align-self:start; }
+    .share-form { display:flex; align-items:center; gap:8px; padding:8px 10px; border-bottom:1px solid var(--line-soft); background:color-mix(in srgb, var(--panel-2) 44%, transparent); }
+    .share-form input,.share-form select { height:32px; min-width:0; padding:0 10px; border:1px solid var(--line); border-radius:7px; background:#0b0d0f; color:var(--fg); font:inherit; font-size:12px; }
+    .share-form input:focus,.share-form select:focus { outline:2px solid color-mix(in srgb, var(--accent) 34%, transparent); outline-offset:1px; border-color:color-mix(in srgb, var(--accent) 55%, var(--line)); }
     .share-form input { flex:1; }
     .table-filters { display:flex; align-items:center; gap:3px; min-width:0; overflow-x:auto; padding:2px; border:1px solid var(--line); border-radius:7px; background:#0c0e10; scrollbar-width:none; }
     .table-filters::-webkit-scrollbar { display:none; }
@@ -1861,6 +1910,9 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .status-pill[data-tone="ok"] { color:var(--ok); border-color:color-mix(in srgb, var(--ok) 35%, var(--line)); }
     .status-pill[data-tone="warn"] { color:var(--warn); border-color:color-mix(in srgb, var(--warn) 35%, var(--line)); }
     .status-pill[data-tone="bad"] { color:var(--bad); border-color:color-mix(in srgb, var(--bad) 45%, var(--line)); }
+    .vnc-control { min-width:112px; transition:background 0.15s,border-color 0.15s,color 0.15s; }
+    .vnc-control[data-role="controller"]:disabled { opacity:1; cursor:default; color:var(--fg); border-color:var(--line); background:var(--panel-2); }
+    .vnc-control[data-role="observer"] { color:#bae6fd; border-color:color-mix(in srgb, var(--accent) 38%, var(--line)); background:color-mix(in srgb, var(--accent) 8%, transparent); }
     .icon-btn { display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; padding:0; border-radius:8px; background:transparent; color:var(--fg); border:1px solid var(--line); cursor:pointer; transition:background 0.15s, border-color 0.15s, color 0.15s; }
     .icon-btn:hover { background:#1b1f24; border-color:#3a4046; }
     .icon-btn:active { background:#22272d; }
@@ -1877,6 +1929,12 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
     .vnc-bridge { display:flex; align-items:center; gap:10px; padding:6px 10px; border:1px solid var(--line); border-radius:8px; background:var(--panel); }
     .vnc-bridge-label { font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); flex-shrink:0; padding-left:4px; }
     .vnc-bridge-cmd { display:block; flex:1; min-width:0; padding:6px 10px; border:none; border-radius:5px; background:transparent; color:#d1fae5; font-family:var(--mono); font-size:13px; overflow-x:auto; white-space:nowrap; }
+    .vnc-share-dialog { width:min(760px, calc(100vw - 36px)); max-height:min(640px, calc(100dvh - 48px)); padding:0; border:1px solid var(--line); border-radius:10px; background:var(--panel); color:var(--fg); box-shadow:0 24px 90px rgba(0,0,0,0.58); overflow:hidden; }
+    .vnc-share-dialog::backdrop { background:rgba(0,0,0,0.58); backdrop-filter:blur(2px); }
+    .vnc-share-head { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:42px; padding:8px 10px 8px 14px; border-bottom:1px solid var(--line); background:var(--panel-2); }
+    .vnc-share-head strong { display:block; font-size:13px; }
+    .vnc-share-head small { display:block; margin-top:1px; color:var(--muted); font-family:var(--mono); font-size:11px; }
+    .vnc-share-frame { display:block; width:100%; height:min(540px, calc(100dvh - 104px)); border:0; background:var(--bg); }
     .commands { padding:12px; display:grid; gap:8px; }
     .command-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:end; }
     .command-row > div { min-width:0; overflow:hidden; }
@@ -1915,6 +1973,8 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
       .vnc-meta p .vnc-id { display:none; }
       .portal-actions { gap:6px; }
       .portal-actions .button { min-height:30px; padding:0 10px; }
+      .vnc-share-dialog { width:calc(100vw - 20px); }
+      .vnc-share-frame { height:calc(100dvh - 104px); }
       .vnc-bridge-label { display:none; }
     }
   </style>
@@ -1928,7 +1988,8 @@ function html(title: string, body: string, status = 200, nonce = ""): Response {
           "default-src 'none'",
           "base-uri 'none'",
           "connect-src 'self' ws: wss:",
-          "frame-ancestors 'none'",
+          "frame-src 'self'",
+          `frame-ancestors ${options.frameAncestors ?? "'none'"}`,
           "img-src 'self' data: blob:",
           `script-src ${scriptSource}`,
           "style-src 'unsafe-inline'",

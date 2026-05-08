@@ -11,9 +11,14 @@
 - Added collaborative WebVNC observer mode, with one active controller, read-only observers, and a portal takeover button that shows who is controlling the session.
 - Added first-class `crabbox artifacts` commands for desktop screenshots, MP4 recordings, trimmed GIFs, logs, metadata, Mantis/OpenClaw QA templates, and PR-ready publishing through broker-owned artifact storage, AWS S3, or Cloudflare R2.
 
+### Changed
+
+- Changed WebVNC portal sharing to open as an in-session modal, added a standalone share-page back action, and simplified collaboration controls into a single stateful control button.
+
 ### Fixed
 
 - Fixed `egress start --coordinator` so live public-route egress starts work when the local default coordinator is Cloudflare Access-protected.
+- Fixed macOS WebVNC cursor visibility by enabling noVNC's dot-cursor fallback when Screen Sharing sends a transparent or zero-sized cursor.
 - Fixed Tailscale exit-node bootstrap paths to prefer tailnet metadata and fail clearly when remote exit-node egress is not active.
 - Fixed `run --no-sync` timing summaries so they report `sync_skipped=true`.
 - Fixed native Windows command output so first-use PowerShell progress records do not leak CLIXML into run logs.
