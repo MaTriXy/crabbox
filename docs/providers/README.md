@@ -12,7 +12,7 @@ static SSH provider for existing machines.
 | Provider | Backend kind | Targets | Best for |
 | --- | --- | --- | --- |
 | [AWS](aws.md) | SSH lease | Linux, Windows, macOS | broad managed capacity, Windows, EC2 Mac |
-| [Azure](azure.md) | SSH lease | Linux, Windows | Windows clien |
+| [Azure](azure.md) | SSH lease | Linux, Windows | Azure-backed Linux and native Windows capacity |
 | [Hetzner](hetzner.md) | SSH lease | Linux | fast Linux capacity at low cost |
 | [Static SSH](ssh.md) | SSH lease | Linux, macOS, Windows | reusing an existing host |
 | [Blacksmith Testbox](blacksmith-testbox.md) | delegated run | Linux | existing Blacksmith Testbox workflows |
