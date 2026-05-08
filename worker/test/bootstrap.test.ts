@@ -57,8 +57,13 @@ describe("cloud-init bootstrap", () => {
     expect(got).toContain("test -f /var/lib/crabbox/bootstrapped");
     expect(got).toContain("test -w /work/crabbox");
     expect(got).toContain("      Port 2222\n      Port 22");
+    expect(got).toContain("systemctl enable ssh || true");
+    expect(got).toContain(
+      "timeout 30s systemctl restart ssh || timeout 30s systemctl restart ssh.socket || true",
+    );
     expect(got).toContain("touch /var/lib/crabbox/bootstrapped");
     expect(got).not.toContain("\npackages:\n");
+    expect(got).not.toContain("systemctl enable --now ssh");
     expect(got).not.toContain("go version");
     expect(got).not.toContain("golang-go");
     expect(got).not.toContain("go.dev/dl/go");

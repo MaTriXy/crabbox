@@ -77,8 +77,8 @@ runcmd:
     mkdir -p ${config.workRoot} /var/cache/crabbox/pnpm /var/cache/crabbox/npm
     chown -R ${config.sshUser}:${config.sshUser} ${config.workRoot} /var/cache/crabbox
     install -d /var/lib/crabbox
-    systemctl enable --now ssh
-    systemctl restart ssh
+    systemctl enable ssh || true
+    timeout 30s systemctl restart ssh || timeout 30s systemctl restart ssh.socket || true
 ${bootstrap}
     touch /var/lib/crabbox/bootstrapped
     crabbox-ready

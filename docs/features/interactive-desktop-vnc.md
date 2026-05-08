@@ -116,6 +116,14 @@ Use `crabbox screenshot` when you need a PNG without taking over the session:
 crabbox screenshot --id blue-lobster --output desktop.png
 ```
 
+Use `crabbox artifacts` when QA needs a durable proof bundle instead of a
+single screenshot:
+
+```sh
+crabbox artifacts collect --id blue-lobster --all --output artifacts/blue-lobster
+crabbox artifacts publish --dir artifacts/blue-lobster --pr 123 --storage s3 --bucket qa-artifacts
+```
+
 Use `crabbox desktop launch` to start a browser or app inside the visible
 session without keeping the SSH command attached:
 
@@ -223,6 +231,6 @@ often machine- and user-encrypted.
 - [AWS](aws.md): AWS target matrix, capacity, AMIs, and EC2 Mac host requirements.
 - [Hetzner](hetzner.md): Linux-only managed Hetzner behavior.
 - [Blacksmith Testbox](blacksmith-testbox.md): delegated Testbox behavior and why VNC is not a Crabbox feature there yet.
-- [vnc command](../commands/vnc.md), [webvnc command](../commands/webvnc.md), [screenshot command](../commands/screenshot.md), [desktop command](../commands/desktop.md), [egress command](../commands/egress.md).
+- [vnc command](../commands/vnc.md), [webvnc command](../commands/webvnc.md), [screenshot command](../commands/screenshot.md), [desktop command](../commands/desktop.md), [artifacts command](../commands/artifacts.md), [egress command](../commands/egress.md).
 - [Mediated egress](egress.md): per-app browser/app egress through the operator
   machine for Discord, Slack, and similar source-IP-sensitive QA.

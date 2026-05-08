@@ -93,6 +93,8 @@ func (a App) directCommandHelp(ctx context.Context, args []string) (error, bool)
 		return a.egress(ctx, helpArgs), true
 	case "screenshot":
 		return a.screenshot(ctx, helpArgs), true
+	case "artifacts":
+		return nil, false
 	case "inspect":
 		return a.inspect(ctx, helpArgs), true
 	case "stop", "release":
@@ -139,6 +141,7 @@ Commands:
   run         Sync the repo, run a remote command, stream output
   desktop     Launch apps into a visible desktop session
   media       Create preview artifacts from recorded desktop videos
+  artifacts   Collect, transform, and publish QA artifacts
   sync-plan   Show local sync manifest size hotspots
   history     List recorded remote runs
   logs        Print recorded run logs
@@ -174,6 +177,8 @@ Common Flows:
   crabbox vnc --id blue-lobster --open
   crabbox desktop launch --id blue-lobster --browser --url https://example.com --webvnc --open
   crabbox media preview --input desktop.mp4 --output desktop-preview.gif --trimmed-video-output desktop-change.mp4
+  crabbox artifacts collect --id blue-lobster --all --output artifacts/blue-lobster
+  crabbox artifacts publish --pr 123 --dir artifacts/blue-lobster --storage s3 --bucket qa-artifacts
   crabbox webvnc --id blue-lobster --open
   crabbox code --id blue-lobster --open
   crabbox egress start --id blue-lobster --profile discord --daemon

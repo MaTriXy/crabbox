@@ -17,6 +17,8 @@ func TestCloudInitUsesRetryingBootstrap(t *testing.T) {
 		"test -f /var/lib/crabbox/bootstrapped",
 		"test -w /work/crabbox",
 		"      Port 2222\n      Port 22",
+		"systemctl enable ssh || true",
+		"timeout 30s systemctl restart ssh || timeout 30s systemctl restart ssh.socket || true",
 		"touch /var/lib/crabbox/bootstrapped",
 	} {
 		if !strings.Contains(got, want) {
@@ -25,6 +27,9 @@ func TestCloudInitUsesRetryingBootstrap(t *testing.T) {
 	}
 	if strings.Contains(got, "\npackages:\n") {
 		t.Fatal("cloudInit() must not use cloud-init's one-shot packages module")
+	}
+	if strings.Contains(got, "systemctl enable --now ssh") {
+		t.Fatal("cloudInit() must not use blocking systemctl enable --now ssh")
 	}
 	for _, notWant := range []string{"go version", "golang-go", "go.dev/dl/go", "/usr/local/go", "node --version", "pnpm --version", "docker --version", "build-essential", "docker.io", "corepack"} {
 		if strings.Contains(got, notWant) {
@@ -37,7 +42,7 @@ func TestCloudInitStartsSSHBeforeOptionalDesktopBootstrap(t *testing.T) {
 	cfg := baseConfig()
 	cfg.Desktop = true
 	got := cloudInit(cfg, "ssh-ed25519 test")
-	sshIndex := strings.Index(got, "systemctl restart ssh")
+	sshIndex := strings.Index(got, "timeout 30s systemctl restart ssh")
 	desktopIndex := strings.Index(got, "retry apt-get install -y --no-install-recommends xvfb")
 	bootstrappedIndex := strings.Index(got, "touch /var/lib/crabbox/bootstrapped")
 	if sshIndex < 0 || desktopIndex < 0 || bootstrappedIndex < 0 {

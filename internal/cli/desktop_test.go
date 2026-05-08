@@ -106,6 +106,30 @@ func TestDesktopKeySequenceArgSkipsLeaseID(t *testing.T) {
 	}
 }
 
+func TestStringFlagValueAcceptsGoFlagForms(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "double dash space", args: []string{"--output", "screen.mp4"}, want: "screen.mp4"},
+		{name: "double dash equals", args: []string{"--output=screen.mp4"}, want: "screen.mp4"},
+		{name: "single dash space", args: []string{"-output", "screen.mp4"}, want: "screen.mp4"},
+		{name: "single dash equals", args: []string{"-output=screen.mp4"}, want: "screen.mp4"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := stringFlagValue(tt.args, "output")
+			if !ok {
+				t.Fatal("missing flag")
+			}
+			if got != tt.want {
+				t.Fatalf("value=%q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDesktopLaunchWebVNCArgsCarriesTargetDetails(t *testing.T) {
 	got := desktopLaunchWebVNCArgs(
 		Config{Provider: "aws", TargetOS: targetWindows, WindowsMode: windowsModeWSL2, Network: NetworkTailscale},

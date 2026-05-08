@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func (a App) desktopDoctor(ctx context.Context, args []string) error {
@@ -147,6 +148,11 @@ func (a App) desktopCommandTarget(ctx context.Context, name string, args []strin
 	if strings.HasSuffix(name, "key") {
 		fs.String("keys", "", "xdotool key sequence")
 	}
+	if name == "artifacts video" {
+		fs.String("output", "", "local MP4 output path")
+		fs.Duration("duration", 10*time.Second, "video capture duration")
+		fs.Float64("fps", 15, "video frames per second")
+	}
 	if err := parseFlags(fs, args); err != nil {
 		return SSHTarget{}, Config{}, "", err
 	}
@@ -216,12 +222,15 @@ func desktopTextArgOrStdin(stderr io.Writer, args []string, name string) (string
 }
 
 func stringFlagValue(args []string, name string) (string, bool) {
-	prefix := "--" + name + "="
+	prefixes := []string{"--" + name + "=", "-" + name + "="}
+	names := map[string]bool{"--" + name: true, "-" + name: true}
 	for i, arg := range args {
-		if strings.HasPrefix(arg, prefix) {
-			return strings.TrimPrefix(arg, prefix), true
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(arg, prefix) {
+				return strings.TrimPrefix(arg, prefix), true
+			}
 		}
-		if arg == "--"+name && i+1 < len(args) {
+		if names[arg] && i+1 < len(args) {
 			return args[i+1], true
 		}
 	}
@@ -235,6 +244,30 @@ func intFlagValue(args []string, name string) (int, bool) {
 	}
 	n, err := strconv.Atoi(value)
 	return n, err == nil
+}
+
+func floatFlagValue(args []string, name string, fallback float64) float64 {
+	value, ok := stringFlagValue(args, name)
+	if !ok {
+		return fallback
+	}
+	n, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return fallback
+	}
+	return n
+}
+
+func durationFlagValue(args []string, name string, fallback time.Duration) time.Duration {
+	value, ok := stringFlagValue(args, name)
+	if !ok {
+		return fallback
+	}
+	duration, err := time.ParseDuration(value)
+	if err != nil {
+		return fallback
+	}
+	return duration
 }
 
 func desktopShouldPasteForType(text string) bool {

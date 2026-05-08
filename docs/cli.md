@@ -49,6 +49,11 @@ crabbox egress client --id <lease-id-or-slug> [--listen <addr>] [--ticket <ticke
 crabbox egress status --id <lease-id-or-slug>
 crabbox egress stop --id <lease-id-or-slug>
 crabbox media preview --input <video> --output <preview.gif> [--trimmed-video-output <change.mp4>]
+crabbox artifacts collect --id <lease-id-or-slug> [--output <dir>] [--run <run-id>] [--all] [--screenshot] [--video] [--gif] [--doctor] [--webvnc-status] [--metadata] [--duration <duration>] [--fps <n>] [--gif-width <px>] [--network auto|tailscale|public] [--json]
+crabbox artifacts video --id <lease-id-or-slug> [--output <path>] [--duration <duration>] [--fps <n>]
+crabbox artifacts gif --input <video> --output <preview.gif> [--trimmed-video-output <change.mp4>]
+crabbox artifacts template openclaw|mantis [--summary <text>|--summary-file <path>] [--before <path>] [--after <path>] [--output <path>]
+crabbox artifacts publish --dir <dir> [--pr <n>] [--repo owner/name] [--storage auto|broker|s3|cloudflare|r2|local] [--bucket <name>] [--prefix <path>] [--base-url <url>] [--region <region>] [--profile <profile>] [--endpoint-url <url>] [--acl <acl>] [--presign] [--expires <duration>] [--dry-run] [--no-comment]
 crabbox screenshot --id <lease-id-or-slug> [--output <path>]
 crabbox sync-plan [--limit <n>]
 crabbox history [--lease <lease-id>] [--owner <email>] [--org <name>] [--limit <n>] [--json]
@@ -121,6 +126,8 @@ crabbox share --id blue-lobster --user friend@example.com
 crabbox share --id blue-lobster --org
 crabbox screenshot --id blue-lobster --output desktop.png
 crabbox media preview --input desktop.mp4 --output desktop-preview.gif --trimmed-video-output desktop-change.mp4
+crabbox artifacts collect --id blue-lobster --all --output artifacts/blue-lobster
+crabbox artifacts publish --dir artifacts/blue-lobster --pr 123
 crabbox run --id blue-lobster --shell 'pnpm install --frozen-lockfile && pnpm test'
 crabbox stop blue-lobster
 ```
@@ -598,6 +605,16 @@ CRABBOX_TAILSCALE_AUTH_KEY_ENV
 CRABBOX_TAILSCALE_AUTH_KEY        direct-provider only, via auth-key env
 CRABBOX_TAILSCALE_EXIT_NODE
 CRABBOX_TAILSCALE_EXIT_NODE_ALLOW_LAN_ACCESS
+CRABBOX_ARTIFACTS_STORAGE          default --storage for artifacts publish
+CRABBOX_ARTIFACTS_BUCKET
+CRABBOX_ARTIFACTS_PREFIX
+CRABBOX_ARTIFACTS_BASE_URL
+CRABBOX_ARTIFACTS_AWS_REGION
+CRABBOX_ARTIFACTS_AWS_PROFILE
+CRABBOX_ARTIFACTS_ENDPOINT_URL
+CRABBOX_ARTIFACTS_S3_ACL
+CRABBOX_ARTIFACTS_PRESIGN
+CRABBOX_ARTIFACTS_EXPIRES
 ```
 
 Provider/deploy variables live outside normal CLI operation:

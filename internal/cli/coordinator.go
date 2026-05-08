@@ -298,6 +298,38 @@ type CoordinatorRunEventInput struct {
 	ExitCode    *int   `json:"exitCode,omitempty"`
 }
 
+type CoordinatorArtifactUploadRequest struct {
+	Prefix string                           `json:"prefix,omitempty"`
+	Files  []CoordinatorArtifactUploadInput `json:"files"`
+}
+
+type CoordinatorArtifactUploadInput struct {
+	Name        string `json:"name"`
+	Size        int64  `json:"size"`
+	ContentType string `json:"contentType,omitempty"`
+	SHA256      string `json:"sha256,omitempty"`
+}
+
+type CoordinatorArtifactUploadResponse struct {
+	Backend   string                           `json:"backend"`
+	Bucket    string                           `json:"bucket"`
+	Prefix    string                           `json:"prefix"`
+	ExpiresAt string                           `json:"expiresAt"`
+	Files     []CoordinatorArtifactUploadGrant `json:"files"`
+}
+
+type CoordinatorArtifactUploadGrant struct {
+	Name   string `json:"name"`
+	Key    string `json:"key"`
+	Upload struct {
+		Method    string            `json:"method"`
+		URL       string            `json:"url"`
+		Headers   map[string]string `json:"headers"`
+		ExpiresAt string            `json:"expiresAt"`
+	} `json:"upload"`
+	URL string `json:"url"`
+}
+
 type TestResultSummary struct {
 	Format      string        `json:"format"`
 	Files       []string      `json:"files"`
@@ -798,6 +830,12 @@ func (c *CoordinatorClient) AppendRunEvent(ctx context.Context, runID string, in
 	var res CoordinatorRunEventResponse
 	err := c.do(ctx, http.MethodPost, "/v1/runs/"+url.PathEscape(runID)+"/events", input, &res)
 	return res.Event, err
+}
+
+func (c *CoordinatorClient) CreateArtifactUploads(ctx context.Context, input CoordinatorArtifactUploadRequest) (CoordinatorArtifactUploadResponse, error) {
+	var res CoordinatorArtifactUploadResponse
+	err := c.do(ctx, http.MethodPost, "/v1/artifacts/uploads", input, &res)
+	return res, err
 }
 
 func (c *CoordinatorClient) SyncExternalRunners(ctx context.Context, provider string, runners []CoordinatorExternalRunner) (CoordinatorExternalRunnerSyncResponse, error) {

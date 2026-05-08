@@ -1,3 +1,4 @@
+import { artifactUploadResponse, type ArtifactUploadRequest } from "./artifacts";
 import { isAdminRequest } from "./auth";
 import {
   EC2SpotClient,
@@ -270,6 +271,9 @@ export class FleetDurableObject implements DurableObject {
       }
       if (method === "POST" && parts.join("/") === "v1/runs") {
         return await this.createRun(request);
+      }
+      if (method === "POST" && parts.join("/") === "v1/artifacts/uploads") {
+        return await this.createArtifactUploads(request);
       }
       if (parts[0] === "v1" && parts[1] === "runs" && parts[2]) {
         return await this.runRoute(request, parts[2], parts[3]);
@@ -2098,6 +2102,20 @@ export class FleetDurableObject implements DurableObject {
     await this.putRun(run);
     await this.appendRunEventRecord(run, { type: "run.started", phase: "starting" });
     return json({ run }, { status: 201 });
+  }
+
+  private async createArtifactUploads(request: Request): Promise<Response> {
+    try {
+      const input = await readJson<ArtifactUploadRequest>(request);
+      return json(await artifactUploadResponse(this.env, input, requestOwner(request)), {
+        status: 201,
+      });
+    } catch (error) {
+      return json(
+        { error: "artifact_upload_unavailable", message: errorMessage(error) },
+        { status: 400 },
+      );
+    }
   }
 
   private async runRoute(request: Request, runID: string, action?: string): Promise<Response> {

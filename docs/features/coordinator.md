@@ -14,6 +14,7 @@ Responsibilities:
 - serialize fleet state in one Durable Object;
 - create, heartbeat, release, expire, and look up leases;
 - own provider credentials;
+- own artifact storage credentials and mint scoped artifact upload URLs;
 - create and delete provider resources;
 - list the pool;
 - enforce cost and active-lease guardrails;
@@ -35,6 +36,7 @@ POST /v1/runs
 GET  /v1/runs/{run-id}
 GET  /v1/runs/{run-id}/logs
 POST /v1/runs/{run-id}/finish
+POST /v1/artifacts/uploads
 GET  /v1/runners
 POST /v1/runners/sync
 GET  /v1/usage

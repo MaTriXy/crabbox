@@ -84,8 +84,8 @@ runcmd:
     mkdir -p %[3]s /var/cache/crabbox/pnpm /var/cache/crabbox/npm
     chown -R %[1]s:%[1]s %[3]s /var/cache/crabbox
     install -d /var/lib/crabbox
-    systemctl enable --now ssh
-    systemctl restart ssh
+    systemctl enable ssh || true
+    timeout 30s systemctl restart ssh || timeout 30s systemctl restart ssh.socket || true
 %[7]s
     touch /var/lib/crabbox/bootstrapped
     crabbox-ready

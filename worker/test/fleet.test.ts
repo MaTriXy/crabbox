@@ -1867,6 +1867,132 @@ describe("fleet lease identity and idle", () => {
       expect.objectContaining({ id: "ami-000000000001", state: "available" }),
     );
   });
+
+  it("mints broker-owned artifact upload URLs without exposing secrets", async () => {
+    const fleet = testFleet(
+      new MemoryStorage(),
+      {},
+      {
+        CRABBOX_ARTIFACTS_BACKEND: "r2",
+        CRABBOX_ARTIFACTS_BUCKET: "qa-artifacts",
+        CRABBOX_ARTIFACTS_PREFIX: "qa",
+        CRABBOX_ARTIFACTS_BASE_URL: "https://artifacts.example.com",
+        CRABBOX_ARTIFACTS_REGION: "auto",
+        CRABBOX_ARTIFACTS_ENDPOINT_URL: "https://account.r2.cloudflarestorage.com",
+        CRABBOX_ARTIFACTS_ACCESS_KEY_ID: "access-key",
+        CRABBOX_ARTIFACTS_SECRET_ACCESS_KEY: "super-secret",
+      },
+    );
+
+    const response = await fleet.fetch(
+      request("POST", "/v1/artifacts/uploads", {
+        headers: { "x-crabbox-owner": "peter@example.com" },
+        body: {
+          prefix: "pr-42",
+          files: [
+            {
+              name: "screenshots/after.png",
+              size: 123,
+              contentType: "image/png",
+              sha256: await sha256HexForTest("after"),
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as {
+      backend: string;
+      bucket: string;
+      prefix: string;
+      files: Array<{
+        name: string;
+        key: string;
+        url: string;
+        upload: { url: string; headers: Record<string, string> };
+      }>;
+    };
+    expect(body.backend).toBe("r2");
+    expect(body.bucket).toBe("qa-artifacts");
+    expect(body.prefix).toBe("qa/peter@example.com/pr-42");
+    expect(body.files[0].key).toBe("qa/peter@example.com/pr-42/screenshots/after.png");
+    expect(body.files[0].url).toBe(
+      "https://artifacts.example.com/qa/peter%40example.com/pr-42/screenshots/after.png",
+    );
+    expect(body.files[0].upload.headers["content-length"]).toBe("123");
+    expect(body.files[0].upload.headers["content-type"]).toBe("image/png");
+    expect(body.files[0].upload.url).toContain("X-Amz-Signature=");
+    expect(new URL(body.files[0].upload.url).searchParams.get("X-Amz-SignedHeaders")).toContain(
+      "content-length",
+    );
+    expect(JSON.stringify(body)).not.toContain("super-secret");
+  });
+
+  it("reports artifact broker setup errors without provider-specific local credentials", async () => {
+    const fleet = testFleet();
+    const response = await fleet.fetch(
+      request("POST", "/v1/artifacts/uploads", {
+        body: { files: [{ name: "screenshot.png", size: 1 }] },
+      }),
+    );
+    const body = (await response.json()) as { error: string; message: string };
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("artifact_upload_unavailable");
+    expect(body.message).toContain("artifact broker is not configured");
+  });
+
+  it("requires an R2 endpoint before minting artifact upload URLs", async () => {
+    const fleet = testFleet(
+      new MemoryStorage(),
+      {},
+      {
+        CRABBOX_ARTIFACTS_BACKEND: "r2",
+        CRABBOX_ARTIFACTS_BUCKET: "qa-artifacts",
+        CRABBOX_ARTIFACTS_ACCESS_KEY_ID: "access-key",
+        CRABBOX_ARTIFACTS_SECRET_ACCESS_KEY: "super-secret",
+      },
+    );
+
+    const response = await fleet.fetch(
+      request("POST", "/v1/artifacts/uploads", {
+        body: { files: [{ name: "screenshot.png", size: 1 }] },
+      }),
+    );
+    const body = (await response.json()) as { error: string; message: string };
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("artifact_upload_unavailable");
+    expect(body.message).toContain("CRABBOX_ARTIFACTS_ENDPOINT_URL");
+  });
+
+  it("caps aggregate artifact upload bytes before minting grants", async () => {
+    const fleet = testFleet(
+      new MemoryStorage(),
+      {},
+      {
+        CRABBOX_ARTIFACTS_BACKEND: "r2",
+        CRABBOX_ARTIFACTS_BUCKET: "qa-artifacts",
+        CRABBOX_ARTIFACTS_ENDPOINT_URL: "https://account.r2.cloudflarestorage.com",
+        CRABBOX_ARTIFACTS_ACCESS_KEY_ID: "access-key",
+        CRABBOX_ARTIFACTS_SECRET_ACCESS_KEY: "super-secret",
+      },
+    );
+
+    const response = await fleet.fetch(
+      request("POST", "/v1/artifacts/uploads", {
+        body: {
+          files: Array.from({ length: 6 }, (_, index) => ({
+            name: `video-${index}.mp4`,
+            size: 1024 * 1024 * 1024,
+          })),
+        },
+      }),
+    );
+    const body = (await response.json()) as { error: string; message: string };
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("artifact_upload_unavailable");
+    expect(body.message).toContain("5368709120 bytes");
+  });
 });
 
 describe("fleet run history", () => {

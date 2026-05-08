@@ -215,7 +215,7 @@ func (a App) webVNCDaemonCommand(ctx context.Context, args []string) error {
 	}
 }
 
-func (a App) webVNCDaemonStart(_ context.Context, args []string) error {
+func (a App) webVNCDaemonStart(ctx context.Context, args []string) error {
 	defaults := defaultConfig()
 	fs := newFlagSet("webvnc daemon start", a.Stderr)
 	provider := fs.String("provider", defaults.Provider, "provider: hetzner or aws")
@@ -237,7 +237,34 @@ func (a App) webVNCDaemonStart(_ context.Context, args []string) error {
 		return err
 	}
 	target := SSHTarget{TargetOS: cfg.TargetOS, WindowsMode: cfg.WindowsMode}
-	daemonArgs := webVNCBridgeArgs(cfg, target, *id, *openPortal)
+	bridgeID := *id
+	if !isBlacksmithProvider(cfg.Provider) && !isStaticProvider(cfg.Provider) {
+		coord, useCoordinator, err := newTargetCoordinatorClient(cfg)
+		if err != nil {
+			return err
+		}
+		if useCoordinator && coord != nil && coord.Token != "" {
+			server, resolvedTarget, leaseID, err := a.resolveNetworkLeaseTarget(ctx, cfg, *id, false)
+			if err != nil {
+				return err
+			}
+			if err := enforceManagedLeaseCapabilities(cfg, server, leaseID); err != nil {
+				return err
+			}
+			if server.Provider != "" {
+				cfg.Provider = server.Provider
+			}
+			if resolvedTarget.TargetOS != "" {
+				cfg.TargetOS = resolvedTarget.TargetOS
+			}
+			if resolvedTarget.WindowsMode != "" {
+				cfg.WindowsMode = resolvedTarget.WindowsMode
+			}
+			target = resolvedTarget
+			bridgeID = leaseID
+		}
+	}
+	daemonArgs := webVNCBridgeArgs(cfg, target, bridgeID, *openPortal)
 	if strings.TrimSpace(*localPort) != "" {
 		daemonArgs = append(daemonArgs, "--local-port", strings.TrimSpace(*localPort))
 	}

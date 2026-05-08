@@ -79,6 +79,8 @@ crabbox desktop click --id <id-or-slug> --x 640 --y 420
 crabbox desktop paste --id <id-or-slug> --text "peter@example.com"
 crabbox desktop type --id <id-or-slug> --text "peter+qa@example.com"
 crabbox desktop key --id <id-or-slug> ctrl+l
+crabbox artifacts collect --id <id-or-slug> --all --output artifacts/<slug>
+crabbox artifacts publish --dir artifacts/<slug> --pr <number>
 crabbox sync-plan
 crabbox history --lease <id-or-slug>
 crabbox events <run_id> --json
@@ -104,6 +106,13 @@ When desktop/WebVNC hangs, trust the inline rescue output first: `problem: VNC
 bridge disconnected`, `problem: browser not launched`, `problem: input stack
 dead`, or similar will be followed by exact `rescue:` commands such as
 `crabbox webvnc status/reset` or `crabbox desktop doctor`.
+
+For UI QA proof, use `crabbox artifacts collect` instead of ad hoc screenshots
+and shell recordings. It can bundle screenshots, MP4 recordings, trimmed GIFs,
+desktop doctor output, WebVNC status, run logs, and metadata, then
+`crabbox artifacts publish --pr <n>` can publish inline-ready Markdown through
+the configured coordinator artifact backend. Use explicit `--storage s3`,
+`--storage r2`, or `--storage local` only as a local fallback.
 
 ## Run Inspection Workflow
 

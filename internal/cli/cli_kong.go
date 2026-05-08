@@ -21,6 +21,7 @@ type crabboxKongCLI struct {
 	Run        runKongCmd        `cmd:"" passthrough:"" help:"Sync the repo, run a remote command, stream output."`
 	Desktop    desktopKongCmd    `cmd:"" help:"Launch apps into a visible desktop session."`
 	Media      mediaKongCmd      `cmd:"" help:"Create preview artifacts from recorded desktop videos."`
+	Artifacts  artifactsKongCmd  `cmd:"" help:"Collect, transform, and publish QA artifacts."`
 	SyncPlan   syncPlanKongCmd   `cmd:"" name:"sync-plan" passthrough:"" help:"Show local sync manifest size hotspots."`
 	History    historyKongCmd    `cmd:"" passthrough:"" help:"List recorded remote runs."`
 	Logs       logsKongCmd       `cmd:"" passthrough:"" help:"Print recorded run logs."`
@@ -111,7 +112,7 @@ func normalizeKongHelpArgs(args []string) []string {
 
 func isKongCommandGroup(command string) bool {
 	switch command {
-	case "actions", "admin", "cache", "config", "desktop", "image", "machine", "media", "pool":
+	case "actions", "admin", "artifacts", "cache", "config", "desktop", "image", "machine", "media", "pool":
 		return true
 	default:
 		return false
@@ -234,6 +235,29 @@ type mediaKongCmd struct {
 	Preview mediaPreviewKongCmd `cmd:"" passthrough:"" help:"Create a trimmed animated GIF preview from a video."`
 }
 type mediaPreviewKongCmd struct {
+	Args []string `arg:"" optional:""`
+}
+
+type artifactsKongCmd struct {
+	Collect  artifactsCollectKongCmd  `cmd:"" passthrough:"" help:"Collect screenshots, video, logs, status, and metadata into a bundle."`
+	Video    artifactsVideoKongCmd    `cmd:"" passthrough:"" help:"Record an MP4 from a desktop lease."`
+	Gif      artifactsGifKongCmd      `cmd:"" passthrough:"" help:"Create a trimmed GIF preview from a video."`
+	Template artifactsTemplateKongCmd `cmd:"" passthrough:"" help:"Write Mantis/OpenClaw QA summary markdown."`
+	Publish  artifactsPublishKongCmd  `cmd:"" passthrough:"" help:"Upload a bundle and optionally comment inline-ready assets on a PR."`
+}
+type artifactsCollectKongCmd struct {
+	Args []string `arg:"" optional:""`
+}
+type artifactsVideoKongCmd struct {
+	Args []string `arg:"" optional:""`
+}
+type artifactsGifKongCmd struct {
+	Args []string `arg:"" optional:""`
+}
+type artifactsTemplateKongCmd struct {
+	Args []string `arg:"" optional:""`
+}
+type artifactsPublishKongCmd struct {
 	Args []string `arg:"" optional:""`
 }
 
@@ -380,6 +404,22 @@ func (c *mediaPreviewKongCmd) Run(ctx context.Context, app App) error {
 	return app.mediaPreview(ctx, c.Args)
 }
 
+func (c *artifactsCollectKongCmd) Run(ctx context.Context, app App) error {
+	return app.artifactsCollect(ctx, stripKongCommandPath(c.Args, "artifacts", "collect"))
+}
+func (c *artifactsVideoKongCmd) Run(ctx context.Context, app App) error {
+	return app.artifactsVideo(ctx, stripKongCommandPath(c.Args, "artifacts", "video"))
+}
+func (c *artifactsGifKongCmd) Run(ctx context.Context, app App) error {
+	return app.artifactsGif(ctx, stripKongCommandPath(c.Args, "artifacts", "gif"))
+}
+func (c *artifactsTemplateKongCmd) Run(ctx context.Context, app App) error {
+	return app.artifactsTemplate(ctx, stripKongCommandPath(c.Args, "artifacts", "template"))
+}
+func (c *artifactsPublishKongCmd) Run(ctx context.Context, app App) error {
+	return app.artifactsPublish(ctx, stripKongCommandPath(c.Args, "artifacts", "publish"))
+}
+
 func (c *cacheListKongCmd) Run(ctx context.Context, app App) error {
 	return app.cacheStats(ctx, c.Args)
 }
@@ -443,4 +483,15 @@ func (c *machineCleanupKongCmd) Run(ctx context.Context, app App) error {
 func (c *versionKongCmd) Run(app App) error {
 	fmt.Fprintln(app.Stdout, version)
 	return nil
+}
+
+func stripKongCommandPath(args []string, path ...string) []string {
+	out := append([]string{}, args...)
+	for _, part := range path {
+		if len(out) == 0 || out[0] != part {
+			return out
+		}
+		out = out[1:]
+	}
+	return out
 }

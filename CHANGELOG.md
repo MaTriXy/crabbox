@@ -8,6 +8,7 @@
 - Added WebVNC portal clipboard controls for sending local clipboard text into the remote session and copying remote clipboard text back to the local browser.
 - Added rescue-first desktop/WebVNC failure output that names the failing layer and prints exact `rescue:` or native VNC fallback commands when bridges, viewers, browser launches, VNC targets, or input stacks hang.
 - Added lease sharing for individual users or the owning org, including `crabbox share`, `crabbox unshare`, API access checks, and a portal share control on lease detail pages.
+- Added first-class `crabbox artifacts` commands for desktop screenshots, MP4 recordings, trimmed GIFs, logs, metadata, Mantis/OpenClaw QA templates, and PR-ready publishing through broker-owned artifact storage, AWS S3, or Cloudflare R2.
 
 ### Fixed
 
@@ -19,6 +20,8 @@
 - Fixed Code and WebVNC bridge websocket auth so upgraded brokers receive short-lived bridge tickets in the `Authorization` header instead of logging them in URL query strings, while preserving query fallback for older brokers.
 - Fixed managed AWS macOS desktop leases so readiness and WebVNC use a writable `ec2-user` work root, call `crabbox-ready` by absolute path, and read the generated Screen Sharing password via sudo.
 - Fixed managed AWS macOS bootstrap so VNC password generation does not abort under `pipefail` before Screen Sharing readiness is installed.
+- Fixed managed Linux bootstrap so SSH service activation cannot hang cloud-init before desktop/browser setup and readiness checks run.
+- Fixed WebVNC daemon start-by-slug so coordinator-backed leases use the resolved target OS in the background bridge command.
 - Fixed coordinator-backed `crabbox list` so a stale admin token no longer blocks normal logged-in users; the CLI now falls back to active user-visible leases instead of failing with `401 unauthorized`.
 - Fixed desktop, screenshot, VNC, and WebVNC SSH helpers so they retry live fallback ports when a coordinator lease advertises an SSH port that is not ready yet.
 

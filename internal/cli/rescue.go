@@ -17,6 +17,7 @@ const (
 	rescueVNCTargetUnreachable    = "VNC target unreachable"
 	rescueWindowManagerMissing    = "window manager missing"
 	rescueScreenshotCaptureBroken = "screenshot capture broken"
+	rescueArtifactCaptureFailed   = "artifact capture failed"
 )
 
 type rescueContext struct {

@@ -115,7 +115,40 @@ CRABBOX_TAILSCALE_CLIENT_SECRET required for brokered --tailscale
 CRABBOX_TAILSCALE_TAILNET optional
 CRABBOX_TAILSCALE_TAGS optional
 CRABBOX_TAILSCALE_ENABLED optional; set 0 to disable brokered Tailscale
+CRABBOX_ARTIFACTS_BACKEND optional; enables brokered artifact publishing
+CRABBOX_ARTIFACTS_BUCKET required when artifact backend is enabled
+CRABBOX_ARTIFACTS_PREFIX optional
+CRABBOX_ARTIFACTS_BASE_URL optional; public final artifact URL prefix
+CRABBOX_ARTIFACTS_REGION optional
+CRABBOX_ARTIFACTS_ENDPOINT_URL optional; required for R2/custom S3 endpoints
+CRABBOX_ARTIFACTS_ACCESS_KEY_ID required when artifact backend is enabled
+CRABBOX_ARTIFACTS_SECRET_ACCESS_KEY required when artifact backend is enabled
+CRABBOX_ARTIFACTS_SESSION_TOKEN optional
+CRABBOX_ARTIFACTS_UPLOAD_EXPIRES_SECONDS optional
+CRABBOX_ARTIFACTS_URL_EXPIRES_SECONDS optional
 ```
+
+Artifact backend vars are ordinary Worker vars except
+`CRABBOX_ARTIFACTS_ACCESS_KEY_ID`, `CRABBOX_ARTIFACTS_SECRET_ACCESS_KEY`, and
+optional `CRABBOX_ARTIFACTS_SESSION_TOKEN`, which must be Worker secrets. These
+object-store keys let the coordinator sign short-lived artifact upload/read
+URLs; they should be scoped to the artifact bucket or prefix and should not have
+Cloudflare account, Worker deployment, lease-provider, or VM permissions.
+
+Our current coordinator artifact config is R2-compatible:
+
+```text
+CRABBOX_ARTIFACTS_BACKEND=r2
+CRABBOX_ARTIFACTS_BUCKET=openclaw-crabbox-artifacts
+CRABBOX_ARTIFACTS_PREFIX=crabbox-artifacts
+CRABBOX_ARTIFACTS_BASE_URL=https://artifacts.openclaw.ai
+CRABBOX_ARTIFACTS_REGION=auto
+CRABBOX_ARTIFACTS_ENDPOINT_URL=<account>.r2.cloudflarestorage.com
+```
+
+The corresponding R2 access key id and secret access key are deployed as Worker
+secrets, not local CLI defaults. Normal users should run
+`crabbox artifacts publish` without direct S3/R2 credentials.
 
 Cost-control secrets and settings:
 

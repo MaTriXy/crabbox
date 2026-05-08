@@ -71,6 +71,16 @@ Rules:
 - `CRABBOX_TAILSCALE_CLIENT_ID` and `CRABBOX_TAILSCALE_CLIENT_SECRET` are
   Worker secrets for minting one-off Tailscale auth keys when brokered
   `--tailscale` leases are requested.
+- `CRABBOX_ARTIFACTS_ACCESS_KEY_ID`, `CRABBOX_ARTIFACTS_SECRET_ACCESS_KEY`,
+  and optional `CRABBOX_ARTIFACTS_SESSION_TOKEN` are Worker secrets for
+  brokered artifact publishing. They should be scoped to the artifact
+  bucket/prefix and used only to sign short-lived upload/read URLs.
+- `CRABBOX_ARTIFACTS_BACKEND`, `CRABBOX_ARTIFACTS_BUCKET`,
+  `CRABBOX_ARTIFACTS_PREFIX`, `CRABBOX_ARTIFACTS_BASE_URL`,
+  `CRABBOX_ARTIFACTS_REGION`, `CRABBOX_ARTIFACTS_ENDPOINT_URL`,
+  `CRABBOX_ARTIFACTS_UPLOAD_EXPIRES_SECONDS`, and
+  `CRABBOX_ARTIFACTS_URL_EXPIRES_SECONDS` are Worker config values, not secret
+  material.
 - `CRABBOX_GITHUB_ALLOWED_ORG(S)` and `CRABBOX_GITHUB_ALLOWED_TEAMS` are Worker config values for browser-login authorization.
 - `CRABBOX_TAILSCALE_TAGS` is the coordinator allowlist/default for requested
   Tailscale ACL tags. Do not allow arbitrary user-supplied tags.

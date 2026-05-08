@@ -54,6 +54,7 @@ Read when:
 - [Sync](sync.md): Git file-list manifests, rsync, fingerprints, excludes, guardrails, and sanity checks.
 - [Actions hydration](actions-hydration.md): let GitHub Actions prepare a runner, then sync local work into that workspace.
 - [Interactive desktop and VNC](interactive-desktop-vnc.md): VNC hub, support matrix, tunnel model, and QA boundaries.
+- [Artifacts](artifacts.md): screenshots, video, trimmed GIFs, logs, metadata, templates, and PR publishing.
 - [Linux VNC](vnc-linux.md), [Windows VNC](vnc-windows.md), [macOS VNC](vnc-macos.md): OS-specific desktop setup and troubleshooting.
 - [Test results](test-results.md): JUnit summaries attached to recorded runs.
 - [Cache controls](cache.md): inspect, purge, and warm remote package/build caches.
@@ -73,6 +74,7 @@ Read when:
 - [history](../commands/history.md)
 - [logs](../commands/logs.md)
 - [results](../commands/results.md)
+- [artifacts](../commands/artifacts.md)
 - [cache](../commands/cache.md)
 - [status](../commands/status.md)
 - [list](../commands/list.md)

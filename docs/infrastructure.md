@@ -352,7 +352,25 @@ CRABBOX_TAILSCALE_CLIENT_ID optional; required for brokered --tailscale
 CRABBOX_TAILSCALE_CLIENT_SECRET optional; required for brokered --tailscale
 CRABBOX_TAILSCALE_TAILNET optional
 CRABBOX_TAILSCALE_TAGS optional
+CRABBOX_ARTIFACTS_BACKEND optional; currently r2
+CRABBOX_ARTIFACTS_BUCKET optional; currently openclaw-crabbox-artifacts
+CRABBOX_ARTIFACTS_PREFIX optional; currently crabbox-artifacts
+CRABBOX_ARTIFACTS_BASE_URL optional; currently https://artifacts.openclaw.ai
+CRABBOX_ARTIFACTS_REGION optional; currently auto
+CRABBOX_ARTIFACTS_ENDPOINT_URL optional; currently the R2 S3-compatible endpoint
+CRABBOX_ARTIFACTS_ACCESS_KEY_ID optional; Worker secret when artifacts backend is enabled
+CRABBOX_ARTIFACTS_SECRET_ACCESS_KEY optional; Worker secret when artifacts backend is enabled
+CRABBOX_ARTIFACTS_SESSION_TOKEN optional; Worker secret for temporary credentials
+CRABBOX_ARTIFACTS_UPLOAD_EXPIRES_SECONDS optional
+CRABBOX_ARTIFACTS_URL_EXPIRES_SECONDS optional
 ```
+
+Artifact credentials on the coordinator are storage-only S3-compatible keys.
+They exist so the Worker can sign one upload URL per artifact and return the
+final asset URL. They are not Cloudflare deploy tokens, not Crabbox bearer/admin
+tokens, and not VM provider credentials. Keep direct local S3/R2 credentials as
+operator fallback only; normal artifact publishing should go through the
+coordinator.
 
 ## Verified OpenClaw Run
 
