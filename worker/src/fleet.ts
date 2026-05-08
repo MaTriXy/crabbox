@@ -650,7 +650,7 @@ export class FleetDurableObject implements DurableObject {
     const limit = Math.min(finiteControlNumber(input.limit) ?? 100, 500);
     const events = await this.runEvents(runID, after, limit);
     const nextSeq = events.at(-1)?.seq ?? after;
-    attachment.subscriptions = { ...(attachment.subscriptions ?? {}), [runID]: nextSeq };
+    attachment.subscriptions = { ...attachment.subscriptions, [runID]: nextSeq };
     this.serializeBridgeAttachment(socket, attachment);
     sendControl(socket, { type: "run_events", runID, events, nextSeq });
   }
@@ -667,7 +667,7 @@ export class FleetDurableObject implements DurableObject {
     if (seq === undefined) {
       return;
     }
-    attachment.subscriptions = { ...(attachment.subscriptions ?? {}), [input.runID]: seq };
+    attachment.subscriptions = { ...attachment.subscriptions, [input.runID]: seq };
     this.serializeBridgeAttachment(socket, attachment);
   }
 
@@ -3112,7 +3112,7 @@ export class FleetDurableObject implements DurableObject {
       if (after === undefined || after >= event.seq || !this.runVisibleToControl(run, attachment)) {
         continue;
       }
-      attachment.subscriptions = { ...(attachment.subscriptions ?? {}), [run.id]: event.seq };
+      attachment.subscriptions = { ...attachment.subscriptions, [run.id]: event.seq };
       this.serializeBridgeAttachment(socket, attachment);
       sendControl(socket, {
         type: "run_events",
