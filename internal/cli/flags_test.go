@@ -38,7 +38,13 @@ func TestFlagWasSet(t *testing.T) {
 	if !flagWasSet(fs, "id") {
 		t.Fatal("id should be marked set")
 	}
+	if !FlagWasSet(fs, "id") {
+		t.Fatal("exported id check should be marked set")
+	}
 	if flagWasSet(fs, "json") {
 		t.Fatal("json should not be marked set")
+	}
+	if FlagWasSet(fs, "json") {
+		t.Fatal("exported json check should not be marked set")
 	}
 }
