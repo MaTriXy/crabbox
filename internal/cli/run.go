@@ -852,16 +852,42 @@ func startCoordinatorHeartbeat(ctx context.Context, coord *CoordinatorClient, le
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+		var control *coordinatorControlConn
+		defer func() {
+			if control != nil {
+				control.close()
+			}
+		}()
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
 			telemetry := collectLeaseTelemetryBestEffort(rootCtx, telemetryCollector)
 			callCtx, heartbeatCancel := context.WithTimeout(rootCtx, 20*time.Second)
 			var err error
+			var idleTimeoutOverride *time.Duration
 			if updateIdleTimeout != nil {
-				_, err = coord.UpdateLeaseIdleTimeoutWithTelemetry(callCtx, leaseID, *updateIdleTimeout, telemetry)
+				idleTimeoutOverride = updateIdleTimeout
+			}
+			if control == nil {
+				dialCtx, dialCancel := context.WithTimeout(callCtx, coordinatorControlDialTimeout)
+				control, _ = dialCoordinatorControl(dialCtx, coord)
+				dialCancel()
+			}
+			if control != nil {
+				err = control.heartbeat(callCtx, leaseID, idleTimeoutOverride, telemetry)
+				if err != nil {
+					control.close()
+					control = nil
+				}
+			}
+			if control == nil {
+				if updateIdleTimeout != nil {
+					_, err = coord.UpdateLeaseIdleTimeoutWithTelemetry(callCtx, leaseID, *updateIdleTimeout, telemetry)
+				} else {
+					_, err = coord.TouchLeaseWithTelemetry(callCtx, leaseID, telemetry)
+				}
 			} else {
-				_, err = coord.TouchLeaseWithTelemetry(callCtx, leaseID, telemetry)
+				err = nil
 			}
 			heartbeatCancel()
 			if err != nil && rootCtx.Err() == nil {
