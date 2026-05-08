@@ -494,11 +494,10 @@ func (a App) writeArtifactWebVNCStatus(ctx context.Context, cfg Config, target S
 	} else {
 		payload["status"] = status
 		rescueCtx := rescueContext{Cfg: cfg, Target: target, LeaseID: leaseID}
-		if status.ViewerConnected {
-			appendArtifactWarning(warnings, rescueVNCStaleViewer, "close stale WebVNC tabs or reset this lease's WebVNC session", "", webVNCResetRescueCommand(rescueCtx))
-		}
 		if !status.BridgeConnected {
 			appendArtifactWarning(warnings, rescueVNCBridgeNotRunning, "portal has no active WebVNC bridge for this lease", "", webVNCDaemonStartRescueCommand(rescueCtx), webVNCResetRescueCommand(rescueCtx))
+		} else if webVNCObserverSlotsExhausted(status) {
+			appendArtifactWarning(warnings, rescueVNCObserverSlotsFull, "all WebVNC observer slots are in use or stale", "", webVNCDaemonStartRescueCommand(rescueCtx), webVNCResetRescueCommand(rescueCtx))
 		}
 	}
 	if err := writeJSONFile(path, payload); err != nil {

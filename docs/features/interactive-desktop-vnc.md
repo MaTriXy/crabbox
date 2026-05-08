@@ -103,6 +103,14 @@ connects to the coordinator with a one-use bridge ticket, and the browser uses
 bundled noVNC from the authenticated portal. The portal does not connect to the
 runner by itself; the local bridge must keep running.
 
+WebVNC supports collaborative viewing. The local bridge keeps a warm pool of
+backend VNC sessions (default 4 slots), the first browser viewer controls the
+lease, and additional viewers join as read-only observers. Any viewer — a new
+observer or the prior controller — can press **take over** to become the
+controller; whoever loses control stays connected as an observer and sees who
+took over. Observer mode is intended for trusted shared leases; it is not a
+hostile-client security boundary.
+
 The portal toolbar supports explicit clipboard exchange. Paste reads the local
 browser clipboard, forwards it to the remote VNC server, and sends the target
 paste shortcut. Copy-remote is enabled after the remote server publishes
@@ -177,10 +185,11 @@ Managed VNC is tunnel-first:
 - `--network tailscale` changes only the SSH endpoint used by that tunnel.
 - WebVNC keeps the same local SSH tunnel and adds an authenticated browser
   websocket through the coordinator.
-- The WebVNC browser websocket is paired with the local bridge process inside
-  the coordinator Durable Object; if the browser view disconnects, the local
-  command reconnects a fresh bridge for the portal retry. If the local process
-  exits, the browser view disconnects until you start it again.
+- WebVNC browser websockets are paired with local bridge backend sessions
+  inside the coordinator Durable Object. One viewer is the controller; other
+  viewers are observers until they press **take over**. If a browser view
+  disconnects, only its paired backend session is reset and the local command
+  reconnects a fresh bridge slot for the next portal retry.
 - `crabbox webvnc status` reports the local daemon pid/log, SSH tunnel command,
   target VNC reachability, coordinator bridge/viewer state, recent bridge
   events, portal URL/password, and the exact native `crabbox vnc ... --open`

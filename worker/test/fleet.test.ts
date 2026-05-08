@@ -1670,9 +1670,10 @@ describe("fleet lease identity and idle", () => {
     expect(pageBody).toContain('data-provider="hetzner"');
     expect(pageBody).toContain('data-target="linux"');
     expect(pageBody).toContain("WebVNC daemon not running; run the bridge command below");
-    expect(pageBody).toContain(
-      "WebVNC viewer already active; close stale WebVNC tabs or run reset",
-    );
+    expect(pageBody).toContain("waiting for an available WebVNC observer slot");
+    expect(pageBody).toContain("/portal/leases/cbx_000000000001/vnc/control");
+    expect(pageBody).toContain("vnc-takeover");
+    expect(pageBody).toContain("rfb.viewOnly = !controlling");
     expect(pageBody).toContain('fragment.get("username")');
     expect(pageBody).toContain('types.includes("username")');
     expect(pageBody).not.toContain("cdn.jsdelivr.net");
@@ -1783,20 +1784,30 @@ describe("fleet lease identity and idle", () => {
   it("resets the WebVNC bridge when the viewer goes away", () => {
     const buffers = new Map<string, WebVNCBuffer>();
     buffers.set("cbx_000000000001", { chunks: ["RFB 003.008\n"], bytes: 12 });
+    buffers.set("cbx_000000000001:agent_a", { chunks: ["RFB 003.008\n"], bytes: 12 });
     const closed: Array<{ code: number; reason: string }> = [];
-    const agents = new Map<string, WebSocket>();
-    agents.set("cbx_000000000001", {
-      readyState: WebSocket.OPEN,
-      close(code: number, reason: string) {
-        closed.push({ code, reason });
-      },
-    } as WebSocket);
+    const agents = new Map<string, Map<string, WebSocket>>();
+    agents.set(
+      "cbx_000000000001",
+      new Map([
+        [
+          "agent_a",
+          {
+            readyState: WebSocket.OPEN,
+            close(code: number, reason: string) {
+              closed.push({ code, reason });
+            },
+          } as WebSocket,
+        ],
+      ]),
+    );
 
     resetWebVNCBridge(agents, buffers, "cbx_000000000001", 1011, "WebVNC viewer disconnected");
 
     expect(closed).toEqual([{ code: 1011, reason: "WebVNC viewer disconnected" }]);
     expect(agents.has("cbx_000000000001")).toBe(false);
     expect(buffers.has("cbx_000000000001")).toBe(false);
+    expect(buffers.has("cbx_000000000001:agent_a")).toBe(false);
   });
 
   it("keeps pool inventory admin-only", async () => {

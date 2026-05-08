@@ -499,10 +499,10 @@ func TestWriteArtifactWebVNCStatusRecordsWarningsWithoutStdout(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("status helper should not write rescue text directly to stdout, got %q", stdout.String())
 	}
-	if len(warnings) != 2 {
+	if len(warnings) != 1 {
 		t.Fatalf("warnings=%#v", warnings)
 	}
-	if warnings[0].Problem != rescueVNCStaleViewer || warnings[1].Problem != rescueVNCBridgeNotRunning {
+	if warnings[0].Problem != rescueVNCBridgeNotRunning {
 		t.Fatalf("warnings=%#v", warnings)
 	}
 }

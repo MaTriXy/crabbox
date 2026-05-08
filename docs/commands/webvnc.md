@@ -66,6 +66,15 @@ pid file under its local state directory and prints both paths. Use
 that lease. Shutdown terminates both the daemon supervisor and the active child
 bridge process.
 
+The bridge keeps a warm pool of backend VNC sessions open (default 4 slots,
+which is what the `slots=` field in `webvnc status` reports). That lets
+multiple portal viewers join the same lease: one viewer is the controller,
+later viewers start in observer mode, and any viewer can press **take over**
+to become the controller — including the prior controller, who stays connected
+as an observer and can reclaim control the same way. Observer mode is a
+collaboration UX for trusted shared leases; it relies on the portal noVNC
+client staying read-only and is not a hostile-client isolation boundary.
+
 The older `crabbox webvnc --id <lease> --daemon`, `--background`, `--status`,
 and `--stop` forms remain accepted as compatibility aliases, but new docs and
 automation should use the explicit `daemon` subcommands.
@@ -83,7 +92,8 @@ Typical status output is meant to be directly actionable:
 webvnc daemon: pid=12345 log=...
 vnc target: reachable 127.0.0.1:5900 managed=true
 ssh tunnel: ssh ... -L 5901:127.0.0.1:5900 ...
-portal bridge: connected=true viewer=false
+portal bridge: connected=true viewers=2 observers=1 slots=2
+portal controller: peter
 event: 2026-05-07T12:00:00Z bridge_connected
 webvnc: https://crabbox.openclaw.ai/portal/leases/cbx_.../vnc#password=...
 fallback: crabbox vnc --provider aws --target linux --network tailscale --id cbx_... --open
@@ -92,10 +102,10 @@ fallback: crabbox vnc --provider aws --target linux --network tailscale --id cbx
 When a layer is unhealthy, the CLI prints `problem:`, optional `detail:`, and
 one or more exact `rescue:` commands in the command output, not only in docs.
 Common problems include `VNC bridge disconnected`, `WebVNC daemon not running`,
-`WebVNC viewer already active`, and `VNC target unreachable`. If the browser
-portal path looks unhealthy but the target VNC service is reachable, the output
-also prints the native `crabbox vnc ... --open` fallback command with the same
-provider/target/network flags.
+`waiting for an available WebVNC observer slot`, and `VNC target unreachable`.
+If the browser portal path looks unhealthy but the target VNC service is
+reachable, the output also prints the native `crabbox vnc ... --open` fallback
+command with the same provider/target/network flags.
 
 Use `crabbox webvnc reset --id <lease> --open` when the portal is stuck on a
 stale bridge/viewer/session. Reset closes only that lease's coordinator
@@ -199,9 +209,11 @@ with that lease. Start or restart `crabbox webvnc daemon start --id <lease>
 session state are likely. If the command is still running, wait for the portal
 retry or reload the browser tab.
 
-`WebVNC viewer already active`
+`waiting for an available WebVNC observer slot`
 
-Close old WebVNC tabs first. If the portal still reports a stale viewer, run:
+The portal is reachable, but all bridge slots are already paired with viewers.
+Restart the bridge with a current Crabbox CLI so it opens the default backend
+pool. If the portal still cannot get a slot, run:
 
 ```sh
 crabbox webvnc reset --id <lease-id-or-slug> --open

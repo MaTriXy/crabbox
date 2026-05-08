@@ -512,6 +512,7 @@ export function portalVNC(lease: LeaseRecord): Response {
   const title = `WebVNC ${slug}`;
   const wsPath = `/portal/leases/${encodeURIComponent(lease.id)}/vnc/viewer`;
   const statusPath = `/portal/leases/${encodeURIComponent(lease.id)}/vnc/status`;
+  const controlPath = `/portal/leases/${encodeURIComponent(lease.id)}/vnc/control`;
   const bridgeCmd = webVNCBridgeCommand(lease);
   const fullscreenIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/></svg>`;
   const reconnectIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>`;
@@ -524,6 +525,8 @@ export function portalVNC(lease: LeaseRecord): Response {
         meta: `<span>WebVNC ${escapeHTML(slug)}</span><span class="vnc-dot"></span>${providerBadge(lease.provider)}<span class="vnc-dot"></span>${targetBadge(target, lease.windowsMode)}<span class="vnc-dot"></span><span class="vnc-id">${escapeHTML(lease.id)}</span>`,
         actions: `
           <span id="status" class="status-pill">waiting for bridge</span>
+          <span id="vnc-role" class="status-pill vnc-role" data-tone="warn">observing</span>
+          <button id="vnc-takeover" class="button secondary" type="button">take over</button>
           <button id="vnc-copy-remote" class="icon-btn" type="button" title="copy remote clipboard" aria-label="copy remote clipboard" disabled>${copyIcon}</button>
           <button id="vnc-paste" class="icon-btn" type="button" title="paste clipboard" aria-label="paste clipboard">${pasteIcon}</button>
           <button id="vnc-reconnect" class="icon-btn" type="button" title="reconnect" aria-label="reconnect">${reconnectIcon}</button>
@@ -548,6 +551,10 @@ export function portalVNC(lease: LeaseRecord): Response {
       const wsURL = new URL(${JSON.stringify(wsPath)}, window.location.href);
       wsURL.protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const statusURL = new URL(${JSON.stringify(statusPath)}, window.location.href);
+      const controlURL = new URL(${JSON.stringify(controlPath)}, window.location.href);
+      const viewerID = "viewer_" + (crypto.randomUUID?.() || String(Date.now()) + Math.random()).replace(/[^A-Za-z0-9_.:-]/g, "");
+      wsURL.searchParams.set("viewer", viewerID);
+      statusURL.searchParams.set("viewer", viewerID);
       const fragment = new URLSearchParams(window.location.hash.slice(1));
       const target = ${JSON.stringify(target)};
       const username = fragment.get("username") || "";
@@ -566,6 +573,9 @@ export function portalVNC(lease: LeaseRecord): Response {
       let connected = false;
       let stopped = false;
       let remoteClipboardText = "";
+      let statusTimer;
+      let controllerLabel = "";
+      let isController = false;
       function retryDelay() {
         return Math.min(5000, 500 * 2 ** retryAttempt);
       }
@@ -600,6 +610,40 @@ export function portalVNC(lease: LeaseRecord): Response {
           return undefined;
         }
       }
+      function applyCollaborationState(state) {
+        if (!state) return;
+        const role = state.viewerRole || "none";
+        const roleEl = document.getElementById("vnc-role");
+        const takeoverBtn = document.getElementById("vnc-takeover");
+        const previousControllerLabel = controllerLabel;
+        controllerLabel = state.controllerLabel || "";
+        const controlling = role === "controller";
+        const connectedViewer = role === "controller" || role === "observer";
+        isController = controlling;
+        if (rfb) {
+          rfb.viewOnly = !controlling;
+        }
+        if (roleEl) {
+          roleEl.dataset.tone = controlling ? "ok" : "warn";
+          roleEl.textContent = controlling
+            ? "controlling"
+            : controllerLabel
+              ? "observing · " + controllerLabel + " controls"
+              : "observing";
+        }
+        if (takeoverBtn) {
+          takeoverBtn.hidden = controlling || !connectedViewer;
+          takeoverBtn.disabled = controlling || !connectedViewer;
+        }
+        if (!controlling && connectedViewer && previousControllerLabel && controllerLabel && previousControllerLabel !== controllerLabel) {
+          setStatus(controllerLabel + " took control", "warn");
+        }
+      }
+      async function refreshCollaborationState() {
+        const state = await bridgeState();
+        applyCollaborationState(state);
+        return state;
+      }
       function scheduleRetry(label) {
         if (stopped) return;
         const delay = retryDelay();
@@ -618,19 +662,22 @@ export function portalVNC(lease: LeaseRecord): Response {
             scheduleRetry(state.message || "WebVNC daemon not running; run the bridge command below");
             return;
           }
-          if (state?.viewerConnected) {
-            scheduleRetry("WebVNC viewer already active; close stale WebVNC tabs or run reset");
+          if (state && state.availableViewerSlots === 0) {
+            scheduleRetry(state.message || "waiting for an available WebVNC observer slot");
             return;
           }
           setStatus(retryAttempt ? "bridge connected; opening viewer" : "connecting");
           rfb = new RFB(screen, wsURL.toString(), options);
           rfb.scaleViewport = true;
           rfb.resizeSession = false;
-          rfb.viewOnly = false;
+          rfb.viewOnly = true;
           rfb.addEventListener("connect", () => {
             connected = true;
             retryAttempt = 0;
             setStatus("connected", "ok");
+            void refreshCollaborationState();
+            window.clearInterval(statusTimer);
+            statusTimer = window.setInterval(refreshCollaborationState, 1500);
           });
           rfb.addEventListener("clipboard", (event) => {
             remoteClipboardText = event.detail?.text || "";
@@ -667,7 +714,24 @@ export function portalVNC(lease: LeaseRecord): Response {
       window.addEventListener("beforeunload", () => {
         stopped = true;
         window.clearTimeout(retryTimer);
+        window.clearInterval(statusTimer);
         rfb?.disconnect();
+      });
+      const takeoverBtn = document.getElementById("vnc-takeover");
+      takeoverBtn?.addEventListener("click", async () => {
+        try {
+          const response = await fetch(controlURL, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ viewerID }),
+          });
+          const state = response.ok ? await response.json() : undefined;
+          if (!response.ok) throw new Error(state?.message || "takeover failed");
+          applyCollaborationState(state);
+          setStatus("you took control", "ok");
+        } catch (error) {
+          setStatus(error instanceof Error ? error.message : String(error), "bad");
+        }
       });
       const reconnectBtn = document.getElementById("vnc-reconnect");
       reconnectBtn?.addEventListener("click", () => {
@@ -710,6 +774,10 @@ export function portalVNC(lease: LeaseRecord): Response {
       pasteBtn?.addEventListener("click", async () => {
         if (!rfb || !connected) {
           setStatus("connect before paste", "warn");
+          return;
+        }
+        if (!isController) {
+          setStatus(controllerLabel ? controllerLabel + " is controlling" : "observer mode", "warn");
           return;
         }
         const text = await readClipboardText();

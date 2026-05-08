@@ -32,12 +32,11 @@ func (a App) desktopDoctor(ctx context.Context, args []string) error {
 			fmt.Fprintf(a.Stdout, "portal failed webvnc %v\n", err)
 			printRescue(a.Stdout, rescueVNCBridgeDisconnected, err.Error(), webVNCStatusRescueCommand(rescueCtx), webVNCResetRescueCommand(rescueCtx))
 		} else {
-			fmt.Fprintf(a.Stdout, "portal ok webvnc bridge=%t viewer=%t\n", status.BridgeConnected, status.ViewerConnected)
-			if status.ViewerConnected {
-				printRescue(a.Stdout, rescueVNCStaleViewer, "close stale WebVNC tabs or reset this lease's WebVNC session", webVNCResetRescueCommand(rescueCtx))
-			}
+			fmt.Fprintf(a.Stdout, "portal ok webvnc bridge=%t viewers=%d observers=%d slots=%d\n", status.BridgeConnected, status.ViewerCount, status.ObserverCount, status.AvailableViewerSlots)
 			if !status.BridgeConnected {
 				printRescue(a.Stdout, rescueVNCBridgeNotRunning, "portal has no active WebVNC bridge for this lease", webVNCDaemonStartRescueCommand(rescueCtx), webVNCResetRescueCommand(rescueCtx))
+			} else if webVNCObserverSlotsExhausted(status) {
+				printRescue(a.Stdout, rescueVNCObserverSlotsFull, "all WebVNC observer slots are in use or stale", webVNCDaemonStartRescueCommand(rescueCtx), webVNCResetRescueCommand(rescueCtx))
 			}
 		}
 	}

@@ -13,6 +13,7 @@ const (
 	rescueInputStackDead          = "input stack dead"
 	rescueVNCBridgeDisconnected   = "VNC bridge disconnected"
 	rescueVNCBridgeNotRunning     = "WebVNC daemon not running"
+	rescueVNCObserverSlotsFull    = "WebVNC observer slots exhausted"
 	rescueVNCStaleViewer          = "WebVNC viewer already active"
 	rescueVNCTargetUnreachable    = "VNC target unreachable"
 	rescueWindowManagerMissing    = "window manager missing"

@@ -173,6 +173,53 @@ func TestClassifyWebVNCBridgeProblem(t *testing.T) {
 	}
 }
 
+func TestNextWebVNCBridgeFailureBacksOffInitialFailures(t *testing.T) {
+	attempt, kind := nextWebVNCBridgeFailure(false, 0)
+	if attempt != 1 || kind != "initial-error" {
+		t.Fatalf("first failure attempt=%d kind=%q", attempt, kind)
+	}
+	attempt, kind = nextWebVNCBridgeFailure(false, attempt)
+	if attempt != 2 || kind != "retry" {
+		t.Fatalf("second initial failure attempt=%d kind=%q", attempt, kind)
+	}
+	if got := webVNCReconnectDelay(attempt); got != time.Second {
+		t.Fatalf("second initial failure delay=%s, want 1s", got)
+	}
+	attempt, kind = nextWebVNCBridgeFailure(true, 0)
+	if attempt != 1 || kind != "retry" {
+		t.Fatalf("post-connect failure attempt=%d kind=%q", attempt, kind)
+	}
+}
+
+func TestWebVNCObserverSlotsExhausted(t *testing.T) {
+	if !webVNCObserverSlotsExhausted(CoordinatorWebVNCStatus{
+		BridgeConnected:      true,
+		ViewerCount:          4,
+		AvailableViewerSlots: 0,
+	}) {
+		t.Fatal("expected full viewer pool to be exhausted")
+	}
+	if !webVNCObserverSlotsExhausted(CoordinatorWebVNCStatus{
+		BridgeConnected:      true,
+		AvailableViewerSlots: 0,
+		Message:              "waiting for an available WebVNC observer slot",
+	}) {
+		t.Fatal("expected exhausted status message to be exhausted")
+	}
+	if webVNCObserverSlotsExhausted(CoordinatorWebVNCStatus{
+		BridgeConnected: true,
+	}) {
+		t.Fatal("old bridge-only status must not be treated as exhausted")
+	}
+	if webVNCObserverSlotsExhausted(CoordinatorWebVNCStatus{
+		BridgeConnected:      true,
+		ViewerCount:          1,
+		AvailableViewerSlots: 2,
+	}) {
+		t.Fatal("available slots must not be exhausted")
+	}
+}
+
 func TestRetryBridgeTicketInQuery(t *testing.T) {
 	resp := &http.Response{
 		StatusCode: http.StatusUnauthorized,

@@ -137,26 +137,16 @@ func (a App) webvnc(ctx context.Context, args []string) error {
 	portal := webVNCPortalURL(coord.BaseURL, leaseID, username, password)
 	rescueCtx := rescueContext{Cfg: cfg, Target: target, LeaseID: leaseID}
 	opened := false
-	connectedOnce := false
-	attempt := 0
-	for {
-		bridge, err := connectWebVNCBridge(ctx, coord, leaseID, connHost, connPort)
-		if err != nil {
-			if !connectedOnce {
-				printRescueWithFallback(a.Stdout, rescueVNCBridgeDisconnected, err.Error(), nativeVNCOpenCommand(cfg, target, leaseID), webVNCStatusRescueCommand(rescueCtx), webVNCResetRescueCommand(rescueCtx))
-				return err
-			}
-			attempt++
-			delay := webVNCReconnectDelay(attempt)
-			printRescueWithFallback(a.Stdout, rescueVNCBridgeDisconnected, err.Error(), nativeVNCOpenCommand(cfg, target, leaseID), webVNCStatusRescueCommand(rescueCtx))
-			fmt.Fprintf(a.Stdout, "bridge: reconnecting in %s\n", delay)
-			if err := waitWebVNCReconnect(ctx, delay); err != nil {
-				return err
-			}
-			continue
-		}
-		connectedOnce = true
-		if attempt == 0 {
+	return serveWebVNCBridgePool(ctx, webVNCBridgePoolConfig{
+		Coord:     coord,
+		LeaseID:   leaseID,
+		Host:      connHost,
+		Port:      connPort,
+		PoolSize:  defaultWebVNCBridgePoolSize,
+		RescueCtx: rescueCtx,
+		NativeVNC: nativeVNCOpenCommand(cfg, target, leaseID),
+		Log:       a.Stdout,
+		OnReady: func() error {
 			fmt.Fprintln(a.Stdout, "bridge: connected; keep this process running while using WebVNC")
 			fmt.Fprintf(a.Stdout, "webvnc: %s\n", portal)
 			if strings.TrimSpace(password) != "" {
@@ -165,34 +155,129 @@ func (a App) webvnc(ctx context.Context, args []string) error {
 					fmt.Fprintf(a.Stdout, "username: %s\n", strings.TrimSpace(username))
 				}
 			}
-		} else {
-			fmt.Fprintf(a.Stdout, "bridge: reconnected after viewer reset (attempt %d)\n", attempt+1)
-		}
-		if *openPortal && !opened {
-			if err := openLocalURL(portal); err != nil {
-				bridge.Close()
-				return err
+			if *openPortal && !opened {
+				if err := openLocalURL(portal); err != nil {
+					return err
+				}
+				opened = true
+				fmt.Fprintf(a.Stdout, "opened: %s\n", portal)
 			}
-			opened = true
-			fmt.Fprintf(a.Stdout, "opened: %s\n", portal)
-		}
-		err = bridge.Serve(ctx)
-		if !retryableWebVNCBridgeError(err) {
-			return err
-		}
-		attempt++
-		delay := webVNCReconnectDelay(attempt)
-		if err != nil {
-			printRescueWithFallback(a.Stdout, classifyWebVNCBridgeProblem(err), err.Error(), nativeVNCOpenCommand(cfg, target, leaseID), webVNCStatusRescueCommand(rescueCtx), webVNCResetRescueCommand(rescueCtx))
-			fmt.Fprintf(a.Stdout, "bridge: reconnecting in %s\n", delay)
-		} else {
-			printRescueWithFallback(a.Stdout, rescueVNCBridgeDisconnected, "viewer closed", nativeVNCOpenCommand(cfg, target, leaseID), webVNCStatusRescueCommand(rescueCtx))
-			fmt.Fprintf(a.Stdout, "bridge: reconnecting in %s\n", delay)
-		}
-		if err := waitWebVNCReconnect(ctx, delay); err != nil {
-			return err
+			return nil
+		},
+	})
+}
+
+const defaultWebVNCBridgePoolSize = 4
+
+type webVNCBridgePoolConfig struct {
+	Coord     *CoordinatorClient
+	LeaseID   string
+	Host      string
+	Port      string
+	PoolSize  int
+	RescueCtx rescueContext
+	NativeVNC string
+	Log       io.Writer
+	OnReady   func() error
+}
+
+type webVNCBridgePoolEvent struct {
+	Kind    string
+	Slot    int
+	Attempt int
+	Err     error
+}
+
+func serveWebVNCBridgePool(ctx context.Context, cfg webVNCBridgePoolConfig) error {
+	if cfg.PoolSize < 1 {
+		cfg.PoolSize = 1
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	events := make(chan webVNCBridgePoolEvent, cfg.PoolSize)
+	for slot := 0; slot < cfg.PoolSize; slot++ {
+		go serveWebVNCBridgeSlot(ctx, cfg, slot, events)
+	}
+	ready := false
+	initialFailures := make(map[int]bool)
+	var firstErr error
+	for {
+		select {
+		case <-ctx.Done():
+			return context.Cause(ctx)
+		case event := <-events:
+			switch event.Kind {
+			case "ready":
+				if !ready {
+					ready = true
+					if cfg.OnReady != nil {
+						if err := cfg.OnReady(); err != nil {
+							return err
+						}
+					}
+				}
+			case "initial-error":
+				if !ready {
+					initialFailures[event.Slot] = true
+					if firstErr == nil {
+						firstErr = event.Err
+					}
+					if len(initialFailures) >= cfg.PoolSize {
+						printRescueWithFallback(cfg.Log, rescueVNCBridgeDisconnected, firstErr.Error(), cfg.NativeVNC, webVNCStatusRescueCommand(cfg.RescueCtx), webVNCResetRescueCommand(cfg.RescueCtx))
+						return firstErr
+					}
+				}
+			case "retry":
+				if ready && event.Err != nil {
+					printRescueWithFallback(cfg.Log, classifyWebVNCBridgeProblem(event.Err), event.Err.Error(), cfg.NativeVNC, webVNCStatusRescueCommand(cfg.RescueCtx), webVNCResetRescueCommand(cfg.RescueCtx))
+					fmt.Fprintf(cfg.Log, "bridge[%d]: reconnecting in %s\n", event.Slot+1, webVNCReconnectDelay(event.Attempt))
+				}
+			case "fatal":
+				if event.Err != nil {
+					return event.Err
+				}
+			}
 		}
 	}
+}
+
+func serveWebVNCBridgeSlot(ctx context.Context, cfg webVNCBridgePoolConfig, slot int, events chan<- webVNCBridgePoolEvent) {
+	connectedOnce := false
+	attempt := 0
+	for {
+		bridge, err := connectWebVNCBridge(ctx, cfg.Coord, cfg.LeaseID, cfg.Host, cfg.Port)
+		if err != nil {
+			attempt, kind := nextWebVNCBridgeFailure(connectedOnce, attempt)
+			events <- webVNCBridgePoolEvent{Kind: kind, Slot: slot, Attempt: attempt, Err: err}
+			if err := waitWebVNCReconnect(ctx, webVNCReconnectDelay(attempt)); err != nil {
+				events <- webVNCBridgePoolEvent{Kind: "fatal", Slot: slot, Err: err}
+				return
+			}
+			continue
+		}
+		connectedOnce = true
+		attempt = 0
+		events <- webVNCBridgePoolEvent{Kind: "ready", Slot: slot}
+		err = bridge.Serve(ctx)
+		if !retryableWebVNCBridgeError(err) {
+			events <- webVNCBridgePoolEvent{Kind: "fatal", Slot: slot, Err: err}
+			return
+		}
+		attempt++
+		events <- webVNCBridgePoolEvent{Kind: "retry", Slot: slot, Attempt: attempt, Err: err}
+		if err := waitWebVNCReconnect(ctx, webVNCReconnectDelay(attempt)); err != nil {
+			events <- webVNCBridgePoolEvent{Kind: "fatal", Slot: slot, Err: err}
+			return
+		}
+	}
+}
+
+func nextWebVNCBridgeFailure(connectedOnce bool, attempt int) (int, string) {
+	attempt++
+	if !connectedOnce && attempt == 1 {
+		return attempt, "initial-error"
+	}
+	return attempt, "retry"
 }
 
 func (a App) webVNCDaemonCommand(ctx context.Context, args []string) error {
@@ -380,7 +465,10 @@ func (a App) webVNCStatusCommand(ctx context.Context, args []string) error {
 		fmt.Fprintf(a.Stdout, "portal bridge: unknown (%v)\n", statusErr)
 		printRescue(a.Stdout, rescueVNCBridgeDisconnected, statusErr.Error(), webVNCStatusRescueCommand(rescueCtx), webVNCResetRescueCommand(rescueCtx))
 	} else {
-		fmt.Fprintf(a.Stdout, "portal bridge: connected=%t viewer=%t\n", status.BridgeConnected, status.ViewerConnected)
+		fmt.Fprintf(a.Stdout, "portal bridge: connected=%t viewers=%d observers=%d slots=%d\n", status.BridgeConnected, status.ViewerCount, status.ObserverCount, status.AvailableViewerSlots)
+		if strings.TrimSpace(status.ControllerLabel) != "" {
+			fmt.Fprintf(a.Stdout, "portal controller: %s\n", strings.TrimSpace(status.ControllerLabel))
+		}
 		if strings.TrimSpace(status.Message) != "" {
 			fmt.Fprintf(a.Stdout, "portal message: %s\n", status.Message)
 		}
@@ -400,10 +488,10 @@ func (a App) webVNCStatusCommand(ctx context.Context, args []string) error {
 		}
 	}
 	fmt.Fprintf(a.Stdout, "fallback: %s\n", nativeVNCOpenCommand(cfg, target, leaseID))
-	if statusErr == nil && status.ViewerConnected {
-		printRescue(a.Stdout, rescueVNCStaleViewer, "close stale WebVNC tabs or reset this lease's WebVNC session", webVNCResetRescueCommand(rescueCtx))
-	} else if statusErr == nil && !status.BridgeConnected {
+	if statusErr == nil && !status.BridgeConnected {
 		printRescue(a.Stdout, rescueVNCBridgeNotRunning, "portal has no active WebVNC bridge for this lease", webVNCDaemonStartRescueCommand(rescueCtx), webVNCResetRescueCommand(rescueCtx))
+	} else if statusErr == nil && webVNCObserverSlotsExhausted(status) {
+		printRescue(a.Stdout, rescueVNCObserverSlotsFull, "all WebVNC observer slots are in use or stale", webVNCDaemonStartRescueCommand(rescueCtx), webVNCResetRescueCommand(rescueCtx))
 	}
 	return nil
 }
@@ -925,6 +1013,16 @@ func classifyWebVNCBridgeProblem(err error) string {
 		return rescueVNCStaleViewer
 	}
 	return rescueVNCBridgeDisconnected
+}
+
+func webVNCObserverSlotsExhausted(status CoordinatorWebVNCStatus) bool {
+	if !status.BridgeConnected || status.AvailableViewerSlots != 0 {
+		return false
+	}
+	if status.ViewerCount > 0 {
+		return true
+	}
+	return strings.Contains(status.Message, "available WebVNC observer slot")
 }
 
 func webVNCReconnectDelay(attempt int) time.Duration {
