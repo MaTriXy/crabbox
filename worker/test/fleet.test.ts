@@ -61,6 +61,40 @@ class MemoryStorage {
   }
 }
 
+class FakeWebSocket {
+  readyState = WebSocket.OPEN;
+  private attachment: unknown;
+  private readonly sent: string[] = [];
+
+  constructor(attachment?: unknown) {
+    this.attachment = attachment;
+  }
+
+  send(data: string): void {
+    this.sent.push(data);
+  }
+
+  close(): void {
+    this.readyState = WebSocket.CLOSED;
+  }
+
+  accept(): void {}
+
+  addEventListener(): void {}
+
+  serializeAttachment(attachment: unknown): void {
+    this.attachment = attachment;
+  }
+
+  deserializeAttachment(): unknown {
+    return this.attachment;
+  }
+
+  sentJSON(): unknown[] {
+    return this.sent.map((value) => JSON.parse(value) as unknown);
+  }
+}
+
 describe("fleet lease identity and idle", () => {
   it("creates leases through the public route with slug and idle metadata", async () => {
     const storage = new MemoryStorage();
@@ -2134,6 +2168,89 @@ describe("fleet run history", () => {
       [2, "lease.created"],
       [3, "stdout"],
     ]);
+  });
+
+  it("streams run events and lease heartbeats over a control websocket", async () => {
+    const storage = new MemoryStorage();
+    const fleet = testFleet(storage);
+    const headers = {
+      "x-crabbox-owner": "peter@example.com",
+      "x-crabbox-org": "openclaw",
+    };
+    storage.seed(
+      "lease:cbx_000000000001",
+      testLease({
+        id: "cbx_000000000001",
+        slug: "blue-lobster",
+        owner: "peter@example.com",
+        org: "openclaw",
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      }),
+    );
+    storage.seed(
+      "run:run_000000000001",
+      testRun({
+        id: "run_000000000001",
+        leaseID: "cbx_000000000001",
+        owner: "peter@example.com",
+        org: "openclaw",
+        eventCount: 1,
+      }),
+    );
+    storage.seed("runevent:run_000000000001:000000000001", {
+      runID: "run_000000000001",
+      seq: 1,
+      type: "run.started",
+      phase: "starting",
+      createdAt: "2026-05-01T00:00:00.000Z",
+    });
+    const socket = new FakeWebSocket({
+      kind: "control",
+      clientID: "ctrl_1",
+      owner: "peter@example.com",
+      org: "openclaw",
+      subscriptions: {},
+    });
+    (
+      fleet as unknown as {
+        controlSockets: Map<string, WebSocket>;
+      }
+    ).controlSockets.set("ctrl_1", socket as unknown as WebSocket);
+
+    await fleet.webSocketMessage(
+      socket as unknown as WebSocket,
+      JSON.stringify({ type: "subscribe_run", runID: "run_000000000001", after: 0 }),
+    );
+    expect(socket.sentJSON()[0]).toMatchObject({
+      type: "run_events",
+      runID: "run_000000000001",
+      nextSeq: 1,
+      events: [{ seq: 1, type: "run.started" }],
+    });
+
+    await fleet.fetch(
+      request("POST", "/v1/runs/run_000000000001/events", {
+        headers,
+        body: { type: "stdout", stream: "stdout", data: "ok\n" },
+      }),
+    );
+    expect(socket.sentJSON()[1]).toMatchObject({
+      type: "run_events",
+      runID: "run_000000000001",
+      nextSeq: 2,
+      events: [{ seq: 2, type: "stdout", data: "ok\n" }],
+    });
+
+    await fleet.webSocketMessage(
+      socket as unknown as WebSocket,
+      JSON.stringify({ type: "heartbeat", leaseID: "blue-lobster", idleTimeoutSeconds: 900 }),
+    );
+    expect(socket.sentJSON()[2]).toMatchObject({
+      type: "heartbeat",
+      leaseID: "cbx_000000000001",
+      ok: true,
+    });
+    expect(storage.value<LeaseRecord>("lease:cbx_000000000001")?.idleTimeoutSeconds).toBe(900);
   });
 
   it("records finished runs and serves logs", async () => {
