@@ -6,6 +6,7 @@
 
 - Added `provider: azure` for managed Azure Linux and native Windows SSH leases, including direct and brokered provisioning, shared Azure networking, SKU fallback, Azure docs, and cleanup support. Thanks @jwmoss.
 - Added `provider: e2b` for delegated E2B sandbox runs using E2B sandbox REST/envd APIs. Thanks @zozo123.
+- Added `provider: semaphore` for direct Semaphore CI testbox leases over SSH. Thanks @loadez.
 - Added an authenticated coordinator control WebSocket for low-latency run attach streams and lease heartbeats, with HTTP polling/heartbeat fallback for older brokers. Thanks @vincentkoc.
 - Added rescue-first desktop/WebVNC failure output that names the failing layer and prints exact `rescue:` or native VNC fallback commands when bridges, viewers, browser launches, VNC targets, or input stacks hang.
 - Added collaborative WebVNC observer mode, with one active controller, read-only observers, and a portal takeover button that shows who is controlling the session.
