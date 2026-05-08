@@ -9,6 +9,19 @@ Read when:
 
 Crabbox performance comes from avoiding repeated setup, keeping the sync small, choosing available capacity, and reusing project-defined hydration when it matters.
 
+## High-Latency Links
+
+Crabbox should not require a special slow-network mode. The CLI keeps SSH as
+the universal command transport, but uses SSH ControlMaster with a longer
+persist window so repeated probes, sync helpers, and commands avoid paying a
+new handshake every time. Streaming commands retry coordinator-provided
+fallback ports just like readiness and helper probes.
+
+When the broker supports it, `crabbox attach` and lease heartbeats use one
+authenticated coordinator WebSocket instead of repeated HTTP polls. If the
+socket cannot connect or drops, the CLI resumes through the existing HTTPS API
+from the last acknowledged run-event sequence.
+
 ## Warm Leases
 
 Use `warmup` for repeated agent loops:

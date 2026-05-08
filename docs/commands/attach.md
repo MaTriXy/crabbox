@@ -10,8 +10,10 @@ crabbox attach run_abcdef123456 --poll 500ms
 
 ## Behavior
 
-`attach` polls the coordinator for new run events on a fixed interval,
-prints them as they arrive, and exits when the run finishes.
+`attach` follows coordinator run events, prints them as they arrive, and exits
+when the run finishes. Newer brokers stream events over the authenticated
+coordinator control WebSocket; older brokers or dropped sockets fall back to
+the HTTPS events API from the last printed sequence.
 
 - stdout and stderr preview events are written back to stdout and stderr,
   preserving the stream split;
@@ -20,8 +22,8 @@ prints them as they arrive, and exits when the run finishes.
   message;
 - when the run has already finished, attach prints any remaining events
   and exits;
-- when the run is still active, attach polls until it sees a `finish`
-  event.
+- when the run is still active, attach waits for streamed events or polls until
+  it sees the run finish.
 
 `attach` is not detached command execution. It follows the events the
 original CLI is emitting; if that CLI process dies, the run state remains
@@ -40,7 +42,7 @@ after completion.
 ```text
 --id <run-id>       run id (also accepted as a positional argument)
 --after <seq>       resume after this event sequence number
---poll <duration>   polling interval, default 1s
+--poll <duration>   fallback poll interval and WebSocket idle check, default 1s
 ```
 
 ## Use Cases
