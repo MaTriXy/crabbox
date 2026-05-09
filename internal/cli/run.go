@@ -436,7 +436,6 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 		baseSHA := gitHydrateBaseSHA(repo, cfg.Sync.BaseRef)
 		hydrateGit := true
 		if hydratedByActions {
-			stepStart = time.Now()
 			reason, err := runSSHOutput(ctx, target, remoteGitHydrateStatus(workdir, cfg.Sync.BaseRef, baseSHA))
 			if err == nil && reason != "" {
 				timings.syncSteps.gitHydrateSkipped = true
