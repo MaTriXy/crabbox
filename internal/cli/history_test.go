@@ -131,7 +131,7 @@ func TestAttachCommandStreamsOverControlWebSocket(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	app := App{Stdout: &stdout, Stderr: &stderr}
-	if err := app.attach(context.Background(), []string{"run_123", "--poll", "1ms"}); err != nil {
+	if err := app.attach(context.Background(), []string{"run_123", "--poll", "50ms"}); err != nil {
 		t.Fatal(err)
 	}
 	if stdout.String() != "hello ws\n" {
@@ -212,7 +212,7 @@ func TestAttachCommandDrainsControlWebSocketBacklogPages(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	app := App{Stdout: &stdout, Stderr: &stderr}
-	if err := app.attach(context.Background(), []string{"run_123", "--poll", "1ms"}); err != nil {
+	if err := app.attach(context.Background(), []string{"run_123", "--poll", "50ms"}); err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte("line 001\n")) || !bytes.Contains(stdout.Bytes(), []byte("line 101\n")) {
