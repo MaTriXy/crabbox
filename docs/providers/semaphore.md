@@ -1,4 +1,4 @@
-# Provider: Semaphore
+# Semaphore Provider
 
 Read when:
 
@@ -7,8 +7,10 @@ Read when:
 - changing `internal/providers/semaphore`.
 
 Semaphore is an SSH lease provider that creates Semaphore CI jobs as testbox
-environments via the Semaphore REST API. Crabbox handles sync and command
-execution over SSH.
+environments through the Semaphore REST API. Semaphore owns the job, project
+secret context, caches, machine type, OS image, and debug SSH key. Crabbox owns
+the local repo claim, friendly slug, SSH sync, command execution, timing
+summary, and normalized list/status rendering.
 
 ## When To Use
 
@@ -22,7 +24,7 @@ workflows are required.
 
 ```sh
 crabbox warmup --provider semaphore --semaphore-host myorg.semaphoreci.com --semaphore-project my-app
-crabbox run --provider semaphore -- pnpm test
+crabbox run --provider semaphore --semaphore-machine f1-standard-4 -- pnpm test
 crabbox ssh --provider semaphore --id blue-lobster
 crabbox status --provider semaphore --id blue-lobster
 crabbox stop --provider semaphore blue-lobster
@@ -30,8 +32,9 @@ crabbox stop --provider semaphore blue-lobster
 
 ## Backend kind
 
-SSH lease. Provisions a standalone Semaphore job, retrieves SSH credentials via
-the debug SSH key API, returns a standard `LeaseTarget`.
+SSH lease. The provider provisions a standalone Semaphore job, waits for a
+running job with host and SSH port metadata, retrieves SSH credentials through
+the debug SSH key API, then returns a standard `LeaseTarget`.
 
 ## Configuration
 
@@ -71,14 +74,40 @@ Machine types: see [Semaphore docs](https://docs.semaphore.io/reference/machine-
 
 ## Lifecycle
 
-1. `POST /api/v1alpha/jobs` — create job with keepalive script
-2. Poll `GET /api/v1alpha/jobs/:id` until `RUNNING`
-3. `GET /api/v1alpha/jobs/:id/debug_ssh_key` — retrieve SSH key
-4. Crabbox syncs + runs over SSH
-5. `POST /api/v1alpha/jobs/:id/stop` — release
+1. `POST /api/v1alpha/jobs`: create a job with a keepalive script.
+2. Poll `GET /api/v1alpha/jobs/:id` until the job is `RUNNING` and includes a
+   usable IP/SSH port.
+3. `GET /api/v1alpha/jobs/:id/debug_ssh_key`: retrieve the SSH key.
+4. Crabbox syncs and runs commands over SSH.
+5. `POST /api/v1alpha/jobs/:id/stop`: release the job.
+
+## Capabilities
+
+- SSH: yes.
+- Crabbox sync: yes, standard SSH/rsync path.
+- Desktop/browser/code: no.
+- Actions hydration: no.
+- Coordinator: no.
 
 ## Limitations
 
 - Linux only.
 - No coordinator integration.
 - No VNC/desktop.
+- `--type` is ignored; use `semaphore.machine` or `--semaphore-machine`.
+- Provider cleanup depends on the Semaphore stop endpoint.
+
+## Gotchas
+
+- Host must be the Semaphore organization host, such as
+  `myorg.semaphoreci.com`, not the API path.
+- Token must belong to that host and have access to the configured project.
+- `401 Unauthorized` usually means the token and host do not match.
+- `idleTimeout` uses Go duration syntax, such as `30m` or `1h`.
+- Local claims are provider-scoped; a slug claimed by another provider is not
+  resolved as a Semaphore job.
+
+Related docs:
+
+- [Feature: Semaphore](../features/semaphore.md)
+- [Provider backends](../provider-backends.md)

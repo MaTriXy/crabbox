@@ -214,9 +214,14 @@ Optional Semaphore CI testbox:
 provider: semaphore
 semaphore:
   host: myorg.semaphoreci.com
-  token: ...
   project: my-app
+  machine: f1-standard-2
+  osImage: ubuntu2204
+  idleTimeout: 30m
 ```
+
+Keep the token in `CRABBOX_SEMAPHORE_TOKEN` or `SEMAPHORE_API_TOKEN`, not in
+repo config.
 
 Optional static macOS or Windows target:
 

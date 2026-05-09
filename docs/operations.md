@@ -250,7 +250,7 @@ Before tagging a release:
 - `go vet ./...`
 - `go test -race ./...`
 - `go build -trimpath -o bin/crabbox ./cmd/crabbox`
-- `scripts/check-go-coverage.sh 85.0`
+- `scripts/check-go-coverage.sh 90.0`
 - Worker format, lint, typecheck, tests, and build:
   `npm run format:check --prefix worker && npm run lint --prefix worker && npm run check --prefix worker && npm test --prefix worker && npm run build --prefix worker`
 - `npm run docs:check`

@@ -60,7 +60,7 @@ This page maps user-facing behavior back to implementation files. Keep docs desc
 - Worker Hetzner provider: `worker/src/hetzner.ts`
 - Worker AWS EC2 provider: `worker/src/aws.ts`
 - Worker AWS AMI create/read/promote routes: `worker/src/fleet.ts`, `worker/src/aws.ts`
-- Provider feature docs: `docs/features/aws.md`, `docs/features/azure.md`, `docs/features/hetzner.md`, `docs/features/blacksmith-testbox.md`, `docs/features/daytona.md`, `docs/features/islo.md`, `docs/features/e2b.md`
+- Provider feature docs: `docs/features/aws.md`, `docs/features/azure.md`, `docs/features/hetzner.md`, `docs/features/blacksmith-testbox.md`, `docs/features/semaphore.md`, `docs/features/daytona.md`, `docs/features/islo.md`, `docs/features/e2b.md`
 - Provider reference docs: `docs/providers/README.md`, `docs/providers/aws.md`, `docs/providers/azure.md`, `docs/providers/hetzner.md`, `docs/providers/ssh.md`, `docs/providers/blacksmith-testbox.md`, `docs/providers/daytona.md`, `docs/providers/islo.md`, `docs/providers/semaphore.md`, `docs/providers/e2b.md`
 - Provider/backend authoring guide: `docs/provider-backends.md`
 - CLI cloud-init bootstrap: `internal/cli/bootstrap.go`

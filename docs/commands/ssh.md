@@ -5,11 +5,17 @@
 ```sh
 crabbox ssh --id blue-lobster
 crabbox ssh --id blue-lobster --network tailscale
+crabbox ssh --provider semaphore --id blue-lobster
 crabbox ssh --provider daytona --id blue-lobster
 crabbox ssh --provider ssh --target macos --static-host mac-studio.local
 ```
 
-The output includes the per-lease private key path when Crabbox created one. Printing an SSH command touches coordinator leases because it signals intended manual use. In `provider=ssh` mode it resolves the configured static target. In `provider=daytona` mode the short-lived SSH token is redacted by default; pass `--show-secret` only when you need a pasteable command in a trusted terminal.
+The output includes the per-lease private key path when Crabbox created one.
+Printing an SSH command touches coordinator leases because it signals intended
+manual use. In `provider=ssh` mode it resolves the configured static target. In
+`provider=semaphore` mode it resolves the Semaphore debug SSH endpoint. In
+`provider=daytona` mode the short-lived SSH token is redacted by default; pass
+`--show-secret` only when you need a pasteable command in a trusted terminal.
 
 Flags:
 

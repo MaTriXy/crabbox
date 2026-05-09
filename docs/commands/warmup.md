@@ -13,6 +13,7 @@ crabbox warmup --provider azure --target windows
 crabbox warmup --provider aws --target macos --desktop --market on-demand --type mac2.metal
 crabbox warmup --actions-runner
 crabbox warmup --provider blacksmith-testbox --blacksmith-workflow .github/workflows/ci-check-testbox.yml --blacksmith-job test
+crabbox warmup --provider semaphore --semaphore-host myorg.semaphoreci.com --semaphore-project my-app
 crabbox warmup --provider daytona --daytona-snapshot crabbox-ready
 crabbox warmup --provider islo --islo-image docker.io/library/ubuntu:24.04
 crabbox warmup --provider e2b --e2b-template base
@@ -23,6 +24,10 @@ crabbox warmup --provider ssh --target windows --windows-mode normal --static-ho
 The command returns a stable `cbx_...` lease ID and a friendly slug. Reuse either for subsequent `run`, `status`, `ssh`, `inspect`, and `stop` commands; scripts should keep using the canonical ID.
 
 With `--provider blacksmith-testbox`, the canonical ID is the Blacksmith `tbx_...` ID returned by `blacksmith testbox warmup`; Crabbox still assigns and stores a local slug for reuse.
+
+With `--provider semaphore`, the canonical ID is a Crabbox `cbx_...` lease
+backed by a Semaphore CI job. Crabbox stores a local slug, retrieves the debug
+SSH endpoint/key from Semaphore, and later uses normal SSH sync/run.
 
 With `--provider daytona`, the canonical ID is a Crabbox `cbx_...` lease backed
 by a Daytona sandbox created from `daytona.snapshot`. `run` uses Daytona
@@ -113,6 +118,11 @@ Flags:
 --blacksmith-workflow <file|name|id>
 --blacksmith-job <job>
 --blacksmith-ref <ref>
+--semaphore-host <host>
+--semaphore-project <project>
+--semaphore-machine <type>
+--semaphore-os-image <image>
+--semaphore-idle-timeout <duration>
 --e2b-api-url <url>
 --e2b-domain <domain>
 --e2b-template <template-id>

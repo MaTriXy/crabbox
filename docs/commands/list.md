@@ -7,6 +7,7 @@ crabbox list
 crabbox list --provider aws
 crabbox list --provider ssh --target macos --static-host mac-studio.local
 crabbox list --provider blacksmith-testbox
+crabbox list --provider semaphore
 crabbox list --provider daytona
 crabbox list --provider islo
 crabbox list --provider e2b
@@ -30,8 +31,8 @@ owners as `stuck`, exposes a copyable local stop command, and links each row to
 a visibility-only runner detail page. Missing runners from later syncs are
 marked stale rather than treated as Crabbox leases.
 
-In `daytona`, `islo`, and `e2b` modes, rendering is core-owned: human output
-and `--json` use the normalized Crabbox lease view.
+In `semaphore`, `daytona`, `islo`, and `e2b` modes, rendering is core-owned:
+human output and `--json` use the normalized Crabbox lease view.
 
 Flags:
 

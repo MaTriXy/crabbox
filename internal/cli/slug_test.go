@@ -45,6 +45,10 @@ func TestSlugWithCollisionSuffix(t *testing.T) {
 	if !strings.HasPrefix(got, "blue-lobster-") || len(got) != len("blue-lobster-0000") {
 		t.Fatalf("unexpected collision slug %q", got)
 	}
+	got = slugWithCollisionSuffix("", "cbx_abcdef123456")
+	if !strings.HasPrefix(got, newLeaseSlug("cbx_abcdef123456")+"-") {
+		t.Fatalf("empty collision base did not fall back to generated slug: %q", got)
+	}
 }
 
 func TestAllocateDirectLeaseSlugAddsSuffixOnCollision(t *testing.T) {
@@ -105,5 +109,11 @@ func TestFindServerByAliasAmbiguousSlugFails(t *testing.T) {
 	}
 	if _, _, err := findServerByAlias(servers, "blue-lobster"); err == nil {
 		t.Fatal("expected ambiguous slug error")
+	}
+}
+
+func TestServerSlugHandlesMissingLabels(t *testing.T) {
+	if got := serverSlug(Server{}); got != "" {
+		t.Fatalf("serverSlug without labels=%q", got)
 	}
 }

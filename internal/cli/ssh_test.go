@@ -779,6 +779,58 @@ func TestAWSServerTypeForClass(t *testing.T) {
 	}
 }
 
+func TestServerTypeForProviderClassDirectProviders(t *testing.T) {
+	tests := []struct {
+		provider string
+		class    string
+		want     string
+	}{
+		{provider: "blacksmith-testbox", class: "beast", want: ""},
+		{provider: "ssh", class: "beast", want: ""},
+		{provider: "islo", class: "beast", want: ""},
+		{provider: "e2b", class: "beast", want: "base"},
+		{provider: "daytona", class: "beast", want: "snapshot"},
+		{provider: "azure", class: "standard", want: "Standard_D32ads_v6"},
+		{provider: "hetzner", class: "fast", want: "ccx43"},
+	}
+	for _, tt := range tests {
+		if got := serverTypeForProviderClass(tt.provider, tt.class); got != tt.want {
+			t.Fatalf("serverTypeForProviderClass(%q, %q)=%q want %q", tt.provider, tt.class, got, tt.want)
+		}
+	}
+}
+
+func TestAWSInstanceTypeCandidatesForTargetsAndModes(t *testing.T) {
+	tests := []struct {
+		name        string
+		target      string
+		windowsMode string
+		class       string
+		want        []string
+	}{
+		{name: "macos", target: targetMacOS, class: "beast", want: []string{"mac2.metal"}},
+		{name: "windows normal standard", target: targetWindows, class: "standard", want: []string{"m7i.large", "m7a.large", "t3.large"}},
+		{name: "windows normal custom", target: targetWindows, class: "m7i.8xlarge", want: []string{"m7i.8xlarge"}},
+		{name: "windows wsl2 fast", target: targetWindows, windowsMode: windowsModeWSL2, class: "fast", want: []string{"m8i.xlarge", "m8i-flex.xlarge", "c8i.xlarge", "r8i.xlarge"}},
+		{name: "windows wsl2 custom", target: targetWindows, windowsMode: windowsModeWSL2, class: "m8i.8xlarge", want: []string{"m8i.8xlarge"}},
+		{name: "linux large", target: targetLinux, class: "large", want: []string{"c7a.24xlarge", "c7i.24xlarge", "m7a.24xlarge", "m7i.24xlarge", "r7a.24xlarge", "c7a.16xlarge", "c7a.12xlarge"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := awsInstanceTypeCandidatesForTargetModeClass(tt.target, tt.windowsMode, tt.class)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("candidates=%v want %v", got, tt.want)
+			}
+		})
+	}
+
+	got := awsInstanceTypeCandidatesForTargetClass(targetWindows, "fast")
+	want := []string{"m7i.xlarge", "m7a.xlarge", "t3.xlarge"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("target class candidates=%v want %v", got, want)
+	}
+}
+
 func TestAWSLaunchCandidatesAddsPolicyFallbackUnlessExact(t *testing.T) {
 	got := awsLaunchCandidates(Config{Provider: "aws", Class: "beast", ServerType: "c7a.48xlarge"})
 	if got[len(got)-1] != "t3.small" {

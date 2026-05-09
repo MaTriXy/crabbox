@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.8.0 - 2026-05-09
+
 ### Added
 
 - Added `provider: azure` for managed Azure Linux and native Windows SSH leases, including direct and brokered provisioning, shared Azure networking, SKU fallback, Azure docs, and cleanup support. Thanks @jwmoss.
@@ -14,8 +16,10 @@
 
 ### Changed
 
+- Expanded Semaphore and E2B documentation across provider, configuration, CLI, and command pages so direct providers have first-class setup, auth, lifecycle, and troubleshooting guidance.
 - Changed `crabbox attach` to prefer the coordinator control WebSocket, drain retained backlog pages, and then stream live run output with less polling latency.
 - Changed WebVNC portal sharing to open as an in-session modal, added a standalone share-page back action, and simplified collaboration controls into a single stateful control button.
+- Raised the Go core coverage gate to 90% and added regression coverage around provider claims, config parsing, bootstrap defaults, run-log previews, and slug fallbacks.
 
 ### Fixed
 

@@ -38,6 +38,7 @@ Read when:
 - [Azure](azure.md): Azure Linux/native Windows, shared infra, capacity, and cleanup.
 - [Hetzner](hetzner.md): Linux-only managed Hetzner behavior, classes, and cleanup.
 - [Blacksmith Testbox](blacksmith-testbox.md): delegated Testbox backend behavior.
+- [Semaphore](semaphore.md): Semaphore CI job leases with Crabbox SSH sync/run.
 - [Daytona](daytona.md): Daytona SDK/toolbox sandbox leases with optional short-lived SSH access.
 - [Islo](islo.md): delegated Islo sandbox runs using the Islo Go SDK.
 - [E2B](e2b.md): delegated E2B sandbox runs using E2B sandbox APIs.

@@ -26,6 +26,7 @@ ssh         Existing SSH host selected by static.host
 Direct provider backends can also run without the Crabbox coordinator:
 
 ```text
+semaphore  Semaphore CI jobs exposed as SSH leases
 daytona    Daytona sandboxes with SDK/toolbox run and short-lived SSH access
 islo       Islo sandboxes with delegated command execution
 e2b        E2B sandboxes with delegated command execution
@@ -39,6 +40,7 @@ e2b        E2B sandboxes with delegated command execution
 - [Hetzner](../providers/hetzner.md): Linux-only managed provider behavior, classes, and cleanup.
 - [Static SSH](../providers/ssh.md): existing Linux, macOS, and Windows SSH hosts.
 - [Blacksmith Testbox](../providers/blacksmith-testbox.md): delegated Testbox backend behavior.
+- [Semaphore](../providers/semaphore.md): Semaphore CI job leases with Crabbox SSH sync/run.
 - [Daytona](../providers/daytona.md): Daytona SDK/toolbox sandbox leases.
 - [Islo](../providers/islo.md): delegated Islo sandbox execution.
 - [E2B](../providers/e2b.md): delegated E2B sandbox execution.
@@ -134,6 +136,13 @@ brokered Worker path.
 
 Crabbox can also wrap Blacksmith Testboxes with `provider: blacksmith-testbox`. That backend does not use the Crabbox broker or direct cloud credentials. It shells out to the authenticated Blacksmith CLI for `testbox warmup`, `run`, `status`, `list`, and `stop`, while Crabbox keeps local slugs, repo claims, config, and timing summaries. See [Blacksmith Testbox](blacksmith-testbox.md).
 
+Crabbox can use Semaphore CI jobs with `provider: semaphore`. Semaphore is an
+SSH lease backend: the provider creates a standalone Semaphore job, waits until
+the job exposes host/port metadata and a debug SSH key, then Crabbox performs
+normal SSH sync and command execution. Use it when the test should run in the
+same machine image, project secret context, and cache plane as Semaphore CI. It
+does not use the Crabbox coordinator. See [Semaphore](semaphore.md).
+
 Crabbox can use Daytona sandboxes with `provider: daytona`. Crabbox creates a
 sandbox from `daytona.snapshot`, syncs and executes `run` through Daytona's
 SDK/toolbox APIs, and mints short-lived SSH tokens only for explicit `ssh`
@@ -189,6 +198,7 @@ Related docs:
 - [Hetzner](../providers/hetzner.md)
 - [Tailscale](tailscale.md)
 - [Blacksmith Testbox](../providers/blacksmith-testbox.md)
+- [Semaphore](../providers/semaphore.md)
 - [Daytona](../providers/daytona.md)
 - [Islo](../providers/islo.md)
 - [E2B](../providers/e2b.md)

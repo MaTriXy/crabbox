@@ -169,6 +169,11 @@ func TestAzureWindowsBootstrapPowerShell(t *testing.T) {
 	cfg.Provider = "azure"
 	cfg.TargetOS = targetWindows
 	cfg.WorkRoot = defaultWindowsWorkRoot
+	defaultWorkRootCfg := cfg
+	defaultWorkRootCfg.WorkRoot = ""
+	if got := azureWindowsBootstrapPowerShell(defaultWorkRootCfg, "ssh-rsa test"); !strings.Contains(got, `$workRoot = 'C:\crabbox'`) {
+		t.Fatalf("azure bootstrap should default work root")
+	}
 	got := azureWindowsBootstrapPowerShell(cfg, "ssh-rsa test")
 	for _, want := range []string{
 		"OpenSSH-Win64.zip",

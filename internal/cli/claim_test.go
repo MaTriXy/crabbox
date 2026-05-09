@@ -26,6 +26,34 @@ func TestClaimLeaseForRepoWritesAndUpdatesClaim(t *testing.T) {
 	}
 }
 
+func TestClaimLeaseForRepoConfigScopesStaticProviderClaims(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	repo := filepath.Join(t.TempDir(), "repo")
+	cfg := Config{Provider: "ssh"}
+	if err := claimLeaseForRepoConfig("cbx_static", "mac-mini", cfg, repo, 10*time.Minute, false); err != nil {
+		t.Fatal(err)
+	}
+	claim, err := readLeaseClaim("cbx_static")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claim.Provider != staticProvider {
+		t.Fatalf("provider=%q want %q", claim.Provider, staticProvider)
+	}
+
+	cfg.Provider = "aws"
+	if err := claimLeaseForRepoConfig("cbx_aws", "cloud-box", cfg, repo, 0, false); err != nil {
+		t.Fatal(err)
+	}
+	claim, err = readLeaseClaim("cbx_aws")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claim.Provider != "" {
+		t.Fatalf("provider=%q want empty for managed provider claim", claim.Provider)
+	}
+}
+
 func TestClaimLeaseForRepoRejectsOtherRepoUnlessReclaimed(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	firstRepo := filepath.Join(t.TempDir(), "first")
@@ -114,5 +142,37 @@ func TestResolveLeaseClaimFindsSlug(t *testing.T) {
 	}
 	if !ok || claim.LeaseID != "tbx_abc123" || claim.Provider != "blacksmith-testbox" {
 		t.Fatalf("unexpected claim ok=%t claim=%#v", ok, claim)
+	}
+}
+
+func TestResolveLeaseClaimFallbacks(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	if claim, ok, err := resolveLeaseClaim(""); err != nil || ok || claim.LeaseID != "" {
+		t.Fatalf("empty identifier resolved ok=%t claim=%#v err=%v", ok, claim, err)
+	}
+	if claim, ok, err := resolveLeaseClaim("missing-slug"); err != nil || ok || claim.LeaseID != "" {
+		t.Fatalf("missing claims dir resolved ok=%t claim=%#v err=%v", ok, claim, err)
+	}
+
+	if err := claimLeaseForRepo("cbx_abc123abc123", "Blue Lobster", "/repo", time.Minute, false); err != nil {
+		t.Fatal(err)
+	}
+	if claim, ok, err := resolveLeaseClaim("cbx_abc123abc123"); err != nil || !ok || claim.Slug != "Blue Lobster" {
+		t.Fatalf("direct ID resolve ok=%t claim=%#v err=%v", ok, claim, err)
+	}
+
+	dir, err := crabboxStateDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	claimsDir := filepath.Join(dir, "claims")
+	if err := os.MkdirAll(filepath.Join(claimsDir, "nested"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(claimsDir, "note.txt"), []byte("ignore me"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if claim, ok, err := resolveLeaseClaim("not-blue-lobster"); err != nil || ok || claim.LeaseID != "" {
+		t.Fatalf("unmatched slug resolved ok=%t claim=%#v err=%v", ok, claim, err)
 	}
 }

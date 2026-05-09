@@ -172,6 +172,35 @@ func TestCloudInitTailscaleProfile(t *testing.T) {
 	}
 }
 
+func TestCloudInitTailscaleDefaultsAndMissingAuthKey(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Tailscale.Enabled = true
+	cfg.Tailscale.AuthKey = "tskey-secret"
+	got := cloudInit(cfg, "ssh-ed25519 test")
+	for _, want := range []string{
+		"install -d -m 0750 -o 'crabbox' -g 'crabbox' /var/lib/crabbox",
+		"tailscale up --auth-key=\"$TS_AUTHKEY\" --hostname='crabbox-lease'",
+		"printf '%s\\n' 'crabbox-lease' > /var/lib/crabbox/tailscale-hostname",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("cloudInit(tailscale defaults) missing %q", want)
+		}
+	}
+
+	cfg.Tailscale.AuthKey = ""
+	got = cloudInit(cfg, "ssh-ed25519 test")
+	if !strings.Contains(got, "tailscale requested but no auth key was injected") {
+		t.Fatalf("cloudInit(tailscale missing auth key) missing error marker")
+	}
+}
+
+func TestAWSUserDataDefaultsToCloudInit(t *testing.T) {
+	got := awsUserData(baseConfig(), "ssh-ed25519 test")
+	if !strings.Contains(got, "#cloud-config") || !strings.Contains(got, "ssh-ed25519 test") {
+		t.Fatalf("awsUserData(default) did not return Linux cloud-init")
+	}
+}
+
 func TestAWSUserDataWindowsProfile(t *testing.T) {
 	cfg := baseConfig()
 	cfg.Provider = "aws"
@@ -181,6 +210,11 @@ func TestAWSUserDataWindowsProfile(t *testing.T) {
 	userData := awsUserData(cfg, "ssh-ed25519 test")
 	if !strings.Contains(userData, "version: 1.1") || !strings.Contains(userData, "task: enableOpenSsh") {
 		t.Fatalf("windows user data should enable EC2Launch OpenSSH:\n%s", userData)
+	}
+	defaultWorkRootCfg := cfg
+	defaultWorkRootCfg.WorkRoot = ""
+	if got := windowsBootstrapPowerShell(defaultWorkRootCfg, "ssh-ed25519 test"); !strings.Contains(got, `$workRoot = 'C:\crabbox'`) {
+		t.Fatalf("windows user data should default work root, got missing marker")
 	}
 	got := windowsBootstrapPowerShell(cfg, "ssh-ed25519 test")
 	for _, want := range []string{
@@ -261,6 +295,11 @@ func TestAWSUserDataMacOSProfile(t *testing.T) {
 	cfg.TargetOS = targetMacOS
 	cfg.SSHUser = "ec2-user"
 	cfg.WorkRoot = defaultMacOSWorkRoot
+	defaultWorkRootCfg := cfg
+	defaultWorkRootCfg.WorkRoot = ""
+	if got := macOSUserData(defaultWorkRootCfg, "ssh-ed25519 test"); !strings.Contains(got, defaultMacOSWorkRoot) {
+		t.Fatalf("macOS user data should default work root")
+	}
 	got := awsUserData(cfg, "ssh-ed25519 test")
 	for _, want := range []string{
 		"#!/bin/bash",

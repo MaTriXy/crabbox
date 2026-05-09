@@ -13,6 +13,7 @@ crabbox run --desktop --browser --shell 'echo "$DISPLAY"; "$BROWSER" --version'
 crabbox run --id blue-lobster --shell 'pnpm install --frozen-lockfile && pnpm test'
 crabbox run --id cbx_abcdef123456 --junit junit.xml -- go test ./...
 crabbox run --provider blacksmith-testbox --blacksmith-workflow .github/workflows/ci-check-testbox.yml --blacksmith-job test -- pnpm test
+crabbox run --provider semaphore --semaphore-project my-app -- pnpm test
 crabbox run --provider daytona --daytona-snapshot crabbox-ready -- pnpm test
 crabbox run --provider islo --islo-image docker.io/library/ubuntu:24.04 -- pnpm test
 crabbox run --provider e2b --e2b-template base -- pnpm test
@@ -25,6 +26,10 @@ crabbox run --provider ssh --target windows --windows-mode wsl2 --static-host wi
 If `--id` is omitted, Crabbox creates a fresh non-kept lease and releases it when the command exits. `--id` accepts the stable `cbx_...` ID or the active friendly slug.
 
 With `--provider blacksmith-testbox`, `--id` accepts a Blacksmith `tbx_...` ID or a local Crabbox slug. Crabbox forwards the command to `blacksmith testbox run`, delegates sync to Blacksmith, and prints `sync=delegated` in the final timing summary.
+
+With `--provider semaphore`, `--id` accepts a Semaphore-backed Crabbox
+`cbx_...` ID or local slug. Semaphore owns the CI job and debug SSH endpoint;
+Crabbox syncs over SSH and runs the command through the standard SSH executor.
 
 With `--provider daytona`, `--id` accepts a Daytona-backed Crabbox `cbx_...` ID
 or local slug. Crabbox uploads the sync archive through Daytona toolbox file
@@ -133,6 +138,11 @@ Flags:
 --blacksmith-workflow <file|name|id>
 --blacksmith-job <job>
 --blacksmith-ref <ref>
+--semaphore-host <host>
+--semaphore-project <project>
+--semaphore-machine <type>
+--semaphore-os-image <image>
+--semaphore-idle-timeout <duration>
 --e2b-api-url <url>
 --e2b-domain <domain>
 --e2b-template <template-id>

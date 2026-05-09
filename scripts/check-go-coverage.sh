@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-threshold="${1:-85.0}"
+threshold="${1:-90.0}"
 profile="${TMPDIR:-/tmp}/crabbox-go-coverage.out"
 core_profile="${TMPDIR:-/tmp}/crabbox-go-core-coverage.out"
 

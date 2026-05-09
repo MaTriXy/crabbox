@@ -90,3 +90,14 @@ func TestRunLogFallbackPreviewKeepsTail(t *testing.T) {
 		t.Fatalf("preview does not keep tail: suffix=%q", preview[len(preview)-8:])
 	}
 }
+
+func TestRunLogFallbackPreviewKeepsShortLogs(t *testing.T) {
+	for _, truncated := range []bool{false, true} {
+		if got := runLogFallbackPreview("short log", truncated); got != "short log" {
+			t.Fatalf("short preview truncated=%t got=%q", truncated, got)
+		}
+	}
+	if got := runLogFallbackPreview("", false); got != "" {
+		t.Fatalf("empty preview=%q", got)
+	}
+}

@@ -33,8 +33,8 @@ crabbox init [--force]
 crabbox config show [--json]
 crabbox config path
 crabbox config set-broker --url <url> --token-stdin [--provider hetzner|aws|azure]
-crabbox warmup [--provider hetzner|aws|azure|ssh|blacksmith-testbox|daytona|islo] [--target linux|macos|windows] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--profile <name>] [--idle-timeout <duration>] [--timing-json]
-crabbox run [--id <lease-id-or-slug>] [--provider hetzner|aws|azure|ssh|blacksmith-testbox|daytona|islo] [--target linux|macos|windows] [--windows-mode normal|wsl2] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--shell] [--checksum] [--debug] [--force-sync-large] [--timing-json] [--blacksmith-workflow <workflow>] -- <command...>
+crabbox warmup [--provider hetzner|aws|azure|ssh|blacksmith-testbox|semaphore|daytona|islo|e2b] [--target linux|macos|windows] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--profile <name>] [--idle-timeout <duration>] [--timing-json]
+crabbox run [--id <lease-id-or-slug>] [--provider hetzner|aws|azure|ssh|blacksmith-testbox|semaphore|daytona|islo|e2b] [--target linux|macos|windows] [--windows-mode normal|wsl2] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--shell] [--checksum] [--debug] [--force-sync-large] [--timing-json] [--blacksmith-workflow <workflow>] -- <command...>
 crabbox desktop launch --id <lease-id-or-slug> [--browser] [--url <url>] [--egress <profile>] [--webvnc] [--open] [-- <command...>]
 crabbox desktop doctor --id <lease-id-or-slug> [--network auto|tailscale|public]
 crabbox desktop click --id <lease-id-or-slug> --x <n> --y <n> [--network auto|tailscale|public]
@@ -286,7 +286,7 @@ Flags:
 
 ```text
 --id <lease-id-or-slug>  reuse an existing lease
---provider <name>        hetzner, aws, ssh, blacksmith-testbox, daytona, or islo
+--provider <name>        hetzner, aws, azure, ssh, blacksmith-testbox, semaphore, daytona, islo, or e2b
 --target <name>          linux, macos, or windows
 --windows-mode <mode>    normal or wsl2
 --static-host <host>     existing SSH host for provider=ssh
@@ -323,6 +323,16 @@ Flags:
 --blacksmith-workflow <file|name|id> Blacksmith Testbox workflow
 --blacksmith-job <job>  Blacksmith Testbox workflow job
 --blacksmith-ref <ref>  Blacksmith Testbox git ref
+--semaphore-host <host> Semaphore organization host
+--semaphore-project <project> Semaphore project name
+--semaphore-machine <type> Semaphore machine type
+--semaphore-os-image <image> Semaphore OS image
+--semaphore-idle-timeout <duration> Semaphore keepalive idle timeout
+--e2b-api-url <url>     E2B API URL override
+--e2b-domain <domain>   E2B sandbox domain override
+--e2b-template <id>     E2B sandbox template
+--e2b-workdir <path>    E2B sandbox working directory
+--e2b-user <user>       E2B sandbox user override
 ```
 
 Secrets must not be accepted as flag values. Env forwarding is name-based only.
@@ -330,6 +340,11 @@ Secrets must not be accepted as flag values. Env forwarding is name-based only.
 Crabbox stores local lease claims under its state directory. `warmup` and first reuse claim the lease for the current repo; later `run`, `ssh`, `cache`, and `actions hydrate/register` refuse a conflicting repo claim unless `--reclaim` is set.
 
 With `provider: blacksmith-testbox`, Crabbox delegates machine setup, sync, and command transport to the Blacksmith CLI. `--sync-only` is unsupported, sync timing is reported as `sync=delegated`, and Blacksmith auth is handled by `blacksmith auth login`, not `crabbox login`.
+
+With `provider: semaphore`, Crabbox creates a Semaphore CI job, waits for the
+debug SSH endpoint, then uses the normal Crabbox SSH sync/run path. Auth comes
+from `CRABBOX_SEMAPHORE_TOKEN` or `SEMAPHORE_API_TOKEN`; host and project come
+from provider flags, env, or config.
 
 With `provider: daytona`, Crabbox creates Daytona sandboxes from
 `daytona.snapshot`, uploads workspaces through Daytona toolbox file APIs, and
@@ -341,6 +356,12 @@ authenticated Daytona CLI profile created by `daytona login --api-key`. With
 Islo Go SDK, uploads the Crabbox sync manifest as a gzipped archive into the
 Islo workdir, and rejects only the SSH/rsync-specific `--sync-only` and
 `--checksum` modes.
+
+With `provider: e2b`, Crabbox creates E2B sandboxes, uploads the sync archive
+through E2B file/envd APIs, and streams command output through E2B process APIs.
+Auth comes from `CRABBOX_E2B_API_KEY` or `E2B_API_KEY`. E2B is not an SSH lease,
+so `ssh`, `desktop`, `vnc`, `code`, Actions hydration, and `--checksum` are not
+supported.
 
 ## Exit Codes
 
@@ -521,6 +542,33 @@ blacksmith:
   debug: false
 ```
 
+Semaphore config:
+
+```yaml
+provider: semaphore
+semaphore:
+  host: myorg.semaphoreci.com
+  project: my-app
+  machine: f1-standard-2
+  osImage: ubuntu2204
+  idleTimeout: 30m
+```
+
+Keep the token in `CRABBOX_SEMAPHORE_TOKEN` or `SEMAPHORE_API_TOKEN`.
+
+E2B config:
+
+```yaml
+provider: e2b
+e2b:
+  template: base
+  workdir: crabbox
+  apiUrl: https://api.e2b.app
+  domain: e2b.app
+```
+
+Keep the token in `CRABBOX_E2B_API_KEY` or `E2B_API_KEY`.
+
 ## Environment Variables
 
 ```text
@@ -585,6 +633,18 @@ CRABBOX_BLACKSMITH_JOB
 CRABBOX_BLACKSMITH_REF
 CRABBOX_BLACKSMITH_IDLE_TIMEOUT
 CRABBOX_BLACKSMITH_DEBUG
+CRABBOX_SEMAPHORE_HOST
+CRABBOX_SEMAPHORE_TOKEN
+CRABBOX_SEMAPHORE_PROJECT
+CRABBOX_SEMAPHORE_MACHINE
+CRABBOX_SEMAPHORE_OS_IMAGE
+CRABBOX_SEMAPHORE_IDLE_TIMEOUT
+CRABBOX_E2B_API_KEY
+CRABBOX_E2B_API_URL
+CRABBOX_E2B_DOMAIN
+CRABBOX_E2B_TEMPLATE
+CRABBOX_E2B_WORKDIR
+CRABBOX_E2B_USER
 CRABBOX_RESULTS_JUNIT
 CRABBOX_SYNC_CHECKSUM
 CRABBOX_SYNC_DELETE
@@ -631,6 +691,8 @@ CRABBOX_DOMAIN
 CRABBOX_FALLBACK_DOMAIN
 HCLOUD_TOKEN/HETZNER_TOKEN
 AWS_PROFILE/AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_SESSION_TOKEN
+SEMAPHORE_HOST/SEMAPHORE_API_TOKEN/SEMAPHORE_PROJECT
+E2B_API_KEY/E2B_API_URL/E2B_DOMAIN
 GITHUB_TOKEN
 ```
 

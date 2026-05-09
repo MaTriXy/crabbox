@@ -34,6 +34,8 @@ crabbox stop --provider e2b blue-lobster
 export E2B_API_KEY=e2b_...
 ```
 
+`CRABBOX_E2B_API_KEY` is also accepted and wins over `E2B_API_KEY`.
+
 `E2B_API_URL` or `e2b.apiUrl` can override the default
 `https://api.e2b.app`. `E2B_DOMAIN` or `e2b.domain` can override the default
 sandbox domain `e2b.app`.
@@ -89,6 +91,10 @@ Provider flags:
 - `--checksum` is rejected because E2B does not expose a Crabbox SSH/rsync
   target. Large-sync guardrails still apply, and `--force-sync-large` is
   honored for intentional large archive syncs.
+- Use `--sync-only` when you want to pre-upload the archive into a kept sandbox
+  before a later command.
+- If a live smoke should prove cleanup, run `crabbox list --provider e2b --json`
+  after `stop` or a non-kept run and verify no Crabbox-owned sandbox remains.
 
 Related docs:
 

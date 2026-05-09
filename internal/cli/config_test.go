@@ -345,15 +345,23 @@ func TestEnvOverridesConfig(t *testing.T) {
 	t.Setenv("CRABBOX_CONFIG", "")
 	t.Setenv("CRABBOX_PROVIDER", "hetzner")
 	t.Setenv("CRABBOX_DEFAULT_CLASS", "fast")
+	t.Setenv("CRABBOX_SERVER_TYPE", "cx22")
+	t.Setenv("CRABBOX_DESKTOP", "true")
+	t.Setenv("CRABBOX_BROWSER", "true")
+	t.Setenv("CRABBOX_CODE", "true")
 	t.Setenv("CRABBOX_TTL", "3h")
 	t.Setenv("CRABBOX_IDLE_TIMEOUT", "20m")
 	t.Setenv("CRABBOX_AWS_SSH_CIDRS", "198.51.100.7/32,203.0.113.8/32")
+	t.Setenv("CRABBOX_AZURE_SSH_CIDRS", "198.51.100.9/32,203.0.113.10/32")
 	t.Setenv("CRABBOX_SSH_FALLBACK_PORTS", "none")
 	t.Setenv("CRABBOX_ACCESS_CLIENT_ID", "env-access-client")
 	t.Setenv("CRABBOX_ACCESS_CLIENT_SECRET", "env-access-secret")
 	t.Setenv("CRABBOX_ACCESS_TOKEN", "env-access-jwt")
 	t.Setenv("CRABBOX_COORDINATOR_ADMIN_TOKEN", "env-admin-secret")
 	t.Setenv("CRABBOX_NETWORK", "public")
+	t.Setenv("CRABBOX_CAPACITY_HINTS", "false")
+	t.Setenv("CRABBOX_CAPACITY_REGIONS", "eu-west-1,us-east-1")
+	t.Setenv("CRABBOX_CAPACITY_AVAILABILITY_ZONES", "eu-west-1a,eu-west-1b")
 	t.Setenv("CRABBOX_TAILSCALE_TAGS", "tag:crabbox,tag:ci")
 	t.Setenv("CRABBOX_TAILSCALE_HOSTNAME_TEMPLATE", "lease-{id}")
 	t.Setenv("CRABBOX_TAILSCALE_AUTH_KEY", "tskey-secret")
@@ -402,6 +410,23 @@ func TestEnvOverridesConfig(t *testing.T) {
 	t.Setenv("CRABBOX_SEMAPHORE_MACHINE", "f1-standard-env")
 	t.Setenv("CRABBOX_SEMAPHORE_OS_IMAGE", "ubuntu-env")
 	t.Setenv("CRABBOX_SEMAPHORE_IDLE_TIMEOUT", "22m")
+	t.Setenv("CRABBOX_BLACKSMITH_IDLE_TIMEOUT", "2h")
+	t.Setenv("CRABBOX_BLACKSMITH_DEBUG", "true")
+	t.Setenv("CRABBOX_ACTIONS_RUNNER_LABELS", "crabbox,linux-large")
+	t.Setenv("CRABBOX_ACTIONS_EPHEMERAL", "false")
+	t.Setenv("CRABBOX_RESULTS_JUNIT", "junit.xml,build/test.xml")
+	t.Setenv("CRABBOX_CACHE_PNPM", "false")
+	t.Setenv("CRABBOX_CACHE_NPM", "false")
+	t.Setenv("CRABBOX_CACHE_DOCKER", "true")
+	t.Setenv("CRABBOX_CACHE_GIT", "false")
+	t.Setenv("CRABBOX_CACHE_PURGE_ON_RELEASE", "true")
+	t.Setenv("CRABBOX_SYNC_CHECKSUM", "true")
+	t.Setenv("CRABBOX_SYNC_DELETE", "false")
+	t.Setenv("CRABBOX_SYNC_GIT_SEED", "false")
+	t.Setenv("CRABBOX_SYNC_FINGERPRINT", "false")
+	t.Setenv("CRABBOX_SYNC_TIMEOUT", "45m")
+	t.Setenv("CRABBOX_SYNC_ALLOW_LARGE", "true")
+	t.Setenv("CRABBOX_ENV_ALLOW", "CI,NODE_OPTIONS,CUSTOM_*")
 	path := userConfigPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
@@ -414,11 +439,17 @@ func TestEnvOverridesConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Provider != "hetzner" || cfg.Class != "fast" || cfg.ServerType != "ccx43" || cfg.TTL.String() != "3h0m0s" || cfg.IdleTimeout.String() != "20m0s" {
+	if cfg.Provider != "hetzner" || cfg.Class != "fast" || cfg.ServerType != "cx22" || !cfg.ServerTypeExplicit || cfg.TTL.String() != "3h0m0s" || cfg.IdleTimeout.String() != "20m0s" {
 		t.Fatalf("unexpected config: provider=%s class=%s type=%s ttl=%s idle=%s", cfg.Provider, cfg.Class, cfg.ServerType, cfg.TTL, cfg.IdleTimeout)
+	}
+	if !cfg.Desktop || !cfg.Browser || !cfg.Code {
+		t.Fatalf("capability env not loaded: desktop=%t browser=%t code=%t", cfg.Desktop, cfg.Browser, cfg.Code)
 	}
 	if len(cfg.AWSSSHCIDRs) != 2 || cfg.AWSSSHCIDRs[0] != "198.51.100.7/32" || cfg.AWSSSHCIDRs[1] != "203.0.113.8/32" {
 		t.Fatalf("AWSSSHCIDRs=%v", cfg.AWSSSHCIDRs)
+	}
+	if len(cfg.AzureSSHCIDRs) != 2 || cfg.AzureSSHCIDRs[0] != "198.51.100.9/32" || cfg.AzureSSHCIDRs[1] != "203.0.113.10/32" {
+		t.Fatalf("AzureSSHCIDRs=%v", cfg.AzureSSHCIDRs)
 	}
 	if len(cfg.SSHFallbackPorts) != 0 {
 		t.Fatalf("SSHFallbackPorts=%v want disabled fallback", cfg.SSHFallbackPorts)
@@ -435,6 +466,9 @@ func TestEnvOverridesConfig(t *testing.T) {
 	if cfg.Network != NetworkPublic || cfg.Tailscale.AuthKey != "tskey-secret" || cfg.Tailscale.HostnameTemplate != "lease-{id}" || cfg.Tailscale.ExitNode != "mac-studio.tailnet.ts.net" || !cfg.Tailscale.ExitNodeAllowLANAccess {
 		t.Fatalf("unexpected tailscale env: network=%s tailscale=%#v", cfg.Network, cfg.Tailscale)
 	}
+	if cfg.Capacity.Hints || len(cfg.Capacity.Regions) != 2 || len(cfg.Capacity.AvailabilityZones) != 2 {
+		t.Fatalf("unexpected capacity env: %#v", cfg.Capacity)
+	}
 	if len(cfg.Tailscale.Tags) != 2 || cfg.Tailscale.Tags[1] != "tag:ci" {
 		t.Fatalf("unexpected tailscale tags: %#v", cfg.Tailscale.Tags)
 	}
@@ -449,6 +483,24 @@ func TestEnvOverridesConfig(t *testing.T) {
 	}
 	if cfg.Semaphore.Host != "semaphore-env.example.test" || cfg.Semaphore.Token != "semaphore-token-env" || cfg.Semaphore.Project != "semaphore-project-env" || cfg.Semaphore.Machine != "f1-standard-env" || cfg.Semaphore.OSImage != "ubuntu-env" || cfg.Semaphore.IdleTimeout != "22m" {
 		t.Fatalf("unexpected semaphore env: %#v", cfg.Semaphore)
+	}
+	if cfg.Blacksmith.IdleTimeout != 2*time.Hour || !cfg.Blacksmith.Debug {
+		t.Fatalf("unexpected blacksmith env: %#v", cfg.Blacksmith)
+	}
+	if len(cfg.Actions.RunnerLabels) != 2 || cfg.Actions.RunnerLabels[1] != "linux-large" || cfg.Actions.Ephemeral {
+		t.Fatalf("unexpected actions env: %#v", cfg.Actions)
+	}
+	if len(cfg.Results.JUnit) != 2 || cfg.Results.JUnit[1] != "build/test.xml" {
+		t.Fatalf("unexpected results env: %#v", cfg.Results)
+	}
+	if cfg.Cache.Pnpm || cfg.Cache.Npm || !cfg.Cache.Docker || cfg.Cache.Git || !cfg.Cache.PurgeOnRelease {
+		t.Fatalf("unexpected cache env: %#v", cfg.Cache)
+	}
+	if !cfg.Sync.Checksum || cfg.Sync.Delete || cfg.Sync.GitSeed || cfg.Sync.Fingerprint || cfg.Sync.Timeout != 45*time.Minute || !cfg.Sync.AllowLarge {
+		t.Fatalf("unexpected sync env: %#v", cfg.Sync)
+	}
+	if len(cfg.EnvAllow) != 3 || cfg.EnvAllow[2] != "CUSTOM_*" {
+		t.Fatalf("unexpected env allow: %#v", cfg.EnvAllow)
 	}
 }
 
@@ -631,6 +683,18 @@ func TestConfigHelperBranches(t *testing.T) {
 	if got := configFilePermissionProblem(cfgPath); got == "" {
 		t.Fatal("expected config permission problem")
 	}
+	if got := configFilePermissionProblem(""); got != "" {
+		t.Fatalf("empty path permission problem=%q", got)
+	}
+	if got := configFilePermissionProblem(filepath.Join(t.TempDir(), "missing.yaml")); got != "" {
+		t.Fatalf("missing path permission problem=%q", got)
+	}
+	if err := os.Chmod(cfgPath, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := configFilePermissionProblem(cfgPath); got != "" {
+		t.Fatalf("secure config permission problem=%q", got)
+	}
 
 	empty, err := readFileConfig(filepath.Join(t.TempDir(), "missing.yaml"))
 	if err != nil {
@@ -638,6 +702,24 @@ func TestConfigHelperBranches(t *testing.T) {
 	}
 	if empty.Profile != "" {
 		t.Fatalf("missing file config=%#v", empty)
+	}
+	emptyPath := filepath.Join(t.TempDir(), "empty.yaml")
+	if err := os.WriteFile(emptyPath, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	empty, err = readFileConfig(emptyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if empty.Profile != "" {
+		t.Fatalf("empty file config=%#v", empty)
+	}
+	badPath := filepath.Join(t.TempDir(), "bad.yaml")
+	if err := os.WriteFile(badPath, []byte("profile: [unterminated\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readFileConfig(badPath); err == nil {
+		t.Fatal("expected parse error for bad config")
 	}
 
 	if got := expandUserPath("~"); got != home {
@@ -699,5 +781,9 @@ func TestEnvHelperBranches(t *testing.T) {
 	list := splitCommaList(" CI, ,NODE_OPTIONS,CUSTOM_* ")
 	if len(list) != 3 || list[0] != "CI" || list[2] != "CUSTOM_*" {
 		t.Fatalf("splitCommaList=%v", list)
+	}
+	t.Setenv("CRABBOX_LIST", "CI,NODE_OPTIONS")
+	if list, ok := getenvList("CRABBOX_LIST"); !ok || len(list) != 2 || list[1] != "NODE_OPTIONS" {
+		t.Fatalf("getenvList=%v ok=%t", list, ok)
 	}
 }

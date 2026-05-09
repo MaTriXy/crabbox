@@ -8,6 +8,7 @@ and Tailscale metadata.
 crabbox inspect --id blue-lobster
 crabbox inspect --id blue-lobster --network tailscale
 crabbox inspect --id blue-lobster --json
+crabbox inspect --provider semaphore --id blue-lobster
 crabbox inspect --provider ssh --target windows --windows-mode wsl2 --static-host win-dev.local
 ```
 

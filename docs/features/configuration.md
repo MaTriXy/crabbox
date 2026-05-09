@@ -164,6 +164,26 @@ e2b:
   domain: e2b.app
 ```
 
+Keep `E2B_API_KEY` or `CRABBOX_E2B_API_KEY` in the shell or credential
+manager. Repo config should select templates and workdirs, not hold API keys.
+
+### Semaphore
+
+```yaml
+provider: semaphore
+semaphore:
+  host: myorg.semaphoreci.com
+  project: my-app
+  machine: f1-standard-2
+  osImage: ubuntu2204
+  idleTimeout: 30m
+```
+
+Keep `CRABBOX_SEMAPHORE_TOKEN` or `SEMAPHORE_API_TOKEN` in the shell or
+credential manager. User config may set host/project defaults; repo config
+should only pin Semaphore when the repo intentionally depends on that CI
+environment.
+
 ### Sync
 
 ```yaml
@@ -365,6 +385,8 @@ AWS_PROFILE / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN
 DAYTONA_API_KEY / DAYTONA_JWT_TOKEN
 BLACKSMITH_*  (read by the Blacksmith CLI)
 ISLO_API_KEY  (read by the Islo SDK)
+SEMAPHORE_API_TOKEN / CRABBOX_SEMAPHORE_TOKEN
+E2B_API_KEY / CRABBOX_E2B_API_KEY
 ```
 
 ## What Belongs Where
