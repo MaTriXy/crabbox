@@ -549,7 +549,7 @@ export function portalVNC(lease: LeaseRecord): Response {
           <a class="button secondary" href="/portal/logout">log out</a>
         `,
       })}
-      <section id="screen" class="screen" aria-label="WebVNC display"></section>
+      <section id="screen" class="screen" aria-label="WebVNC display" tabindex="0"></section>
       <footer class="vnc-bridge">
         <span class="vnc-bridge-label">bridge</span>
         <code id="vnc-bridge-cmd" class="vnc-bridge-cmd">${escapeHTML(bridgeCmd)}</code>
@@ -598,6 +598,27 @@ export function portalVNC(lease: LeaseRecord): Response {
       let controllerLabel = "";
       let isController = false;
       const terminalStatusCodes = new Set([403, 404, 409, 410]);
+      function focusVNC() {
+        if (!isController) return;
+        try {
+          screen.focus({ preventScroll: true });
+        } catch (_) {
+          screen.focus();
+        }
+        try {
+          rfb?.focus?.({ preventScroll: true });
+        } catch (_) {}
+      }
+      function captureVNCInput(event) {
+        if (!isController) return;
+        if (event.cancelable) event.preventDefault();
+        focusVNC();
+      }
+      screen.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+      });
+      screen.addEventListener("pointerdown", captureVNCInput, { capture: true });
+      screen.addEventListener("mousedown", captureVNCInput, { capture: true });
       function retryDelay() {
         return Math.min(5000, 500 * 2 ** retryAttempt);
       }
@@ -658,6 +679,7 @@ export function portalVNC(lease: LeaseRecord): Response {
         isController = controlling;
         if (rfb) {
           rfb.viewOnly = !controlling;
+          if (controlling) window.setTimeout(focusVNC, 0);
         }
         if (takeoverBtn) {
           takeoverBtn.hidden = !connectedViewer;
@@ -721,6 +743,7 @@ export function portalVNC(lease: LeaseRecord): Response {
           setStatus(retryAttempt ? "bridge connected; opening viewer" : "connecting");
           rfb = new RFB(screen, wsURL.toString(), options);
           rfb.showDotCursor = true;
+          rfb.focusOnClick = true;
           rfb.scaleViewport = true;
           rfb.resizeSession = false;
           rfb.viewOnly = true;
@@ -728,7 +751,7 @@ export function portalVNC(lease: LeaseRecord): Response {
             connected = true;
             retryAttempt = 0;
             setStatus("connected", "ok");
-            void refreshCollaborationState();
+            void refreshCollaborationState().then(focusVNC).catch(() => {});
             window.clearInterval(statusTimer);
             statusTimer = window.setInterval(refreshCollaborationState, 1500);
           });
@@ -782,6 +805,7 @@ export function portalVNC(lease: LeaseRecord): Response {
           if (!response.ok) throw new Error(state?.message || "takeover failed");
           applyCollaborationState(state);
           setStatus("you took control", "ok");
+          focusVNC();
         } catch (error) {
           setStatus(error instanceof Error ? error.message : String(error), "bad");
         }

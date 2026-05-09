@@ -1773,6 +1773,12 @@ describe("fleet lease identity and idle", () => {
     expect(pageBody).toContain("vnc-control");
     expect(pageBody).toContain("take control");
     expect(pageBody).toContain("you control");
+    expect(pageBody).toContain('aria-label="WebVNC display" tabindex="0"');
+    expect(pageBody).toContain('screen.addEventListener("contextmenu"');
+    expect(pageBody).toContain('screen.addEventListener("pointerdown", captureVNCInput');
+    expect(pageBody).toContain("rfb?.focus?.({ preventScroll: true })");
+    expect(pageBody).toContain("window.setTimeout(focusVNC, 0)");
+    expect(pageBody).toContain("rfb.focusOnClick = true");
     expect(pageBody).not.toContain("vnc-role");
     expect(pageBody).not.toContain("status-pill vnc-role");
     expect(pageBody).toContain("rfb.viewOnly = !controlling");
