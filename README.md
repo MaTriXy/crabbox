@@ -16,7 +16,32 @@ cloud-grade compute, agent-ready observability.
 crabbox run -- pnpm test
 ```
 
-Behind that single command: a Go CLI on your laptop, a Cloudflare Worker broker that owns provider credentials and lease state, and a managed runner on Hetzner Cloud, AWS EC2, or Azure. Azure supports managed Linux and native Windows VMs. Crabbox can also wrap Blacksmith Testboxes when you choose `provider: blacksmith-testbox`, use Namespace Devboxes, Daytona, Islo, or E2B sandboxes for direct-provider workflows, use `provider: semaphore` for Semaphore CI environments, or use `provider: ssh` for existing macOS and Windows targets.
+Behind that single command: a Go CLI on your laptop, a Cloudflare Worker broker
+that owns provider credentials and lease state, and a managed or delegated
+runner.
+
+Supported providers:
+
+- [AWS EC2](docs/providers/aws.md) (`provider: aws`): brokered or direct Linux,
+  native Windows, Windows WSL2, and EC2 Mac.
+- [Azure](docs/providers/azure.md) (`provider: azure`): brokered or direct
+  Linux and native Windows VMs.
+- [Hetzner Cloud](docs/providers/hetzner.md) (`provider: hetzner`): brokered or
+  direct Linux VMs.
+- [Static SSH](docs/providers/ssh.md) (`provider: ssh`): existing Linux, macOS,
+  Windows, or WSL2 hosts.
+- [Blacksmith Testbox](docs/providers/blacksmith-testbox.md)
+  (`provider: blacksmith-testbox`): delegated Testbox lifecycle and execution.
+- [Namespace Devbox](docs/providers/namespace-devbox.md)
+  (`provider: namespace-devbox`): Namespace-managed Devboxes over SSH.
+- [Semaphore CI testbox](docs/providers/semaphore.md) (`provider: semaphore`):
+  Semaphore jobs leased as SSH testboxes.
+- [Daytona](docs/providers/daytona.md) (`provider: daytona`): Daytona
+  SDK/toolbox sandbox execution.
+- [Islo](docs/providers/islo.md) (`provider: islo`): delegated Islo sandbox
+  execution.
+- [E2B](docs/providers/e2b.md) (`provider: e2b`): delegated E2B sandbox
+  execution.
 
 ---
 
