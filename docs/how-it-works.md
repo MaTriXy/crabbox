@@ -36,11 +36,17 @@ Cloud machines are vanilla Ubuntu runners that hold no broker secrets. They are 
 
 The CLI talks to the broker over HTTPS, then talks **directly** to the leased runner over SSH and rsync. The runner never calls the broker; that path stays one-way.
 
+For long-lived coordinator interactions, newer CLIs also open one authenticated
+WebSocket to the Fleet Durable Object at `/v1/control`. That socket carries
+run-event attach streams and lease heartbeats so high-latency links do less
+request polling. HTTPS endpoints remain canonical storage and compatibility
+fallbacks, so older CLIs and older brokers still work.
+
 ## Ownership
 
 | Layer       | Owns                                                                                                                                                            |
 |:------------|:----------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **CLI** | config + flags; per-lease SSH key; SSH readiness; Git seeding + rsync; sync fingerprints + sanity checks; remote command + streaming; heartbeats; release |
+| **CLI** | config + flags; per-lease SSH key; SSH readiness; Git seeding + rsync; sync fingerprints + sanity checks; remote command + streaming; control WebSocket when available; HTTP fallback; release |
 | **Broker** | request auth + identity; serialized lease state; provider credentials; machine create/delete; lease expiry; pool/status/inspect; usage; spend caps |
 | **Provider** | raw compute: Hetzner Cloud servers or AWS EC2 instances |
 | **Runner** | nothing durable for brokered boxes: Linux prepared by cloud-init with SSH, Git, rsync, curl, jq, `/work/crabbox`; AWS Windows/WSL2/macOS targets have provider-specific bootstrap; static targets are existing SSH hosts; project runtimes come from repo-owned setup |

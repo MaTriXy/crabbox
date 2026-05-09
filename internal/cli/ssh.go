@@ -329,20 +329,23 @@ func runSSHInput(ctx context.Context, target SSHTarget, remote string, input io.
 
 func runSSHStream(ctx context.Context, target SSHTarget, remote string, stdout, stderr io.Writer) int {
 	remote = wrapRemoteForTarget(target, remote)
-	cmd := exec.CommandContext(ctx, "ssh", sshArgs(target, remote)...)
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	err := cmd.Run()
-	if err == nil {
-		return 0
-	}
-	var exitErr *exec.ExitError
-	if ok := asExitError(err, &exitErr); ok {
-		if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
-			return status.ExitStatus()
+	lastCode := 7
+	for _, port := range sshPortCandidates(target.Port, target.FallbackPorts) {
+		probe := target
+		probe.Port = port
+		cmd := exec.CommandContext(ctx, "ssh", sshArgs(probe, remote)...)
+		cmd.Stdout = stdout
+		cmd.Stderr = stderr
+		err := cmd.Run()
+		if err == nil {
+			return 0
+		}
+		lastCode = exitCode(err)
+		if !shouldRetrySSHPort(err) {
+			return lastCode
 		}
 	}
-	return 7
+	return lastCode
 }
 
 func sshArgs(target SSHTarget, remote string) []string {
@@ -380,7 +383,7 @@ func sshBaseArgsWithOptions(target SSHTarget, connectTimeout, connectionAttempts
 	} else {
 		args = append(args,
 			"-o", "ControlMaster=auto",
-			"-o", "ControlPersist=60s",
+			"-o", "ControlPersist=10m",
 			"-o", "ControlPath="+sshControlPath(target),
 		)
 	}

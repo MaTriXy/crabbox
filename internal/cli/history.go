@@ -152,6 +152,13 @@ func (a App) attach(ctx context.Context, args []string) error {
 		return err
 	}
 	nextAfter := *after
+	if wsAfter, done, used, err := followRunControlWebSocket(ctx, coord, *runID, nextAfter, *poll, a.Stdout, a.Stderr); err != nil {
+		return err
+	} else if done {
+		return nil
+	} else if used {
+		nextAfter = wsAfter
+	}
 	for {
 		events, err := coord.RunEvents(ctx, *runID, nextAfter, 100)
 		if err != nil {

@@ -201,7 +201,26 @@ type BridgeAttachment =
   | { kind: "code-agent"; leaseID: string }
   | { kind: "code-viewer"; leaseID: string; id: string }
   | { kind: "egress-host"; leaseID: string; sessionID: string }
-  | { kind: "egress-client"; leaseID: string; sessionID: string };
+  | { kind: "egress-client"; leaseID: string; sessionID: string }
+  | {
+      kind: "control";
+      clientID: string;
+      owner: string;
+      org: string;
+      admin?: boolean;
+      subscriptions?: Record<string, number>;
+    };
+
+type ControlMessage =
+  | { type: "subscribe_run"; runID?: string; after?: number; limit?: number }
+  | { type: "ack"; runID?: string; seq?: number }
+  | {
+      type: "heartbeat";
+      leaseID?: string;
+      idleTimeoutSeconds?: number;
+      telemetry?: Partial<LeaseTelemetry>;
+    }
+  | { type: "ping" };
 
 interface WebVNCEvent {
   at: string;
@@ -231,6 +250,7 @@ export class FleetDurableObject implements DurableObject {
   private readonly egressHosts = new Map<string, WebSocket>();
   private readonly egressClients = new Map<string, WebSocket>();
   private readonly egressSessions = new Map<string, EgressSessionStatus>();
+  private readonly controlSockets = new Map<string, WebSocket>();
 
   constructor(
     private readonly state: DurableObjectState,
@@ -271,6 +291,9 @@ export class FleetDurableObject implements DurableObject {
       }
       if (method === "GET" && parts.join("/") === "v1/whoami") {
         return this.whoami(request);
+      }
+      if (method === "GET" && parts.join("/") === "v1/control") {
+        return await this.controlSocket(request);
       }
       if (method === "GET" && parts.join("/") === "v1/admin/leases") {
         return await this.adminLeases(request);
@@ -483,6 +506,9 @@ export class FleetDurableObject implements DurableObject {
         this.egressClients.set(egressSocketKey(attachment.leaseID, attachment.sessionID), socket);
         this.trackEgressSession(attachment);
         break;
+      case "control":
+        this.controlSockets.set(attachment.clientID, socket);
+        break;
     }
   }
 
@@ -542,6 +568,142 @@ export class FleetDurableObject implements DurableObject {
     this.egressSessions.set(leaseID, sessionStatus);
   }
 
+  private async controlSocket(request: Request): Promise<Response> {
+    if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
+      return json({ error: "websocket_required" }, { status: 426 });
+    }
+    const pair = new WebSocketPair();
+    const client = pair[0];
+    const server = pair[1];
+    const attachment: BridgeAttachment = {
+      kind: "control",
+      clientID: crypto.randomUUID(),
+      owner: requestOwner(request),
+      org: requestOrg(request, this.env),
+      admin: isAdminRequest(request),
+      subscriptions: {},
+    };
+    this.controlSockets.set(attachment.clientID, server);
+    this.acceptBridgeWebSocket(server, attachment);
+    sendControl(server, {
+      type: "hello",
+      protocol: 1,
+      clientID: attachment.clientID,
+    });
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  private async handleControlMessage(
+    socket: WebSocket,
+    attachment: Extract<BridgeAttachment, { kind: "control" }>,
+    message: string | ArrayBuffer | Blob,
+  ): Promise<void> {
+    if (typeof message !== "string") {
+      sendControl(socket, {
+        type: "error",
+        code: "invalid_message",
+        message: "expected JSON text",
+      });
+      return;
+    }
+    let input: ControlMessage;
+    try {
+      input = JSON.parse(message) as ControlMessage;
+    } catch {
+      sendControl(socket, { type: "error", code: "invalid_json", message: "invalid JSON" });
+      return;
+    }
+    switch (input.type) {
+      case "subscribe_run":
+        await this.subscribeControlRun(socket, attachment, input);
+        return;
+      case "ack":
+        this.ackControlRun(socket, attachment, input);
+        return;
+      case "heartbeat":
+        await this.controlHeartbeat(socket, attachment, input);
+        return;
+      case "ping":
+        sendControl(socket, { type: "pong" });
+        return;
+      default:
+        sendControl(socket, {
+          type: "error",
+          code: "unknown_type",
+          message: "unknown control message",
+        });
+    }
+  }
+
+  private async subscribeControlRun(
+    socket: WebSocket,
+    attachment: Extract<BridgeAttachment, { kind: "control" }>,
+    input: Extract<ControlMessage, { type: "subscribe_run" }>,
+  ): Promise<void> {
+    const runID = typeof input.runID === "string" ? input.runID : "";
+    const run = runID ? await this.getRun(runID) : undefined;
+    if (!run || !this.runVisibleToControl(run, attachment)) {
+      sendControl(socket, { type: "error", code: "not_found", message: "run not found" });
+      return;
+    }
+    const after = finiteControlNumber(input.after) ?? 0;
+    const limit = Math.min(finiteControlNumber(input.limit) ?? 100, 500);
+    const events = await this.runEvents(runID, after, limit);
+    const nextSeq = events.at(-1)?.seq ?? after;
+    attachment.subscriptions = { ...attachment.subscriptions, [runID]: nextSeq };
+    this.serializeBridgeAttachment(socket, attachment);
+    sendControl(socket, { type: "run_events", runID, events, nextSeq });
+  }
+
+  private ackControlRun(
+    socket: WebSocket,
+    attachment: Extract<BridgeAttachment, { kind: "control" }>,
+    input: Extract<ControlMessage, { type: "ack" }>,
+  ): void {
+    if (typeof input.runID !== "string") {
+      return;
+    }
+    const seq = finiteControlNumber(input.seq);
+    if (seq === undefined) {
+      return;
+    }
+    attachment.subscriptions = { ...attachment.subscriptions, [input.runID]: seq };
+    this.serializeBridgeAttachment(socket, attachment);
+  }
+
+  private async controlHeartbeat(
+    socket: WebSocket,
+    attachment: Extract<BridgeAttachment, { kind: "control" }>,
+    input: Extract<ControlMessage, { type: "heartbeat" }>,
+  ): Promise<void> {
+    const leaseID = typeof input.leaseID === "string" ? input.leaseID : "";
+    const lease = leaseID ? await this.resolveLeaseForControl(leaseID, attachment) : undefined;
+    if (!lease) {
+      sendControl(socket, { type: "heartbeat", leaseID, ok: false, error: "not_found" });
+      return;
+    }
+    const heartbeat: { idleTimeoutSeconds?: number; telemetry?: Partial<LeaseTelemetry> } = {};
+    if (input.idleTimeoutSeconds !== undefined) {
+      heartbeat.idleTimeoutSeconds = input.idleTimeoutSeconds;
+    }
+    if (input.telemetry !== undefined) {
+      heartbeat.telemetry = input.telemetry;
+    }
+    await this.applyLeaseHeartbeat(lease, heartbeat);
+    sendControl(socket, {
+      type: "heartbeat",
+      leaseID: lease.id,
+      ok: true,
+      expiresAt: lease.expiresAt,
+    });
+  }
+
+  private serializeBridgeAttachment(socket: WebSocket, attachment: BridgeAttachment): void {
+    if (typeof socket.serializeAttachment === "function") {
+      socket.serializeAttachment(attachment);
+    }
+  }
+
   private async handleBridgeMessage(
     socket: WebSocket,
     attachment: BridgeAttachment,
@@ -592,6 +754,9 @@ export class FleetDurableObject implements DurableObject {
           this.egressHosts.get(egressSocketKey(attachment.leaseID, attachment.sessionID)),
         );
         break;
+      case "control":
+        await this.handleControlMessage(socket, attachment, message);
+        break;
     }
     void socket;
   }
@@ -619,6 +784,11 @@ export class FleetDurableObject implements DurableObject {
         break;
       case "egress-client":
         this.clearEgressClient(attachment.leaseID, attachment.sessionID, socket);
+        break;
+      case "control":
+        if (this.controlSockets.get(attachment.clientID) === socket) {
+          this.controlSockets.delete(attachment.clientID);
+        }
         break;
     }
   }
@@ -787,25 +957,7 @@ export class FleetDurableObject implements DurableObject {
         idleTimeoutSeconds?: number;
         telemetry?: Partial<LeaseTelemetry>;
       }>(request);
-      const now = new Date();
-      const requestedIdleTimeoutSeconds = body.idleTimeoutSeconds;
-      if (
-        Number.isFinite(requestedIdleTimeoutSeconds) &&
-        requestedIdleTimeoutSeconds !== undefined &&
-        requestedIdleTimeoutSeconds > 0
-      ) {
-        lease.idleTimeoutSeconds = clampLeaseSeconds(requestedIdleTimeoutSeconds, 86_400);
-      }
-      const telemetry = sanitizeLeaseTelemetry(body.telemetry, now);
-      if (telemetry) {
-        lease.telemetry = telemetry;
-        lease.telemetryHistory = appendLeaseTelemetryHistory(lease.telemetryHistory, telemetry);
-      }
-      lease.updatedAt = now.toISOString();
-      lease.lastTouchedAt = now.toISOString();
-      lease.expiresAt = recomputeLeaseExpiresAt(lease, now).toISOString();
-      await this.putLease(lease);
-      await this.scheduleAlarm();
+      await this.applyLeaseHeartbeat(lease, body);
       return json({ lease });
     }
     if (method === "POST" && action === "tailscale") {
@@ -826,6 +978,34 @@ export class FleetDurableObject implements DurableObject {
       return await this.shareLeaseRoute(request, leaseID);
     }
     return json({ error: "not_found" }, { status: 404 });
+  }
+
+  private async applyLeaseHeartbeat(
+    lease: LeaseRecord,
+    input: {
+      idleTimeoutSeconds?: number;
+      telemetry?: Partial<LeaseTelemetry>;
+    },
+  ): Promise<void> {
+    const now = new Date();
+    const requestedIdleTimeoutSeconds = input.idleTimeoutSeconds;
+    if (
+      Number.isFinite(requestedIdleTimeoutSeconds) &&
+      requestedIdleTimeoutSeconds !== undefined &&
+      requestedIdleTimeoutSeconds > 0
+    ) {
+      lease.idleTimeoutSeconds = clampLeaseSeconds(requestedIdleTimeoutSeconds, 86_400);
+    }
+    const telemetry = sanitizeLeaseTelemetry(input.telemetry, now);
+    if (telemetry) {
+      lease.telemetry = telemetry;
+      lease.telemetryHistory = appendLeaseTelemetryHistory(lease.telemetryHistory, telemetry);
+    }
+    lease.updatedAt = now.toISOString();
+    lease.lastTouchedAt = now.toISOString();
+    lease.expiresAt = recomputeLeaseExpiresAt(lease, now).toISOString();
+    await this.putLease(lease);
+    await this.scheduleAlarm();
   }
 
   private async prepareTailscaleConfig(
@@ -2746,6 +2926,34 @@ export class FleetDurableObject implements DurableObject {
     return matches[0];
   }
 
+  private async resolveLeaseForControl(
+    identifier: string,
+    attachment: Extract<BridgeAttachment, { kind: "control" }>,
+  ): Promise<LeaseRecord | undefined> {
+    const exact = await this.getLease(identifier);
+    if (exact) {
+      return this.leaseVisibleToControl(exact, attachment) ? exact : undefined;
+    }
+    const slug = normalizeLeaseSlug(identifier);
+    if (!slug) {
+      return undefined;
+    }
+    const now = Date.now();
+    const matches = (await this.leaseRecords()).filter(
+      (lease) =>
+        lease.state === "active" &&
+        Date.parse(lease.expiresAt) > now &&
+        normalizeLeaseSlug(lease.slug) === slug &&
+        this.leaseVisibleToControl(lease, attachment),
+    );
+    if (matches.length > 1) {
+      throw new Error(
+        `ambiguous slug ${slug}: ${matches.map((lease) => `${lease.id}:${lease.owner}`).join(", ")}`,
+      );
+    }
+    return matches[0];
+  }
+
   private async leaseRecords(): Promise<LeaseRecord[]> {
     const leases = await this.state.storage.list<LeaseRecord>({ prefix: "lease:" });
     return [...leases.values()];
@@ -2826,6 +3034,24 @@ export class FleetDurableObject implements DurableObject {
     );
   }
 
+  private runVisibleToControl(
+    run: RunRecord,
+    attachment: Extract<BridgeAttachment, { kind: "control" }>,
+  ): boolean {
+    return Boolean(
+      attachment.admin || (run.owner === attachment.owner && run.org === attachment.org),
+    );
+  }
+
+  private leaseVisibleToControl(
+    lease: LeaseRecord,
+    attachment: Extract<BridgeAttachment, { kind: "control" }>,
+  ): boolean {
+    return Boolean(
+      attachment.admin || (lease.owner === attachment.owner && lease.org === attachment.org),
+    );
+  }
+
   private async putLease(lease: LeaseRecord): Promise<void> {
     await this.state.storage.put(leaseKey(lease.id), lease);
   }
@@ -2861,6 +3087,7 @@ export class FleetDurableObject implements DurableObject {
     run.lastEventAt = now;
     await this.state.storage.put(runEventKey(run.id, seq), event);
     await this.putRun(run);
+    this.broadcastRunEvent(run, event);
     return event;
   }
 
@@ -2869,6 +3096,30 @@ export class FleetDurableObject implements DurableObject {
       return await this.provider(provider).listCrabboxServers();
     } catch {
       return [];
+    }
+  }
+
+  private broadcastRunEvent(run: RunRecord, event: RunEventRecord): void {
+    for (const socket of this.controlSockets.values()) {
+      if (socket.readyState !== WebSocket.OPEN) {
+        continue;
+      }
+      const attachment = bridgeAttachment(socket);
+      if (!attachment || attachment.kind !== "control") {
+        continue;
+      }
+      const after = attachment.subscriptions?.[run.id];
+      if (after === undefined || after >= event.seq || !this.runVisibleToControl(run, attachment)) {
+        continue;
+      }
+      attachment.subscriptions = { ...attachment.subscriptions, [run.id]: event.seq };
+      this.serializeBridgeAttachment(socket, attachment);
+      sendControl(socket, {
+        type: "run_events",
+        runID: run.id,
+        events: [event],
+        nextSeq: event.seq,
+      });
     }
   }
 
@@ -3414,12 +3665,27 @@ function bridgeAttachment(socket: WebSocket): BridgeAttachment | undefined {
       return typeof attachment.leaseID === "string" && typeof attachment.sessionID === "string"
         ? attachment
         : undefined;
+    case "control":
+      return typeof attachment.clientID === "string" &&
+        typeof attachment.owner === "string" &&
+        typeof attachment.org === "string"
+        ? {
+            ...attachment,
+            subscriptions:
+              attachment.subscriptions && typeof attachment.subscriptions === "object"
+                ? attachment.subscriptions
+                : {},
+          }
+        : undefined;
     default:
       return undefined;
   }
 }
 
 function bridgeTags(attachment: BridgeAttachment): string[] {
+  if (attachment.kind === "control") {
+    return [`control:${attachment.clientID}`, `owner:${attachment.owner}`, `org:${attachment.org}`];
+  }
   if (attachment.kind === "egress-host" || attachment.kind === "egress-client") {
     return [`lease:${attachment.leaseID}`, `session:${attachment.sessionID}`, attachment.kind];
   }
@@ -3427,6 +3693,14 @@ function bridgeTags(attachment: BridgeAttachment): string[] {
     return [`lease:${attachment.leaseID}`, `webvnc:${attachment.id}`, attachment.kind];
   }
   return [`lease:${attachment.leaseID}`, attachment.kind];
+}
+
+function sendControl(socket: WebSocket, payload: unknown): void {
+  try {
+    socket.send(JSON.stringify(payload));
+  } catch {
+    closeSocket(socket, 1011, "control send failed");
+  }
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -3575,6 +3849,12 @@ function finiteNumber(value: number | undefined): number | undefined {
 function finiteQueryNumber(value: string | null): number | undefined {
   const parsed = Number(value ?? "");
   return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : undefined;
+}
+
+function finiteControlNumber(value: number | undefined): number | undefined {
+  return Number.isFinite(value) && value !== undefined && value >= 0
+    ? Math.trunc(value)
+    : undefined;
 }
 
 function boundedEgressString(value: string | undefined): string | undefined {

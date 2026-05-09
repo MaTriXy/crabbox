@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"nhooyr.io/websocket"
 )
 
 func TestCoordinatorMachineIDAcceptsStringOrNumber(t *testing.T) {
@@ -295,6 +297,10 @@ func TestCoordinatorAppendRunTelemetry(t *testing.T) {
 func TestCoordinatorHeartbeatTouchesImmediately(t *testing.T) {
 	touches := make(chan struct{}, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/control" {
+			http.NotFound(w, r)
+			return
+		}
 		if r.URL.Path != "/v1/leases/cbx_123/heartbeat" {
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
@@ -318,6 +324,10 @@ func TestCoordinatorHeartbeatTouchesImmediately(t *testing.T) {
 func TestCoordinatorHeartbeatIncludesTelemetry(t *testing.T) {
 	bodies := make(chan string, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/control" {
+			http.NotFound(w, r)
+			return
+		}
 		if r.URL.Path != "/v1/leases/cbx_123/heartbeat" {
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
@@ -343,6 +353,59 @@ func TestCoordinatorHeartbeatIncludesTelemetry(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("heartbeat did not touch immediately")
+	}
+}
+
+func TestCoordinatorHeartbeatUsesControlWebSocket(t *testing.T) {
+	bodies := make(chan string, 1)
+	httpHeartbeats := make(chan struct{}, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/control":
+			conn, err := websocket.Accept(w, r, nil)
+			if err != nil {
+				t.Errorf("accept control websocket: %v", err)
+				return
+			}
+			defer conn.Close(websocket.StatusNormalClosure, "")
+			_, data, err := conn.Read(r.Context())
+			if err != nil {
+				t.Errorf("read control heartbeat: %v", err)
+				return
+			}
+			bodies <- string(data)
+			_ = conn.Write(r.Context(), websocket.MessageText, []byte(`{"type":"heartbeat","leaseID":"cbx_123","ok":true,"expiresAt":"2026-05-01T00:30:00Z"}`))
+			<-r.Context().Done()
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/leases/cbx_123/heartbeat":
+			httpHeartbeats <- struct{}{}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"lease":{"id":"cbx_123","provider":"aws","state":"active","expiresAt":"2026-05-01T00:30:00Z"}}`))
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	load := 0.77
+	collector := func(context.Context) (*LeaseTelemetry, error) {
+		return &LeaseTelemetry{Load1: &load}, nil
+	}
+	client := CoordinatorClient{BaseURL: server.URL, Client: server.Client()}
+	stop := startCoordinatorHeartbeat(context.Background(), &client, "cbx_123", 30*time.Minute, nil, collector, io.Discard)
+	defer stop()
+
+	select {
+	case body := <-bodies:
+		if !strings.Contains(body, `"type":"heartbeat"`) || !strings.Contains(body, `"load1":0.77`) {
+			t.Fatalf("control heartbeat body=%s", body)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("heartbeat did not use control websocket")
+	}
+	select {
+	case <-httpHeartbeats:
+		t.Fatal("heartbeat fell back to HTTP despite websocket success")
+	default:
 	}
 }
 

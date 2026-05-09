@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	runEventOutputChunkBytes = 4096
+	runEventOutputChunkBytes = 16 * 1024
 	runEventOutputMaxBytes   = 64 * 1024
 	runEventOutputQueueSize  = 32
 	runEventOutputPostWait   = 2 * time.Second

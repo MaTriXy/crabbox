@@ -941,22 +941,26 @@ func (c *CoordinatorClient) doHTTP(ctx context.Context, method, path string, dat
 	if hasBody {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if c.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.Token)
-	}
-	c.addAccessHeaders(req.Header)
-	if owner := localCoordinatorOwner(); owner != "" {
-		req.Header.Set("X-Crabbox-Owner", owner)
-	}
-	if org := os.Getenv("CRABBOX_ORG"); org != "" {
-		req.Header.Set("X-Crabbox-Org", org)
-	}
+	c.addRequestHeaders(req.Header)
 	resp, err := c.Client.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 	return decodeCoordinatorResponse(method, path, resp.StatusCode, resp.Body, out)
+}
+
+func (c *CoordinatorClient) addRequestHeaders(headers http.Header) {
+	if c.Token != "" {
+		headers.Set("Authorization", "Bearer "+c.Token)
+	}
+	c.addAccessHeaders(headers)
+	if owner := localCoordinatorOwner(); owner != "" {
+		headers.Set("X-Crabbox-Owner", owner)
+	}
+	if org := os.Getenv("CRABBOX_ORG"); org != "" {
+		headers.Set("X-Crabbox-Org", org)
+	}
 }
 
 func (c *CoordinatorClient) doCurl(ctx context.Context, method, path string, data []byte, hasBody bool, out any) error {
