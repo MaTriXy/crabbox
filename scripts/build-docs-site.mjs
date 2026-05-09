@@ -292,11 +292,11 @@ function standardHero(page, sectionName, editUrl) {
 
 function landingHero(rootPrefix) {
   const features = [
-    ["Local loop, remote box", "Keep your editor and git workflow. Crabbox rsyncs your dirty checkout to a leased Linux machine and streams the run back."],
+    ["Local loop, remote box", "Keep your editor and git workflow. Crabbox rsyncs your dirty checkout to a leased remote box and streams the run back."],
     ["Brokered, not BYO creds", "A Cloudflare Worker holds provider credentials and serializes lease state. Your CLI only carries a bearer token."],
     ["Cost-aware leases", "TTL-bounded machines, monthly spend caps, and per-user / per-org / per-provider usage from the broker."],
     ["Reuse what's warm", "<code>crabbox warmup</code> keeps a box hot. Reuse it with <code>--id</code> across runs, SSH, and CI hydration."],
-    ["Hetzner or AWS Spot", "Falls back across server types and instance families when capacity is tight. Direct provider mode stays as a debug fallback."],
+    ["Many providers, one loop", "Brokered Hetzner / AWS / Azure, delegated E2B / Daytona / Blacksmith / Semaphore, or static SSH targets - Linux, Windows, and macOS."],
     ["Plays with Actions", "<code>actions hydrate</code> reuses your repository's GitHub Actions setup steps so local runs land in the same hydrated workspace."],
   ];
   const cards = features
@@ -305,7 +305,7 @@ function landingHero(rootPrefix) {
   return `<header class="hero hero-home">
         <div class="hero-text">
           <p class="eyebrow">OpenClaw - remote testbox</p>
-          <h1>A short-lived Linux box for every <em>run</em>.</h1>
+          <h1>A short-lived box for every <em>run</em>.</h1>
           <p class="lede">Crabbox gives maintainers and agents a fast local loop on shared cloud capacity: lease, sync, run, release. The CLI keeps the developer story simple; a Cloudflare-hosted broker keeps the fleet safe.</p>
           <div class="cta">
             <a class="cta-primary" href="${rootPrefix}how-it-works.html">Read the overview</a>
