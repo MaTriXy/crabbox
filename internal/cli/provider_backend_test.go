@@ -22,7 +22,7 @@ func testRuntimeWithRunner(r CommandRunner) Runtime {
 }
 
 func TestProviderRegistryCanonicalAndAliases(t *testing.T) {
-	for _, name := range []string{"hetzner", "aws", "ssh", "static", "static-ssh", "blacksmith", "blacksmith-testbox", "daytona", "islo"} {
+	for _, name := range []string{"hetzner", "aws", "ssh", "static", "static-ssh", "blacksmith", "blacksmith-testbox", "daytona", "islo", "e2b"} {
 		if _, err := ProviderFor(name); err != nil {
 			t.Fatalf("ProviderFor(%q): %v", name, err)
 		}
@@ -61,6 +61,15 @@ func TestLoadBackendWrapsCoordinatorOnlyForSupportedSSHProviders(t *testing.T) {
 	if _, ok := backend.(DelegatedRunBackend); !ok {
 		t.Fatalf("backend=%T, want delegated run backend", backend)
 	}
+
+	cfg.Provider = "e2b"
+	backend, err = loadBackend(cfg, testRuntimeWithRunner(&recordingCommandRunner{}))
+	if err != nil {
+		t.Fatalf("load e2b backend: %v", err)
+	}
+	if _, ok := backend.(DelegatedRunBackend); !ok {
+		t.Fatalf("backend=%T, want delegated run backend", backend)
+	}
 }
 
 func TestLeaseCreateFlagsApplySelectedProviderFlags(t *testing.T) {
@@ -85,7 +94,7 @@ func TestLeaseCreateFlagsApplySelectedProviderFlags(t *testing.T) {
 	}
 }
 
-func TestLeaseCreateFlagsRejectDaytonaResourceNoops(t *testing.T) {
+func TestLeaseCreateFlagsRejectSnapshotSandboxResourceNoops(t *testing.T) {
 	defaults := baseConfig()
 	for _, tc := range []struct {
 		name string
@@ -93,6 +102,8 @@ func TestLeaseCreateFlagsRejectDaytonaResourceNoops(t *testing.T) {
 	}{
 		{name: "class", args: []string{"--provider", "daytona", "--class", "standard"}},
 		{name: "type", args: []string{"--provider", "daytona", "--type", "large"}},
+		{name: "e2b class", args: []string{"--provider", "e2b", "--class", "standard"}},
+		{name: "e2b type", args: []string{"--provider", "e2b", "--type", "large"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fs := newFlagSet("test", io.Discard)
@@ -164,6 +175,25 @@ func TestProviderFlagsApplyDaytonaAndIsloWithoutCoreEdits(t *testing.T) {
 	}
 	if cfg.Islo.Image != "ubuntu:24.04" || cfg.Islo.VCPUs != 4 || cfg.Islo.MemoryMB != 8192 {
 		t.Fatalf("islo flags not applied: %#v", cfg.Islo)
+	}
+
+	fs = newFlagSet("test", io.Discard)
+	provider = fs.String("provider", defaults.Provider, "")
+	values = registerProviderFlags(fs, defaults)
+	if err := parseFlags(fs, []string{
+		"--provider", "e2b",
+		"--e2b-template", "crabbox-ready",
+		"--e2b-workdir", "work/repo",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cfg = defaults
+	cfg.Provider = *provider
+	if err := applyProviderFlags(&cfg, fs, values); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.E2B.Template != "crabbox-ready" || cfg.E2B.Workdir != "work/repo" {
+		t.Fatalf("e2b flags not applied: %#v", cfg.E2B)
 	}
 }
 

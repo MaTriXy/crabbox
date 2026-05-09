@@ -40,6 +40,7 @@ This page maps user-facing behavior back to implementation files. Keep docs desc
 - Blacksmith Testbox backend and argument/parsing helpers: `internal/providers/blacksmith`
 - Daytona provider backend and SDK/toolbox wrapper: `internal/providers/daytona`
 - Islo delegated backend and SDK wrapper: `internal/providers/islo`
+- E2B delegated backend and REST/envd wrapper: `internal/providers/e2b`
 - Provider backend interfaces, registry, and request/result types:
   `internal/cli/provider_backend.go`
 - Built-in provider registration packages:
@@ -47,18 +48,20 @@ This page maps user-facing behavior back to implementation files. Keep docs desc
   `internal/providers/azure`,
   `internal/providers/ssh`, `internal/providers/blacksmith`,
   `internal/providers/daytona`, `internal/providers/islo`,
+  `internal/providers/e2b`,
   `internal/providers/all`
 - Built-in provider backend implementations:
   `internal/providers/aws`, `internal/providers/azure`,
   `internal/providers/hetzner`,
   `internal/providers/ssh`, `internal/providers/blacksmith`,
   `internal/providers/daytona`, `internal/providers/islo`,
+  `internal/providers/e2b`,
   plus shared helpers in `internal/providers/shared`
 - Worker Hetzner provider: `worker/src/hetzner.ts`
 - Worker AWS EC2 provider: `worker/src/aws.ts`
 - Worker AWS AMI create/read/promote routes: `worker/src/fleet.ts`, `worker/src/aws.ts`
-- Provider feature docs: `docs/features/aws.md`, `docs/features/azure.md`, `docs/features/hetzner.md`, `docs/features/blacksmith-testbox.md`, `docs/features/daytona.md`, `docs/features/islo.md`
-- Provider reference docs: `docs/providers/README.md`, `docs/providers/aws.md`, `docs/providers/azure.md`, `docs/providers/hetzner.md`, `docs/providers/ssh.md`, `docs/providers/blacksmith-testbox.md`, `docs/providers/daytona.md`, `docs/providers/islo.md`
+- Provider feature docs: `docs/features/aws.md`, `docs/features/azure.md`, `docs/features/hetzner.md`, `docs/features/blacksmith-testbox.md`, `docs/features/daytona.md`, `docs/features/islo.md`, `docs/features/e2b.md`
+- Provider reference docs: `docs/providers/README.md`, `docs/providers/aws.md`, `docs/providers/azure.md`, `docs/providers/hetzner.md`, `docs/providers/ssh.md`, `docs/providers/blacksmith-testbox.md`, `docs/providers/daytona.md`, `docs/providers/islo.md`, `docs/providers/e2b.md`
 - Provider/backend authoring guide: `docs/provider-backends.md`
 - CLI cloud-init bootstrap: `internal/cli/bootstrap.go`
 - Worker cloud-init bootstrap: `worker/src/bootstrap.ts`

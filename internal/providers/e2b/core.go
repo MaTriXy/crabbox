@@ -1,0 +1,122 @@
+package e2b
+
+import (
+	"flag"
+	"io"
+	"time"
+
+	core "github.com/openclaw/crabbox/internal/cli"
+)
+
+type Config = core.Config
+type E2BConfig = core.E2BConfig
+type ProviderSpec = core.ProviderSpec
+type Runtime = core.Runtime
+type Backend = core.Backend
+type WarmupRequest = core.WarmupRequest
+type RunRequest = core.RunRequest
+type RunResult = core.RunResult
+type ListRequest = core.ListRequest
+type LeaseView = core.LeaseView
+type StatusRequest = core.StatusRequest
+type StatusView = core.StatusView
+type StopRequest = core.StopRequest
+type Server = core.Server
+type Repo = core.Repo
+type SyncManifest = core.SyncManifest
+type ExitError = core.ExitError
+type timingReport = core.TimingReport
+type timingPhase = core.TimingPhase
+
+const (
+	e2bProvider = "e2b"
+	targetLinux = core.TargetLinux
+
+	NetworkPublic = core.NetworkPublic
+)
+
+type statusView = core.StatusView
+
+func exit(code int, format string, args ...any) core.ExitError {
+	return core.Exit(code, format, args...)
+}
+
+func flagWasSet(fs *flag.FlagSet, name string) bool {
+	return core.FlagWasSet(fs, name)
+}
+
+func blank(value, fallback string) string {
+	return core.Blank(value, fallback)
+}
+
+func newLeaseID() string {
+	return core.NewLeaseID()
+}
+
+func newLeaseSlug(leaseID string) string {
+	return core.NewLeaseSlug(leaseID)
+}
+
+func normalizeLeaseSlug(value string) string {
+	return core.NormalizeLeaseSlug(value)
+}
+
+func directLeaseLabels(cfg Config, leaseID, slug, provider, market string, keep bool, now time.Time) map[string]string {
+	return core.DirectLeaseLabels(cfg, leaseID, slug, provider, market, keep, now)
+}
+
+func claimLeaseForRepoProvider(leaseID, slug, provider, repoRoot string, idleTimeout time.Duration, reclaim bool) error {
+	return core.ClaimLeaseForRepoProvider(leaseID, slug, provider, repoRoot, idleTimeout, reclaim)
+}
+
+func resolveLeaseClaim(identifier string) (core.LeaseClaim, bool, error) {
+	return core.ResolveLeaseClaim(identifier)
+}
+
+func removeLeaseClaim(leaseID string) {
+	core.RemoveLeaseClaim(leaseID)
+}
+
+func writeTimingJSON(w io.Writer, report timingReport) error {
+	return core.WriteTimingJSON(w, report)
+}
+
+func shellQuote(s string) string {
+	return core.ShellQuote(s)
+}
+
+func shellScriptFromArgv(command []string) string {
+	return core.ShellScriptFromArgv(command)
+}
+
+func shellWords(words []string) []string {
+	return core.ShellWords(words)
+}
+
+func shouldUseShell(command []string) bool {
+	return core.ShouldUseShell(command)
+}
+
+func leadingEnvAssignment(command []string) bool {
+	return core.LeadingEnvAssignment(command)
+}
+
+func allowedEnv(allow []string) map[string]string {
+	return core.AllowedEnv(allow)
+}
+
+func syncExcludes(root string, cfg Config) ([]string, error) {
+	return core.SyncExcludes(root, cfg)
+}
+
+func syncManifest(root string, excludes []string) (SyncManifest, error) {
+	return core.BuildSyncManifest(root, excludes)
+}
+
+func checkSyncPreflight(manifest SyncManifest, cfg Config, force bool, stderr io.Writer) error {
+	return core.CheckSyncPreflight(manifest, cfg, force, stderr)
+}
+
+func summarizeJSON(data []byte) string {
+	return core.SummarizeJSON(data)
+}

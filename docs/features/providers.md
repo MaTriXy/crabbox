@@ -28,6 +28,7 @@ Direct provider backends can also run without the Crabbox coordinator:
 ```text
 daytona    Daytona sandboxes with SDK/toolbox run and short-lived SSH access
 islo       Islo sandboxes with delegated command execution
+e2b        E2B sandboxes with delegated command execution
 ```
 
 ## Provider Pages
@@ -40,6 +41,7 @@ islo       Islo sandboxes with delegated command execution
 - [Blacksmith Testbox](../providers/blacksmith-testbox.md): delegated Testbox backend behavior.
 - [Daytona](../providers/daytona.md): Daytona SDK/toolbox sandbox leases.
 - [Islo](../providers/islo.md): delegated Islo sandbox execution.
+- [E2B](../providers/e2b.md): delegated E2B sandbox execution.
 - [Provider backends](../provider-backends.md): implementation guide for adding a new provider/backend/plugin.
 
 ## Hetzner Summary
@@ -141,6 +143,11 @@ Crabbox can use Islo sandboxes with `provider: islo`. Islo is a delegated run
 backend: the Islo Go SDK owns sandbox lifecycle and Crabbox streams command
 output from Islo's exec SSE endpoint. See [Islo](islo.md).
 
+Crabbox can use E2B sandboxes with `provider: e2b`. E2B is a delegated run
+backend: Crabbox creates E2B sandboxes, syncs a gzipped archive through the
+sandbox file API, and streams command output from E2B's process API. See
+[E2B](e2b.md).
+
 Static SSH targets:
 
 ```yaml
@@ -184,5 +191,6 @@ Related docs:
 - [Blacksmith Testbox](../providers/blacksmith-testbox.md)
 - [Daytona](../providers/daytona.md)
 - [Islo](../providers/islo.md)
+- [E2B](../providers/e2b.md)
 - [Runner bootstrap](runner-bootstrap.md)
 - [Cost and usage](cost-usage.md)
