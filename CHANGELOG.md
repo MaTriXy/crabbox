@@ -18,6 +18,7 @@
 - Fixed E2B workspace guardrails so broad roots such as `/`, `/home`, and `/tmp` are rejected before sync creates, deletes, or extracts files.
 - Fixed E2B sandbox creation so unsafe workdirs are rejected before the API call. Thanks @stainlu.
 - Fixed E2B user validation so path-like users are rejected before sandbox or process calls. Thanks @stainlu.
+- Fixed stale Code, WebVNC, and egress bridge clients so expired or missing leases stop polling/restarting after terminal coordinator responses. Thanks @vincentkoc.
 - Fixed `crabbox desktop paste` for terminal windows so symbol-heavy text falls back to direct typing instead of sending a literal `Ctrl+V` into xterm-like sessions.
 - Removed the vulnerable transitive `fast-xml-builder` Worker dependency by updating fast-xml-parser.
 
@@ -50,6 +51,10 @@
 - Fixed WebVNC daemon start-by-slug so coordinator-backed leases use the resolved target OS in the background bridge command.
 - Fixed coordinator-backed `crabbox list` so a stale admin token no longer blocks normal logged-in users; the CLI now falls back to active user-visible leases instead of failing with `401 unauthorized`.
 - Fixed desktop, screenshot, VNC, and WebVNC SSH helpers so they retry live fallback ports when a coordinator lease advertises an SSH port that is not ready yet.
+
+### Fixed
+
+- Fixed stale Code, WebVNC, and egress bridge clients so expired or missing leases stop polling/restarting after terminal coordinator responses. Thanks @vincentkoc.
 
 ## 0.7.0 - 2026-05-07
 

@@ -1,3 +1,5 @@
+import { Script, createContext } from "node:vm";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -11,6 +13,7 @@ import {
   shouldActivateEgressSession,
   type WebVNCBuffer,
 } from "../src/fleet";
+import { portalCode } from "../src/portal";
 import type {
   Env,
   ExternalRunnerRecord,
@@ -1437,6 +1440,8 @@ describe("fleet lease identity and idle", () => {
     expect(pageBody).toContain('id="code-copy"');
     expect(pageBody).toContain("/portal/leases/cbx_000000000001/code/health");
     expect(pageBody).toContain("window.location.reload()");
+    expect(pageBody).toContain("terminalStatusCodes");
+    expect(pageBody).toContain("stopPolling(message)");
 
     const health = await fleet.fetch(
       request("GET", "/portal/leases/blue-lobster/code/health", { headers }),
@@ -1473,6 +1478,29 @@ describe("fleet lease identity and idle", () => {
       }),
     );
     expect(missingTicket.status).toBe(401);
+  });
+
+  it("stops code bridge polling after terminal status responses", async () => {
+    const page = await portalCode(
+      testLease({
+        id: "cbx_000000000001",
+        slug: "blue-lobster",
+        code: true,
+      }),
+    ).text();
+    const runtime = await runCodePortalScript(page, {
+      ok: false,
+      status: 409,
+      json: async () => ({ error: "code_unavailable", message: "lease is not active" }),
+    });
+
+    expect(runtime.fetches).toEqual([
+      "https://example.test/portal/leases/cbx_000000000001/code/health",
+    ]);
+    expect(runtime.elements["code-status"]?.textContent).toBe("bridge unavailable");
+    expect(runtime.elements["code-status"]?.dataset.tone).toBe("bad");
+    expect(runtime.elements["code-hint"]?.textContent).toBe("lease is not active");
+    expect(runtime.timers).toEqual([]);
   });
 
   it("accepts bridge tickets in authorization before falling back to query strings", () => {
@@ -1748,6 +1776,8 @@ describe("fleet lease identity and idle", () => {
     expect(pageBody).not.toContain("vnc-role");
     expect(pageBody).not.toContain("status-pill vnc-role");
     expect(pageBody).toContain("rfb.viewOnly = !controlling");
+    expect(pageBody).toContain("state?.terminal");
+    expect(pageBody).toContain("stopPolling(state.message");
     expect(pageBody).toContain('fragment.get("username")');
     expect(pageBody).toContain('types.includes("username")');
     expect(pageBody).not.toContain("cdn.jsdelivr.net");
@@ -3122,6 +3152,83 @@ function testLease(overrides: Partial<LeaseRecord>): LeaseRecord {
     expiresAt: "2026-05-01T01:30:00.000Z",
     ...overrides,
   };
+}
+
+type CodePortalRuntime = {
+  elements: Record<string, DOMElementStub>;
+  fetches: string[];
+  timers: Array<{ delay: number }>;
+};
+
+type DOMElementStub = {
+  dataset: Record<string, string>;
+  textContent: string;
+  disabled: boolean;
+  addEventListener: ReturnType<typeof vi.fn>;
+};
+
+function elementStub(textContent = ""): DOMElementStub {
+  return {
+    dataset: {},
+    textContent,
+    disabled: false,
+    addEventListener: vi.fn<() => void>(),
+  };
+}
+
+async function runCodePortalScript(
+  page: string,
+  response: { ok: boolean; status: number; json: () => Promise<unknown> },
+): Promise<CodePortalRuntime> {
+  const script = inlineScript(page, 'const status = document.getElementById("code-status")');
+  const elements: Record<string, DOMElementStub> = {
+    "code-status": elementStub("checking bridge"),
+    "code-hint": elementStub("Run the command below."),
+    "code-reload": elementStub(),
+    "code-copy": elementStub(),
+    "code-bridge-cmd": elementStub("crabbox code --id blue-lobster --open"),
+  };
+  const fetches: string[] = [];
+  const timers: Array<{ delay: number }> = [];
+  const context = createContext({
+    URL,
+    document: {
+      getElementById: (id: string) => elements[id] ?? null,
+      createRange: () => ({ selectNodeContents: vi.fn<(element: unknown) => void>() }),
+    },
+    fetch: vi.fn<(url: URL) => Promise<typeof response>>(async (url) => {
+      fetches.push(url.toString());
+      return response;
+    }),
+    navigator: { clipboard: { writeText: vi.fn<(text: string) => Promise<void>>() } },
+    window: {
+      location: { href: "https://example.test/portal/leases/blue-lobster/code/" },
+      clearTimeout: vi.fn<(timer?: unknown) => void>(),
+      setTimeout: (_callback: () => void, delay: number) => {
+        timers.push({ delay });
+        return timers.length;
+      },
+      addEventListener: vi.fn<() => void>(),
+      getSelection: () => ({
+        removeAllRanges: vi.fn<() => void>(),
+        addRange: vi.fn<(range: unknown) => void>(),
+      }),
+    },
+  });
+
+  new Script(script).runInContext(context);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await Promise.resolve();
+  return { elements, fetches, timers };
+}
+
+function inlineScript(page: string, marker: string): string {
+  const scripts = [...page.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)];
+  const match = scripts.find((script) => script[1]?.includes(marker));
+  if (!match?.[1]) {
+    throw new Error(`script marker not found: ${marker}`);
+  }
+  return match[1];
 }
 
 function testRun(overrides: Partial<RunRecord>): RunRecord {
