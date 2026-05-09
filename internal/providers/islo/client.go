@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -103,7 +104,8 @@ func (c *isloSDKClient) UploadArchive(ctx context.Context, name, targetPath stri
 	q := u.Query()
 	q.Set("path", targetPath)
 	u.RawQuery = q.Encode()
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), archive)
+	body, contentType := multipartArchiveBody(archive)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), body)
 	if err != nil {
 		return err
 	}
@@ -112,7 +114,7 @@ func (c *isloSDKClient) UploadArchive(ctx context.Context, name, targetPath stri
 		return fmt.Errorf("islo auth: %w", err)
 	}
 	httpReq.Header.Set("Authorization", "Bearer "+token)
-	httpReq.Header.Set("Content-Type", "application/gzip")
+	httpReq.Header.Set("Content-Type", contentType)
 	httpReq.Header.Set("Accept", "application/json")
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
@@ -125,6 +127,19 @@ func (c *isloSDKClient) UploadArchive(ctx context.Context, name, targetPath stri
 	}
 	_, _ = io.Copy(io.Discard, resp.Body)
 	return nil
+}
+
+func multipartArchiveBody(archive io.Reader) (io.Reader, string) {
+	writer := multipart.NewWriter(io.Discard)
+	boundary := writer.Boundary()
+	var prefix strings.Builder
+	prefix.WriteString("--")
+	prefix.WriteString(boundary)
+	prefix.WriteString("\r\n")
+	prefix.WriteString("Content-Disposition: form-data; name=\"file\"; filename=\"archive.tar.gz\"\r\n")
+	prefix.WriteString("Content-Type: application/gzip\r\n\r\n")
+	suffix := "\r\n--" + boundary + "--\r\n"
+	return io.MultiReader(strings.NewReader(prefix.String()), archive, strings.NewReader(suffix)), writer.FormDataContentType()
 }
 
 func (c *isloSDKClient) ExecStream(ctx context.Context, name string, req *gosdk.ExecRequest, stdout, stderr io.Writer) (int, error) {

@@ -335,7 +335,7 @@ func TestIsloSDKClientListUsesInjectedHTTPAndPaginates(t *testing.T) {
 	}
 }
 
-func TestIsloSDKClientUploadArchiveStreamsRawTarball(t *testing.T) {
+func TestIsloSDKClientUploadArchiveStreamsMultipartTarball(t *testing.T) {
 	authHits := 0
 	uploadHits := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -351,18 +351,32 @@ func TestIsloSDKClientUploadArchiveStreamsRawTarball(t *testing.T) {
 			if got := r.Header.Get("Authorization"); got != "Bearer jwt-from-test" {
 				t.Fatalf("Authorization=%q", got)
 			}
-			if got := r.Header.Get("Content-Type"); got != "application/gzip" {
+			if got := r.Header.Get("Content-Type"); !strings.HasPrefix(got, "multipart/form-data; boundary=") {
 				t.Fatalf("Content-Type=%q", got)
 			}
 			if got := r.URL.Query().Get("path"); got != "/workspace/repo" {
 				t.Fatalf("path=%q", got)
 			}
-			body, err := io.ReadAll(r.Body)
+			part, err := r.MultipartReader()
+			if err != nil {
+				t.Fatal(err)
+			}
+			file, err := part.NextPart()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if file.FormName() != "file" || file.FileName() != "archive.tar.gz" {
+				t.Fatalf("part name=%q filename=%q", file.FormName(), file.FileName())
+			}
+			if got := file.Header.Get("Content-Type"); got != "application/gzip" {
+				t.Fatalf("part Content-Type=%q", got)
+			}
+			body, err := io.ReadAll(file)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if string(body) != "archive" {
-				t.Fatalf("body=%q", string(body))
+				t.Fatalf("part body=%q", string(body))
 			}
 			_, _ = w.Write([]byte(`{}`))
 		default:
