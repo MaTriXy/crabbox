@@ -64,6 +64,7 @@ type Config struct {
 	Daytona            DaytonaConfig
 	E2B                E2BConfig
 	Islo               IsloConfig
+	Semaphore          SemaphoreConfig
 	Tailscale          TailscaleConfig
 	Static             StaticConfig
 	Results            ResultsConfig
@@ -146,6 +147,15 @@ type IsloConfig struct {
 	VCPUs          int
 	MemoryMB       int
 	DiskGB         int
+}
+
+type SemaphoreConfig struct {
+	Host        string
+	Token       string
+	Project     string
+	Machine     string
+	OSImage     string
+	IdleTimeout string
 }
 
 type StaticConfig struct {
@@ -325,6 +335,7 @@ type fileConfig struct {
 	Daytona          *fileDaytonaConfig    `yaml:"daytona,omitempty"`
 	E2B              *fileE2BConfig        `yaml:"e2b,omitempty"`
 	Islo             *fileIsloConfig       `yaml:"islo,omitempty"`
+	Semaphore        *fileSemaphoreConfig  `yaml:"semaphore,omitempty"`
 	Tailscale        *fileTailscaleConfig  `yaml:"tailscale,omitempty"`
 	Static           *fileStaticConfig     `yaml:"static,omitempty"`
 	Results          *fileResultsConfig    `yaml:"results,omitempty"`
@@ -466,6 +477,15 @@ type fileIsloConfig struct {
 	VCPUs          int    `yaml:"vcpus,omitempty"`
 	MemoryMB       int    `yaml:"memoryMB,omitempty"`
 	DiskGB         int    `yaml:"diskGB,omitempty"`
+}
+
+type fileSemaphoreConfig struct {
+	Host        string `yaml:"host,omitempty"`
+	Token       string `yaml:"token,omitempty"`
+	Project     string `yaml:"project,omitempty"`
+	Machine     string `yaml:"machine,omitempty"`
+	OSImage     string `yaml:"osImage,omitempty"`
+	IdleTimeout string `yaml:"idleTimeout,omitempty"`
 }
 
 type fileTailscaleConfig struct {
@@ -930,6 +950,26 @@ func applyFileConfig(cfg *Config, file fileConfig) {
 			cfg.Islo.DiskGB = file.Islo.DiskGB
 		}
 	}
+	if file.Semaphore != nil {
+		if file.Semaphore.Host != "" {
+			cfg.Semaphore.Host = file.Semaphore.Host
+		}
+		if file.Semaphore.Token != "" {
+			cfg.Semaphore.Token = file.Semaphore.Token
+		}
+		if file.Semaphore.Project != "" {
+			cfg.Semaphore.Project = file.Semaphore.Project
+		}
+		if file.Semaphore.Machine != "" {
+			cfg.Semaphore.Machine = file.Semaphore.Machine
+		}
+		if file.Semaphore.OSImage != "" {
+			cfg.Semaphore.OSImage = file.Semaphore.OSImage
+		}
+		if file.Semaphore.IdleTimeout != "" {
+			cfg.Semaphore.IdleTimeout = file.Semaphore.IdleTimeout
+		}
+	}
 	if file.Tailscale != nil {
 		if file.Tailscale.Enabled != nil {
 			cfg.Tailscale.Enabled = *file.Tailscale.Enabled
@@ -1113,6 +1153,12 @@ func applyEnv(cfg *Config) {
 	cfg.Islo.VCPUs = getenvInt("CRABBOX_ISLO_VCPUS", cfg.Islo.VCPUs)
 	cfg.Islo.MemoryMB = getenvInt("CRABBOX_ISLO_MEMORY_MB", cfg.Islo.MemoryMB)
 	cfg.Islo.DiskGB = getenvInt("CRABBOX_ISLO_DISK_GB", cfg.Islo.DiskGB)
+	cfg.Semaphore.Host = getenv("CRABBOX_SEMAPHORE_HOST", getenv("SEMAPHORE_HOST", cfg.Semaphore.Host))
+	cfg.Semaphore.Token = getenv("CRABBOX_SEMAPHORE_TOKEN", getenv("SEMAPHORE_API_TOKEN", cfg.Semaphore.Token))
+	cfg.Semaphore.Project = getenv("CRABBOX_SEMAPHORE_PROJECT", getenv("SEMAPHORE_PROJECT", cfg.Semaphore.Project))
+	cfg.Semaphore.Machine = getenv("CRABBOX_SEMAPHORE_MACHINE", cfg.Semaphore.Machine)
+	cfg.Semaphore.OSImage = getenv("CRABBOX_SEMAPHORE_OS_IMAGE", cfg.Semaphore.OSImage)
+	cfg.Semaphore.IdleTimeout = getenv("CRABBOX_SEMAPHORE_IDLE_TIMEOUT", cfg.Semaphore.IdleTimeout)
 	if value, ok := getenvBool("CRABBOX_TAILSCALE"); ok {
 		cfg.Tailscale.Enabled = value
 	}

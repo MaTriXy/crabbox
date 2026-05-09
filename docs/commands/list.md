@@ -36,7 +36,7 @@ and `--json` use the normalized Crabbox lease view.
 Flags:
 
 ```text
---provider hetzner|aws|azure|ssh|blacksmith-testbox|daytona|islo|e2b
+--provider hetzner|aws|azure|ssh|blacksmith-testbox|semaphore|daytona|islo|e2b
 --target linux|macos|windows
 --windows-mode normal|wsl2
 --static-host <host>
