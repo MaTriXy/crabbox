@@ -298,6 +298,8 @@ function landingHero(rootPrefix) {
     ["Reuse what's warm", "<code>crabbox warmup</code> keeps a box hot. Reuse it with <code>--id</code> across runs, SSH, and CI hydration."],
     ["Many providers, one loop", "Brokered Hetzner / AWS / Azure, delegated E2B / Daytona / Blacksmith / Semaphore, or static SSH targets - Linux, Windows, and macOS."],
     ["Plays with Actions", "<code>actions hydrate</code> reuses your repository's GitHub Actions setup steps so local runs land in the same hydrated workspace."],
+    ["Desktop in your browser", "<code>crabbox webvnc</code> streams a Linux, macOS, or Windows desktop into the browser. Drive UI tests, capture screenshots, hand the live session to a teammate - no VPN."],
+    ["Proof for every run", "<code>crabbox artifacts collect</code> bundles screenshots, video, JUnit summaries, logs, and lease metadata. Drop it on a PR as before/after evidence instead of scraping log output."],
   ];
   const cards = features
     .map(([title, body]) => `<article class="feature"><h3>${escapeHtml(title)}</h3><p>${body}</p></article>`)
