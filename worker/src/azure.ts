@@ -1,5 +1,10 @@
 import { azureWindowsBootstrapPowerShell, cloudInit } from "./bootstrap";
-import { azureLocationFor, azureVMSizeCandidatesForTargetClass, type LeaseConfig } from "./config";
+import {
+  azureLocationFor,
+  azureVMSizeCandidatesForTargetClass,
+  sshPorts,
+  type LeaseConfig,
+} from "./config";
 import { leaseProviderLabels } from "./provider-labels";
 import { leaseProviderName } from "./slug";
 import type { Env, ProviderMachine } from "./types";
@@ -294,7 +299,7 @@ export class AzureClient {
   }
 
   private buildSSHRules(config: LeaseConfig, usedPriorities: Set<number>) {
-    const ports = [config.sshPort, ...config.sshFallbackPorts].filter(Boolean);
+    const ports = sshPorts(config);
     const rules = [];
     for (const port of ports) {
       for (let index = 0; index < this.sshCIDRs.length; index += 1) {

@@ -21,6 +21,55 @@ const baseEnv: Env = {
   AZURE_SUBSCRIPTION_ID: "sub",
 };
 
+function testLeaseConfig(overrides: Partial<LeaseConfig> = {}): LeaseConfig {
+  return {
+    provider: "azure",
+    target: "linux",
+    windowsMode: "normal",
+    desktop: false,
+    browser: false,
+    code: false,
+    tailscale: false,
+    tailscaleTags: ["tag:crabbox"],
+    tailscaleHostname: "",
+    tailscaleAuthKey: "",
+    tailscaleExitNode: "",
+    tailscaleExitNodeAllowLanAccess: false,
+    profile: "default",
+    class: "standard",
+    serverType: "Standard_D2ads_v6",
+    serverTypeExplicit: true,
+    location: "fsn1",
+    image: "ubuntu-24.04",
+    awsRegion: "eu-west-1",
+    awsAMI: "",
+    awsSGID: "",
+    awsSubnetID: "",
+    awsProfile: "",
+    awsRootGB: 400,
+    awsSSHCIDRs: [],
+    awsMacHostID: "",
+    azureLocation: "eastus",
+    azureImage: "",
+    capacityMarket: "spot",
+    capacityStrategy: "most-available",
+    capacityFallback: "on-demand-after-120s",
+    capacityRegions: [],
+    capacityAvailabilityZones: [],
+    capacityHints: true,
+    sshUser: "crabbox",
+    sshPort: "2222",
+    sshFallbackPorts: ["22"],
+    providerKey: "crabbox-cbx",
+    workRoot: "/workspace",
+    ttlSeconds: 5400,
+    idleTimeoutSeconds: 1800,
+    keep: false,
+    sshPublicKey: "ssh-rsa test",
+    ...overrides,
+  };
+}
+
 describe("azure provider", () => {
   it("classifies Azure capacity and quota errors as retryable", () => {
     expect(isRetryableProvisioningError("SkuNotAvailable: D8s_v5 not available")).toBe(true);
@@ -288,6 +337,51 @@ describe("azure provider", () => {
     expect(client.resourceGroup).toBe("custom-rg");
     expect(client.defaultLocation).toBe("westus2");
     expect(client.sshCIDRs).toEqual(["10.0.0.0/8", "192.168.0.0/16"]);
+  });
+
+  it("deduplicates Azure NSG rules for repeated SSH ports", async () => {
+    const client = new AzureClient(baseEnv);
+    let nsgBody: { properties?: { securityRules?: Array<{ name?: string }> } } | undefined;
+    const fakeFetch = ((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("login.microsoftonline.com")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ access_token: "tkn", expires_in: 3600 }), { status: 200 }),
+        );
+      }
+      if (url.includes("/resourceGroups/crabbox-leases?")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ tags: { managed_by: "crabbox" } }), { status: 200 }),
+        );
+      }
+      if (url.includes("/virtualNetworks/crabbox-vnet?")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ tags: { managed_by: "crabbox" } }), { status: 200 }),
+        );
+      }
+      if (url.includes("/networkSecurityGroups/crabbox-nsg?") && init?.method === "GET") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ tags: { managed_by: "crabbox" }, properties: { securityRules: [] } }),
+            { status: 200 },
+          ),
+        );
+      }
+      if (url.includes("/networkSecurityGroups/crabbox-nsg?") && init?.method === "PUT") {
+        nsgBody = JSON.parse(String(init.body));
+      }
+      return Promise.resolve(new Response("{}", { status: 200 }));
+    }) as typeof fetch;
+    client.fetcher = fakeFetch;
+
+    await client.ensureSharedInfra(
+      "eastus",
+      testLeaseConfig({ sshPort: "2222", sshFallbackPorts: ["22", "2222", "2022", "22"] }),
+    );
+
+    const names = nsgBody?.properties?.securityRules?.map((rule) => rule.name) ?? [];
+    expect(names).toEqual(["crabbox-ssh-2222-0", "crabbox-ssh-22-0", "crabbox-ssh-2022-0"]);
+    expect(new Set(names).size).toBe(names.length);
   });
 
   it("caches the client_credentials token across calls", async () => {
