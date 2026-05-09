@@ -18,20 +18,19 @@ Cloud machines are vanilla Ubuntu runners that hold no broker secrets. They are 
 ## The Pieces
 
 ```text
-+----------------------+    HTTPS / JSON     +--------------------------+
-| your laptop          |  ------------------> | Cloudflare Worker        |
-| -------------        |   bearer + owner     | ------------------       |
-| crabbox CLI          |                      | Fleet Durable Object     |
-| repo checkout        |                      | provider creds           |
-| per-lease SSH key    |                      | lease + usage state      |
-+----------+-----------+                      +------------+-------------+
-           |                                                | provider API
-           |                                                v
-           |                                +------------------------------+
-           |       SSH (primary + fallback) | Hetzner Cloud / AWS EC2      |
-           +----------- rsync ------------> | Ubuntu runner                |
-                                            | /work/crabbox/<lease>/<repo> |
-                                            +------------------------------+
+┌──────────────────────┐   HTTPS / JSON   ┌──────────────────────┐
+│ your laptop          │ ───────────────► │ Cloudflare Worker    │
+│ crabbox CLI          │  bearer + owner  │ Fleet Durable Object │
+│ repo checkout        │                  │ provider creds       │
+│ per-lease SSH key    │                  │ lease + usage state  │
+└──────────┬───────────┘                  └──────────┬───────────┘
+           │                                         │ provider API
+           │                                         ▼
+           │                          ┌──────────────────────────────┐
+           │ SSH (primary + fallback) │ Hetzner Cloud / AWS EC2      │
+           └────────── rsync ────────►│ Ubuntu runner                │
+                                      │ /work/crabbox/<lease>/<repo> │
+                                      └──────────────────────────────┘
 ```
 
 The CLI talks to the broker over HTTPS, then talks **directly** to the leased runner over SSH and rsync. The runner never calls the broker; that path stays one-way.
