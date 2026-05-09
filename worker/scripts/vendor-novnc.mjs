@@ -15,7 +15,7 @@ if (!fs.existsSync(packagePath)) {
 }
 
 const packageJSON = JSON.parse(fs.readFileSync(packagePath, "utf8"));
-if (packageJSON.version !== "1.6.0") {
+if (packageJSON.version !== "1.7.0") {
   throw new Error(`unexpected @novnc/novnc version ${packageJSON.version}; update vendored assets`);
 }
 

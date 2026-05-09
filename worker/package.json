@@ -15,9 +15,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@novnc/novnc": "1.6.0",
+    "@novnc/novnc": "^1.7.0",
     "aws4fetch": "^1.0.20",
-    "fast-xml-parser": "^5.7.2"
+    "fast-xml-parser": "^5.7.3"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260501.1",

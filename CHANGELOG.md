@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Changed
+
+- Updated Worker runtime dependencies and Go provider SDKs, including noVNC, fast-xml-parser, AWS EC2, Daytona, Islo, and related Go runtime libraries.
+
+### Fixed
+
+- Removed the vulnerable transitive `fast-xml-builder` Worker dependency by updating fast-xml-parser.
+
 ## 0.8.0 - 2026-05-09
 
 ### Added
