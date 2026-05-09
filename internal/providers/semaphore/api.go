@@ -106,7 +106,10 @@ func (c *apiClient) WaitForRunning(ctx context.Context, jobID string, tick func(
 			return "", 0, core.Exit(5, "job %s finished before reaching RUNNING state", jobID)
 		}
 		if status.State == "RUNNING" {
-			return status.IP, status.SSHPort, nil
+			if status.IP != "" && status.SSHPort > 0 {
+				return status.IP, status.SSHPort, nil
+			}
+			continue
 		}
 	}
 	return "", 0, core.Exit(5, "job %s did not reach RUNNING state within timeout", jobID)
@@ -265,7 +268,7 @@ func (c *apiClient) getWithHeaders(ctx context.Context, path string) ([]byte, ht
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != 200 {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, nil, fmt.Errorf("semaphore API %s returned %d: %s", path, resp.StatusCode, string(body))
 	}
 	return body, resp.Header, nil
@@ -286,7 +289,7 @@ func (c *apiClient) get(ctx context.Context, path string, target any) error {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("semaphore API %s returned %d: %s", path, resp.StatusCode, string(body))
 	}
 	if target != nil {
@@ -319,7 +322,7 @@ func (c *apiClient) post(ctx context.Context, path string, payload any, target a
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("semaphore API %s returned %d: %s", path, resp.StatusCode, string(body))
 	}
 	if target != nil {

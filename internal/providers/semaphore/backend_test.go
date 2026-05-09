@@ -127,7 +127,11 @@ func TestFlagsNotSetLeavesDefaults(t *testing.T) {
 
 func TestIdleTimeoutDefault(t *testing.T) {
 	cfg := core.BaseConfig()
-	if d := idleTimeout(cfg); d != 30*time.Minute {
+	d, err := idleTimeout(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d != 30*time.Minute {
 		t.Errorf("default idle timeout = %v, want 30m", d)
 	}
 }
@@ -135,8 +139,20 @@ func TestIdleTimeoutDefault(t *testing.T) {
 func TestIdleTimeoutFromConfig(t *testing.T) {
 	cfg := core.BaseConfig()
 	cfg.Semaphore.IdleTimeout = "15m"
-	if d := idleTimeout(cfg); d != 15*time.Minute {
+	d, err := idleTimeout(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d != 15*time.Minute {
 		t.Errorf("idle timeout = %v, want 15m", d)
+	}
+}
+
+func TestIdleTimeoutRejectsInvalidConfig(t *testing.T) {
+	cfg := core.BaseConfig()
+	cfg.Semaphore.IdleTimeout = "later"
+	if _, err := idleTimeout(cfg); err == nil {
+		t.Fatal("expected invalid idle timeout error")
 	}
 }
 
@@ -175,6 +191,7 @@ func TestCreateJob(t *testing.T) {
 			if auth := r.Header.Get("Authorization"); auth != "Token test-token" {
 				t.Errorf("auth = %q", auth)
 			}
+			w.WriteHeader(http.StatusCreated)
 			json.NewEncoder(w).Encode(map[string]any{
 				"metadata": map[string]string{"id": "job-456"},
 			})
@@ -340,6 +357,7 @@ func TestStopJob(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/stop") {
 			stopped = true
+			w.WriteHeader(http.StatusNoContent)
 			w.Write([]byte("{}"))
 			return
 		}
@@ -400,6 +418,22 @@ func TestResolveByJobIDRejectsNonCrabboxJob(t *testing.T) {
 	}
 	if debugKeyHit {
 		t.Fatal("debug SSH key endpoint should not be called for non-Crabbox jobs")
+	}
+}
+
+func TestResolveIgnoresOtherProviderClaims(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(home, ".local", "state"))
+
+	if err := core.ClaimLeaseForRepoProvider("cbx_123", "blue-lobster", "aws", "/repo", time.Minute, false); err != nil {
+		t.Fatal(err)
+	}
+	backend := &semaphoreBackend{cfg: testConfig("semaphore.example.test")}
+	_, err := backend.Resolve(context.Background(), core.ResolveRequest{ID: "blue-lobster"})
+	if err == nil || !strings.Contains(err.Error(), "semaphore lease not found") {
+		t.Fatalf("resolve error = %v, want semaphore not found", err)
 	}
 }
 

@@ -2,6 +2,7 @@ package semaphore
 
 import (
 	"flag"
+	"fmt"
 	"strings"
 	"time"
 
@@ -64,13 +65,15 @@ func withDefault(value, fallback string) string {
 	return fallback
 }
 
-func idleTimeout(cfg core.Config) time.Duration {
+func idleTimeout(cfg core.Config) (time.Duration, error) {
 	if cfg.Semaphore.IdleTimeout != "" {
-		if d, err := time.ParseDuration(cfg.Semaphore.IdleTimeout); err == nil {
-			return d
+		d, err := time.ParseDuration(cfg.Semaphore.IdleTimeout)
+		if err != nil || d <= 0 {
+			return 0, fmt.Errorf("invalid semaphore idle timeout %q", cfg.Semaphore.IdleTimeout)
 		}
+		return d, nil
 	}
-	return 30 * time.Minute
+	return 30 * time.Minute, nil
 }
 
 func isCrabboxJobName(name string) bool {

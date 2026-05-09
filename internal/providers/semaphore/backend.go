@@ -37,7 +37,10 @@ func (b *semaphoreBackend) Acquire(ctx context.Context, req core.AcquireRequest)
 
 	machine := withDefault(b.cfg.Semaphore.Machine, "f1-standard-2")
 	osImage := withDefault(b.cfg.Semaphore.OSImage, "ubuntu2204")
-	timeout := idleTimeout(b.cfg)
+	timeout, err := idleTimeout(b.cfg)
+	if err != nil {
+		return core.LeaseTarget{}, core.Exit(2, "%v", err)
+	}
 
 	fmt.Fprintf(b.rt.Stderr, "provisioning provider=semaphore project=%s machine=%s os=%s\n", project, machine, osImage)
 
@@ -120,7 +123,7 @@ func (b *semaphoreBackend) Resolve(ctx context.Context, req core.ResolveRequest)
 	}
 
 	// Resolve slug → lease ID via claim file
-	if claim, found, err := core.ResolveLeaseClaim(id); err == nil && found {
+	if claim, found, err := core.ResolveLeaseClaim(id); err == nil && found && claim.Provider == providerName {
 		return b.resolveByJobID(ctx, stripLeasePrefix(claim.LeaseID))
 	}
 

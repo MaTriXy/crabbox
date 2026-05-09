@@ -155,9 +155,7 @@ type SemaphoreConfig struct {
 	Project     string
 	Machine     string
 	OSImage     string
-	Duration    string
 	IdleTimeout string
-	Binary      string
 }
 
 type StaticConfig struct {
@@ -487,9 +485,7 @@ type fileSemaphoreConfig struct {
 	Project     string `yaml:"project,omitempty"`
 	Machine     string `yaml:"machine,omitempty"`
 	OSImage     string `yaml:"osImage,omitempty"`
-	Duration    string `yaml:"duration,omitempty"`
 	IdleTimeout string `yaml:"idleTimeout,omitempty"`
-	Binary      string `yaml:"binary,omitempty"`
 }
 
 type fileTailscaleConfig struct {
@@ -970,14 +966,8 @@ func applyFileConfig(cfg *Config, file fileConfig) {
 		if file.Semaphore.OSImage != "" {
 			cfg.Semaphore.OSImage = file.Semaphore.OSImage
 		}
-		if file.Semaphore.Duration != "" {
-			cfg.Semaphore.Duration = file.Semaphore.Duration
-		}
 		if file.Semaphore.IdleTimeout != "" {
 			cfg.Semaphore.IdleTimeout = file.Semaphore.IdleTimeout
-		}
-		if file.Semaphore.Binary != "" {
-			cfg.Semaphore.Binary = file.Semaphore.Binary
 		}
 	}
 	if file.Tailscale != nil {
