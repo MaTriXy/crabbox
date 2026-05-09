@@ -309,6 +309,20 @@ export DISPLAY="${DISPLAY:-:99}"
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
 cat > "$tmp"
+command -v xdotool >/dev/null 2>&1 || { echo "missing xdotool; warm a new --desktop lease or install xdotool" >&2; exit 127; }
+active_class="$(xdotool getactivewindow getwindowclassname 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
+active_name="$(xdotool getactivewindow getwindowname 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
+active_pid="$(xdotool getactivewindow getwindowpid 2>/dev/null || true)"
+active_proc=""
+if [ -n "$active_pid" ] && command -v ps >/dev/null 2>&1; then
+  active_proc="$(ps -p "$active_pid" -o comm= 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
+fi
+case "$active_class $active_name $active_proc" in
+  *xterm*|*terminal*|*konsole*|*alacritty*|*kitty*|*wezterm*)
+    xdotool type --clearmodifiers --delay 1 --file "$tmp"
+    exit 0
+    ;;
+esac
 if command -v xclip >/dev/null 2>&1; then
   timeout 5s xclip -selection clipboard -loops 1 "$tmp" &
   clip_pid=$!
@@ -322,7 +336,6 @@ else
   echo "missing clipboard tool; warm a new --desktop lease or install xclip/xsel" >&2
   exit 127
 fi
-command -v xdotool >/dev/null 2>&1 || { echo "missing xdotool; warm a new --desktop lease or install xdotool" >&2; exit 127; }
 sleep 0.2
 xdotool key --clearmodifiers ctrl+v
 wait "$clip_pid" || true`

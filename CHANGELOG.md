@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- Fixed `crabbox desktop paste` for terminal windows so symbol-heavy text falls back to direct typing instead of sending a literal `Ctrl+V` into xterm-like sessions.
 - Removed the vulnerable transitive `fast-xml-builder` Worker dependency by updating fast-xml-parser.
 
 ## 0.8.0 - 2026-05-09

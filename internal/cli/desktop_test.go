@@ -47,6 +47,10 @@ func TestDesktopPasteRemoteCommandPrefersClipboardTools(t *testing.T) {
 		"timeout 5s xclip -selection clipboard -loops 1",
 		"timeout 5s xsel --clipboard --input",
 		"wl-copy --paste-once",
+		"getactivewindow getwindowclassname",
+		"getactivewindow getwindowpid",
+		`*xterm*|*terminal*|*konsole*|*alacritty*|*kitty*|*wezterm*)`,
+		`xdotool type --clearmodifiers --delay 1 --file "$tmp"`,
 		"xdotool key --clearmodifiers ctrl+v",
 		"wait \"$clip_pid\" || true",
 	} {
