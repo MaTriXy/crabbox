@@ -61,6 +61,10 @@
 
 - Fixed stale Code, WebVNC, and egress bridge clients so expired or missing leases stop polling/restarting after terminal coordinator responses. Thanks @vincentkoc.
 
+### Fixed
+
+- Fixed Blacksmith Testbox shell command rendering so multiline `--shell` payloads with trailing blank whitespace do not produce a spurious shell syntax failure after the remote command succeeds.
+
 ## 0.7.0 - 2026-05-07
 
 ### Added

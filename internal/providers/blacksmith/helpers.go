@@ -232,7 +232,7 @@ func blacksmithCommandString(command []string, shellMode bool) string {
 		return ""
 	}
 	if shellMode || len(command) == 1 {
-		return strings.Join(command, " ")
+		return trimBlacksmithShellCommand(strings.Join(command, " "))
 	}
 	if shouldUseShell(command) {
 		return shellScriptFromArgv(command)
@@ -249,6 +249,10 @@ func blacksmithCommandString(command []string, shellMode bool) string {
 		parts = append(parts, shellQuote(word))
 	}
 	return strings.Join(parts, " ")
+}
+
+func trimBlacksmithShellCommand(command string) string {
+	return strings.TrimRight(command, " \t\r\n")
 }
 
 func isShellEnvAssignment(word string) bool {

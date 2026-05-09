@@ -473,6 +473,17 @@ func TestBlacksmithCommandString(t *testing.T) {
 			shellMode: true,
 			want:      "echo hello",
 		},
+		{
+			name:      "explicit multiline shell trims trailing blank suffix",
+			command:   []string{"set -e\nrun_case() {\n  printf '%s\\n' \"$1\"\n}\nrun_case ok\n \n"},
+			shellMode: true,
+			want:      "set -e\nrun_case() {\n  printf '%s\\n' \"$1\"\n}\nrun_case ok",
+		},
+		{
+			name:    "single shell string trims trailing blank suffix",
+			command: []string{"pnpm test\n"},
+			want:    "pnpm test",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
