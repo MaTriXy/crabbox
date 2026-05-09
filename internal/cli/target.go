@@ -45,6 +45,9 @@ func normalizeTargetConfig(cfg *Config) {
 	if cfg.Static.WorkRoot != "" {
 		cfg.WorkRoot = cfg.Static.WorkRoot
 	}
+	if (cfg.Provider == "namespace-devbox" || cfg.Provider == "namespace") && isDefaultWorkRoot(cfg.WorkRoot) && cfg.Namespace.WorkRoot != "" {
+		cfg.WorkRoot = cfg.Namespace.WorkRoot
+	}
 }
 
 func isDefaultWorkRoot(value string) bool {

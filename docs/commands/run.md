@@ -13,6 +13,7 @@ crabbox run --desktop --browser --shell 'echo "$DISPLAY"; "$BROWSER" --version'
 crabbox run --id blue-lobster --shell 'pnpm install --frozen-lockfile && pnpm test'
 crabbox run --id cbx_abcdef123456 --junit junit.xml -- go test ./...
 crabbox run --provider blacksmith-testbox --blacksmith-workflow .github/workflows/ci-check-testbox.yml --blacksmith-job test -- pnpm test
+crabbox run --provider namespace-devbox --namespace-image builtin:base -- pnpm test
 crabbox run --provider semaphore --semaphore-project my-app -- pnpm test
 crabbox run --provider daytona --daytona-snapshot crabbox-ready -- pnpm test
 crabbox run --provider islo --islo-image docker.io/library/ubuntu:24.04 -- pnpm test
@@ -26,6 +27,11 @@ crabbox run --provider ssh --target windows --windows-mode wsl2 --static-host wi
 If `--id` is omitted, Crabbox creates a fresh non-kept lease and releases it when the command exits. `--id` accepts the stable `cbx_...` ID or the active friendly slug.
 
 With `--provider blacksmith-testbox`, `--id` accepts a Blacksmith `tbx_...` ID or a local Crabbox slug. Crabbox forwards the command to `blacksmith testbox run`, delegates sync to Blacksmith, and prints `sync=delegated` in the final timing summary.
+
+With `--provider namespace-devbox`, `--id` accepts a Crabbox `cbx_...` ID,
+local slug, or existing Devbox name. Namespace owns create, SSH config, and list
+through the `devbox` CLI; Crabbox syncs over SSH and runs the command through the
+standard SSH executor.
 
 With `--provider semaphore`, `--id` accepts a Semaphore-backed Crabbox
 `cbx_...` ID or local slug. Semaphore owns the CI job and debug SSH endpoint;
@@ -101,7 +107,7 @@ Flags:
 
 ```text
 --id <lease-id-or-slug>
---provider hetzner|aws|azure|ssh|blacksmith-testbox|semaphore|daytona|islo|e2b
+--provider hetzner|aws|azure|ssh|blacksmith-testbox|namespace-devbox|semaphore|daytona|islo|e2b
 --target linux|macos|windows
 --windows-mode normal|wsl2
 --static-host <host>
@@ -138,6 +144,14 @@ Flags:
 --blacksmith-workflow <file|name|id>
 --blacksmith-job <job>
 --blacksmith-ref <ref>
+--namespace-image <image>
+--namespace-size <S|M|L|XL>
+--namespace-repository <repo>
+--namespace-site <site>
+--namespace-volume-size-gb <gb>
+--namespace-auto-stop-idle-timeout <duration>
+--namespace-work-root <path>
+--namespace-delete-on-release
 --semaphore-host <host>
 --semaphore-project <project>
 --semaphore-machine <type>

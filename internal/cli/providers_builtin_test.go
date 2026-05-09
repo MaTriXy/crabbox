@@ -11,6 +11,7 @@ func init() {
 	RegisterProvider(testAzureProvider{})
 	RegisterProvider(testStaticSSHProvider{})
 	RegisterProvider(testBlacksmithProvider{})
+	RegisterProvider(testNamespaceProvider{})
 	RegisterProvider(testDaytonaProvider{})
 	RegisterProvider(testIsloProvider{})
 	RegisterProvider(testE2BProvider{})
@@ -170,6 +171,54 @@ func (p testBlacksmithProvider) Configure(cfg Config, rt Runtime) (Backend, erro
 }
 
 type testDaytonaProvider struct{}
+
+type testNamespaceProvider struct{}
+
+func (testNamespaceProvider) Name() string { return "namespace-devbox" }
+func (testNamespaceProvider) Aliases() []string {
+	return []string{"namespace", "namespace-devboxes"}
+}
+func (testNamespaceProvider) Spec() ProviderSpec {
+	return ProviderSpec{
+		Name:        "namespace-devbox",
+		Kind:        ProviderKindSSHLease,
+		Targets:     []TargetSpec{{OS: targetLinux}},
+		Features:    FeatureSet{FeatureSSH, FeatureCrabboxSync},
+		Coordinator: CoordinatorNever,
+	}
+}
+func (testNamespaceProvider) RegisterFlags(fs *flag.FlagSet, defaults Config) any {
+	return testNamespaceFlagValues{
+		Image:    fs.String("namespace-image", defaults.Namespace.Image, "Namespace Devbox image"),
+		Size:     fs.String("namespace-size", defaults.Namespace.Size, "Namespace Devbox size"),
+		WorkRoot: fs.String("namespace-work-root", defaults.Namespace.WorkRoot, "Namespace Devbox work root"),
+	}
+}
+func (testNamespaceProvider) ApplyFlags(cfg *Config, fs *flag.FlagSet, values any) error {
+	v, ok := values.(testNamespaceFlagValues)
+	if !ok {
+		return nil
+	}
+	if flagWasSet(fs, "namespace-image") {
+		cfg.Namespace.Image = *v.Image
+	}
+	if flagWasSet(fs, "namespace-size") {
+		cfg.Namespace.Size = *v.Size
+	}
+	if flagWasSet(fs, "namespace-work-root") {
+		cfg.Namespace.WorkRoot = *v.WorkRoot
+	}
+	return nil
+}
+func (p testNamespaceProvider) Configure(cfg Config, rt Runtime) (Backend, error) {
+	return testSSHBackend{spec: p.Spec()}, nil
+}
+
+type testNamespaceFlagValues struct {
+	Image    *string
+	Size     *string
+	WorkRoot *string
+}
 
 func (testDaytonaProvider) Name() string      { return "daytona" }
 func (testDaytonaProvider) Aliases() []string { return nil }

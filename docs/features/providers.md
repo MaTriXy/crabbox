@@ -27,6 +27,7 @@ Direct provider backends can also run without the Crabbox coordinator:
 
 ```text
 semaphore  Semaphore CI jobs exposed as SSH leases
+namespace  Namespace Devboxes exposed as SSH leases
 daytona    Daytona sandboxes with SDK/toolbox run and short-lived SSH access
 islo       Islo sandboxes with delegated command execution
 e2b        E2B sandboxes with delegated command execution
@@ -40,6 +41,7 @@ e2b        E2B sandboxes with delegated command execution
 - [Hetzner](../providers/hetzner.md): Linux-only managed provider behavior, classes, and cleanup.
 - [Static SSH](../providers/ssh.md): existing Linux, macOS, and Windows SSH hosts.
 - [Blacksmith Testbox](../providers/blacksmith-testbox.md): delegated Testbox backend behavior.
+- [Namespace Devbox](../providers/namespace-devbox.md): Namespace Devbox SSH leases with Crabbox sync/run.
 - [Semaphore](../providers/semaphore.md): Semaphore CI job leases with Crabbox SSH sync/run.
 - [Daytona](../providers/daytona.md): Daytona SDK/toolbox sandbox leases.
 - [Islo](../providers/islo.md): delegated Islo sandbox execution.
@@ -109,6 +111,12 @@ beast     m8i.4xlarge, m8i-flex.4xlarge, c8i.4xlarge, r8i.4xlarge, m8i.2xlarge
 
 AWS macOS
 all       mac2.metal unless `--type` is set
+
+Namespace Devbox
+standard  S
+fast      M
+large     L
+beast     XL
 ```
 
 Direct provider mode still exists when no coordinator is configured. It uses local AWS credentials or `HCLOUD_TOKEN`/`HETZNER_TOKEN` and should stay secondary to the brokered path.
@@ -135,6 +143,11 @@ structured quota preflight and `provisioningAttempts` metadata belong to the
 brokered Worker path.
 
 Crabbox can also wrap Blacksmith Testboxes with `provider: blacksmith-testbox`. That backend does not use the Crabbox broker or direct cloud credentials. It shells out to the authenticated Blacksmith CLI for `testbox warmup`, `run`, `status`, `list`, and `stop`, while Crabbox keeps local slugs, repo claims, config, and timing summaries. See [Blacksmith Testbox](blacksmith-testbox.md).
+
+Crabbox can use Namespace Devboxes with `provider: namespace-devbox`. Namespace
+owns Devbox auth and lifecycle through the `devbox` CLI, while Crabbox treats
+the prepared Devbox as a normal Linux SSH lease and owns rsync, run, status,
+and timing. See [Namespace Devbox](namespace-devbox.md).
 
 Crabbox can use Semaphore CI jobs with `provider: semaphore`. Semaphore is an
 SSH lease backend: the provider creates a standalone Semaphore job, waits until
@@ -198,6 +211,7 @@ Related docs:
 - [Hetzner](../providers/hetzner.md)
 - [Tailscale](tailscale.md)
 - [Blacksmith Testbox](../providers/blacksmith-testbox.md)
+- [Namespace Devbox](../providers/namespace-devbox.md)
 - [Semaphore](../providers/semaphore.md)
 - [Daytona](../providers/daytona.md)
 - [Islo](../providers/islo.md)

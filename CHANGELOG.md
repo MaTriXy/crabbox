@@ -4,6 +4,7 @@
 
 ### Added
 
+- Added `provider: namespace-devbox` for Namespace Devbox SSH leases through the `devbox` CLI, with Crabbox sync/run layered on the returned SSH endpoint.
 - Added live smoke checklists and script coverage for direct E2B and Semaphore provider validation. Thanks @stainlu.
 
 ### Changed

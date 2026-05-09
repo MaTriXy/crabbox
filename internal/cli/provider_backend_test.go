@@ -22,7 +22,7 @@ func testRuntimeWithRunner(r CommandRunner) Runtime {
 }
 
 func TestProviderRegistryCanonicalAndAliases(t *testing.T) {
-	for _, name := range []string{"hetzner", "aws", "ssh", "static", "static-ssh", "blacksmith", "blacksmith-testbox", "daytona", "islo", "e2b"} {
+	for _, name := range []string{"hetzner", "aws", "ssh", "static", "static-ssh", "blacksmith", "blacksmith-testbox", "namespace", "namespace-devbox", "daytona", "islo", "e2b"} {
 		if _, err := ProviderFor(name); err != nil {
 			t.Fatalf("ProviderFor(%q): %v", name, err)
 		}
@@ -62,6 +62,15 @@ func TestLoadBackendWrapsCoordinatorOnlyForSupportedSSHProviders(t *testing.T) {
 		t.Fatalf("backend=%T, want delegated run backend", backend)
 	}
 
+	cfg.Provider = "namespace-devbox"
+	backend, err = loadBackend(cfg, testRuntimeWithRunner(&recordingCommandRunner{}))
+	if err != nil {
+		t.Fatalf("load namespace backend: %v", err)
+	}
+	if _, ok := backend.(SSHLeaseBackend); !ok {
+		t.Fatalf("backend=%T, want ssh lease backend", backend)
+	}
+
 	cfg.Provider = "e2b"
 	backend, err = loadBackend(cfg, testRuntimeWithRunner(&recordingCommandRunner{}))
 	if err != nil {
@@ -69,6 +78,29 @@ func TestLoadBackendWrapsCoordinatorOnlyForSupportedSSHProviders(t *testing.T) {
 	}
 	if _, ok := backend.(DelegatedRunBackend); !ok {
 		t.Fatalf("backend=%T, want delegated run backend", backend)
+	}
+}
+
+func TestProviderFlagsApplyNamespaceWithoutCoreEdits(t *testing.T) {
+	defaults := baseConfig()
+	fs := newFlagSet("test", io.Discard)
+	provider := fs.String("provider", defaults.Provider, "")
+	values := registerProviderFlags(fs, defaults)
+	if err := parseFlags(fs, []string{
+		"--provider", "namespace-devbox",
+		"--namespace-image", "crabbox-ready",
+		"--namespace-size", "L",
+		"--namespace-work-root", "/workspaces/test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := defaults
+	cfg.Provider = *provider
+	if err := applyProviderFlags(&cfg, fs, values); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Namespace.Image != "crabbox-ready" || cfg.Namespace.Size != "L" || cfg.Namespace.WorkRoot != "/workspaces/test" {
+		t.Fatalf("namespace flags not applied: %#v", cfg.Namespace)
 	}
 }
 

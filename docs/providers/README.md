@@ -16,6 +16,7 @@ static SSH provider for existing machines.
 | [Hetzner](hetzner.md) | SSH lease | Linux | fast Linux capacity at low cost |
 | [Static SSH](ssh.md) | SSH lease | Linux, macOS, Windows | reusing an existing host |
 | [Blacksmith Testbox](blacksmith-testbox.md) | delegated run | Linux | existing Blacksmith Testbox workflows |
+| [Namespace Devbox](namespace-devbox.md) | SSH lease | Linux | Namespace-managed dev environments with Crabbox sync |
 | [Semaphore](semaphore.md) | SSH lease | Linux | Semaphore CI environments with project secrets and cache |
 | [Daytona](daytona.md) | hybrid delegated run + SSH | Linux | Daytona snapshot sandboxes |
 | [Islo](islo.md) | delegated run | Linux | Islo-owned sandbox execution |
@@ -37,6 +38,7 @@ default.
 crabbox warmup --provider aws --class beast
 crabbox run --provider hetzner -- pnpm test
 crabbox run --provider blacksmith-testbox --id tbx_123 -- pnpm test
+crabbox run --provider namespace-devbox --id blue-lobster -- pnpm test
 ```
 
 ## Brokered Versus Direct
@@ -56,8 +58,9 @@ Delegated providers do not use the Crabbox coordinator:
 - Islo uses the Islo API and SDK auth.
 - E2B uses E2B's sandbox REST and envd APIs.
 
-Semaphore is an SSH lease provider that provisions via the Semaphore REST API.
-It does not use the Crabbox coordinator.
+Namespace Devbox and Semaphore are SSH lease providers that do not use the
+Crabbox coordinator. Namespace provisions through the authenticated `devbox`
+CLI; Semaphore provisions through the Semaphore REST API.
 
 ## Feature Matrix
 
@@ -68,13 +71,14 @@ It does not use the Crabbox coordinator.
 | Hetzner | yes | yes | yes | Linux VNC/code | yes | no |
 | Static SSH | yes | resolves host | yes | host-dependent | yes | no |
 | Blacksmith Testbox | yes | yes | no | no | no | yes |
+| Namespace Devbox | yes | yes | yes | no | yes | no |
 | Semaphore | yes | yes | yes | no | yes | no |
 | Daytona | yes | yes | yes | no | archive via Daytona toolbox | no |
 | Islo | yes | yes | no | no | no | yes |
 | E2B | yes | yes | no | no | archive via E2B envd | no |
 
 Actions runner hydration requires a normal SSH lease on Linux and is core-over-SSH.
-Use AWS, Hetzner, or Static SSH for that path.
+Use AWS, Hetzner, Static SSH, Namespace Devbox, or Semaphore for that path.
 
 ## Implementation
 

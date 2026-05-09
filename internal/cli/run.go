@@ -1090,6 +1090,10 @@ func (a App) stop(ctx context.Context, args []string) error {
 		fmt.Fprintf(a.Stderr, "released static lease=%s host=%s\n", lease.LeaseID, lease.SSH.Host)
 		return nil
 	}
+	if cfg.Provider == "namespace-devbox" || cfg.Provider == "namespace" || lease.Server.Provider == "namespace-devbox" {
+		fmt.Fprintf(a.Stderr, "released namespace devbox lease=%s name=%s\n", lease.LeaseID, lease.Server.Name)
+		return nil
+	}
 	fmt.Fprintf(a.Stderr, "deleted lease=%s server=%s name=%s\n", lease.LeaseID, lease.Server.DisplayID(), lease.Server.Name)
 	return nil
 }

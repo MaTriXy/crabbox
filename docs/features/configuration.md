@@ -144,6 +144,21 @@ blacksmith:
   debug: false
 ```
 
+### Namespace Devbox
+
+```yaml
+provider: namespace-devbox
+namespace:
+  image: builtin:base
+  size: M
+  repository: github.com/openclaw/crabbox
+  site: ""
+  volumeSizeGB: 100
+  autoStopIdleTimeout: 30m
+  workRoot: /workspaces/crabbox
+  deleteOnRelease: false
+```
+
 ### Daytona
 
 ```yaml

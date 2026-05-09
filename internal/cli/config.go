@@ -61,6 +61,7 @@ type Config struct {
 	Capacity           CapacityConfig
 	Actions            ActionsConfig
 	Blacksmith         BlacksmithConfig
+	Namespace          NamespaceConfig
 	Daytona            DaytonaConfig
 	E2B                E2BConfig
 	Islo               IsloConfig
@@ -113,6 +114,17 @@ type BlacksmithConfig struct {
 	Ref         string
 	IdleTimeout time.Duration
 	Debug       bool
+}
+
+type NamespaceConfig struct {
+	Image               string
+	Size                string
+	Repository          string
+	Site                string
+	VolumeSizeGB        int
+	AutoStopIdleTimeout time.Duration
+	WorkRoot            string
+	DeleteOnRelease     bool
 }
 
 type DaytonaConfig struct {
@@ -272,6 +284,11 @@ func baseConfig() Config {
 			RunnerVersion: "latest",
 			Ephemeral:     true,
 		},
+		Namespace: NamespaceConfig{
+			Image:               "builtin:base",
+			WorkRoot:            "/workspaces/crabbox",
+			AutoStopIdleTimeout: 30 * time.Minute,
+		},
 		Daytona: DaytonaConfig{
 			APIURL:           "https://app.daytona.io/api",
 			User:             "daytona",
@@ -332,6 +349,7 @@ type fileConfig struct {
 	Capacity         *fileCapacityConfig   `yaml:"capacity,omitempty"`
 	Actions          *fileActionsConfig    `yaml:"actions,omitempty"`
 	Blacksmith       *fileBlacksmithConfig `yaml:"blacksmith,omitempty"`
+	Namespace        *fileNamespaceConfig  `yaml:"namespace,omitempty"`
 	Daytona          *fileDaytonaConfig    `yaml:"daytona,omitempty"`
 	E2B              *fileE2BConfig        `yaml:"e2b,omitempty"`
 	Islo             *fileIsloConfig       `yaml:"islo,omitempty"`
@@ -448,6 +466,17 @@ type fileBlacksmithConfig struct {
 	Ref         string `yaml:"ref,omitempty"`
 	IdleTimeout string `yaml:"idleTimeout,omitempty"`
 	Debug       *bool  `yaml:"debug,omitempty"`
+}
+
+type fileNamespaceConfig struct {
+	Image               string `yaml:"image,omitempty"`
+	Size                string `yaml:"size,omitempty"`
+	Repository          string `yaml:"repository,omitempty"`
+	Site                string `yaml:"site,omitempty"`
+	VolumeSizeGB        int    `yaml:"volumeSizeGB,omitempty"`
+	AutoStopIdleTimeout string `yaml:"autoStopIdleTimeout,omitempty"`
+	WorkRoot            string `yaml:"workRoot,omitempty"`
+	DeleteOnRelease     *bool  `yaml:"deleteOnRelease,omitempty"`
 }
 
 type fileDaytonaConfig struct {
@@ -884,6 +913,30 @@ func applyFileConfig(cfg *Config, file fileConfig) {
 			cfg.Blacksmith.Debug = *file.Blacksmith.Debug
 		}
 	}
+	if file.Namespace != nil {
+		if file.Namespace.Image != "" {
+			cfg.Namespace.Image = file.Namespace.Image
+		}
+		if file.Namespace.Size != "" {
+			cfg.Namespace.Size = file.Namespace.Size
+		}
+		if file.Namespace.Repository != "" {
+			cfg.Namespace.Repository = file.Namespace.Repository
+		}
+		if file.Namespace.Site != "" {
+			cfg.Namespace.Site = file.Namespace.Site
+		}
+		if file.Namespace.VolumeSizeGB > 0 {
+			cfg.Namespace.VolumeSizeGB = file.Namespace.VolumeSizeGB
+		}
+		applyLeaseDuration(&cfg.Namespace.AutoStopIdleTimeout, file.Namespace.AutoStopIdleTimeout)
+		if file.Namespace.WorkRoot != "" {
+			cfg.Namespace.WorkRoot = file.Namespace.WorkRoot
+		}
+		if file.Namespace.DeleteOnRelease != nil {
+			cfg.Namespace.DeleteOnRelease = *file.Namespace.DeleteOnRelease
+		}
+	}
 	if file.Daytona != nil {
 		if file.Daytona.APIURL != "" {
 			cfg.Daytona.APIURL = file.Daytona.APIURL
@@ -1128,6 +1181,18 @@ func applyEnv(cfg *Config) {
 	cfg.Blacksmith.Workflow = getenv("CRABBOX_BLACKSMITH_WORKFLOW", cfg.Blacksmith.Workflow)
 	cfg.Blacksmith.Job = getenv("CRABBOX_BLACKSMITH_JOB", cfg.Blacksmith.Job)
 	cfg.Blacksmith.Ref = getenv("CRABBOX_BLACKSMITH_REF", cfg.Blacksmith.Ref)
+	cfg.Namespace.Image = getenv("CRABBOX_NAMESPACE_IMAGE", cfg.Namespace.Image)
+	cfg.Namespace.Size = getenv("CRABBOX_NAMESPACE_SIZE", cfg.Namespace.Size)
+	cfg.Namespace.Repository = getenv("CRABBOX_NAMESPACE_REPOSITORY", cfg.Namespace.Repository)
+	cfg.Namespace.Site = getenv("CRABBOX_NAMESPACE_SITE", cfg.Namespace.Site)
+	cfg.Namespace.VolumeSizeGB = getenvInt("CRABBOX_NAMESPACE_VOLUME_SIZE_GB", cfg.Namespace.VolumeSizeGB)
+	if idleTimeout := os.Getenv("CRABBOX_NAMESPACE_AUTO_STOP_IDLE_TIMEOUT"); idleTimeout != "" {
+		applyLeaseDuration(&cfg.Namespace.AutoStopIdleTimeout, idleTimeout)
+	}
+	cfg.Namespace.WorkRoot = getenv("CRABBOX_NAMESPACE_WORK_ROOT", cfg.Namespace.WorkRoot)
+	if value, ok := getenvBool("CRABBOX_NAMESPACE_DELETE_ON_RELEASE"); ok {
+		cfg.Namespace.DeleteOnRelease = value
+	}
 	cfg.Daytona.APIKey = getenv("CRABBOX_DAYTONA_API_KEY", getenv("DAYTONA_API_KEY", cfg.Daytona.APIKey))
 	cfg.Daytona.JWTToken = getenv("CRABBOX_DAYTONA_JWT_TOKEN", getenv("DAYTONA_JWT_TOKEN", cfg.Daytona.JWTToken))
 	cfg.Daytona.OrganizationID = getenv("CRABBOX_DAYTONA_ORGANIZATION_ID", getenv("DAYTONA_ORGANIZATION_ID", cfg.Daytona.OrganizationID))
@@ -1271,6 +1336,9 @@ func serverTypeForConfig(cfg Config) string {
 	if isBlacksmithProvider(cfg.Provider) || isStaticProvider(cfg.Provider) || cfg.Provider == "islo" {
 		return ""
 	}
+	if cfg.Provider == "namespace-devbox" || cfg.Provider == "namespace" {
+		return namespaceDevboxSizeForConfig(cfg)
+	}
 	if cfg.Provider == "e2b" {
 		return blank(cfg.E2B.Template, "base")
 	}
@@ -1290,6 +1358,9 @@ func serverTypeForProviderClass(provider, class string) string {
 	if isBlacksmithProvider(provider) || isStaticProvider(provider) || provider == "islo" {
 		return ""
 	}
+	if provider == "namespace-devbox" || provider == "namespace" {
+		return namespaceDevboxSizeForClass(class)
+	}
 	if provider == "e2b" {
 		return "base"
 	}
@@ -1303,6 +1374,34 @@ func serverTypeForProviderClass(provider, class string) string {
 		return azureVMSizeCandidatesForClass(class)[0]
 	}
 	return serverTypeForClass(class)
+}
+
+func namespaceDevboxSizeForConfig(cfg Config) string {
+	if strings.TrimSpace(cfg.Namespace.Size) != "" {
+		return strings.ToUpper(strings.TrimSpace(cfg.Namespace.Size))
+	}
+	if cfg.ServerTypeExplicit && strings.TrimSpace(cfg.ServerType) != "" {
+		return strings.ToUpper(strings.TrimSpace(cfg.ServerType))
+	}
+	return namespaceDevboxSizeForClass(cfg.Class)
+}
+
+func namespaceDevboxSizeForClass(class string) string {
+	switch strings.ToLower(strings.TrimSpace(class)) {
+	case "standard":
+		return "S"
+	case "fast":
+		return "M"
+	case "large":
+		return "L"
+	case "beast":
+		return "XL"
+	default:
+		if class == "" {
+			return "M"
+		}
+		return strings.ToUpper(strings.TrimSpace(class))
+	}
 }
 
 func serverTypeCandidatesForClass(class string) []string {

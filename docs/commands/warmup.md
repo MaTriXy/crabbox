@@ -13,6 +13,7 @@ crabbox warmup --provider azure --target windows
 crabbox warmup --provider aws --target macos --desktop --market on-demand --type mac2.metal
 crabbox warmup --actions-runner
 crabbox warmup --provider blacksmith-testbox --blacksmith-workflow .github/workflows/ci-check-testbox.yml --blacksmith-job test
+crabbox warmup --provider namespace-devbox --namespace-image builtin:base --namespace-size M
 crabbox warmup --provider semaphore --semaphore-host myorg.semaphoreci.com --semaphore-project my-app
 crabbox warmup --provider daytona --daytona-snapshot crabbox-ready
 crabbox warmup --provider islo --islo-image docker.io/library/ubuntu:24.04
@@ -24,6 +25,11 @@ crabbox warmup --provider ssh --target windows --windows-mode normal --static-ho
 The command returns a stable `cbx_...` lease ID and a friendly slug. Reuse either for subsequent `run`, `status`, `ssh`, `inspect`, and `stop` commands; scripts should keep using the canonical ID.
 
 With `--provider blacksmith-testbox`, the canonical ID is the Blacksmith `tbx_...` ID returned by `blacksmith testbox warmup`; Crabbox still assigns and stores a local slug for reuse.
+
+With `--provider namespace-devbox`, the canonical ID is a Crabbox `cbx_...`
+lease backed by a Namespace Devbox created through `devbox create --from`.
+Crabbox stores a local slug, prepares SSH access with `devbox configure-ssh`, and
+later uses normal SSH sync/run.
 
 With `--provider semaphore`, the canonical ID is a Crabbox `cbx_...` lease
 backed by a Semaphore CI job. Crabbox stores a local slug, retrieves the debug
@@ -87,7 +93,7 @@ On success, `warmup` prints a concise total duration line. Add `--timing-json` t
 Flags:
 
 ```text
---provider hetzner|aws|azure|ssh|blacksmith-testbox|semaphore|daytona|islo|e2b
+--provider hetzner|aws|azure|ssh|blacksmith-testbox|namespace-devbox|semaphore|daytona|islo|e2b
 --target linux|macos|windows
 --windows-mode normal|wsl2
 --static-host <host>
@@ -118,6 +124,14 @@ Flags:
 --blacksmith-workflow <file|name|id>
 --blacksmith-job <job>
 --blacksmith-ref <ref>
+--namespace-image <image>
+--namespace-size <S|M|L|XL>
+--namespace-repository <repo>
+--namespace-site <site>
+--namespace-volume-size-gb <gb>
+--namespace-auto-stop-idle-timeout <duration>
+--namespace-work-root <path>
+--namespace-delete-on-release
 --semaphore-host <host>
 --semaphore-project <project>
 --semaphore-machine <type>

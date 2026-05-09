@@ -7,6 +7,7 @@ crabbox status --id blue-lobster
 crabbox status --id blue-lobster --network tailscale
 crabbox status --id blue-lobster --wait --wait-timeout 10m
 crabbox status --id blue-lobster --json
+crabbox status --provider namespace-devbox --id blue-lobster
 crabbox status --provider semaphore --id blue-lobster
 crabbox status --provider daytona --id blue-lobster
 crabbox status --provider islo --id blue-lobster
@@ -17,7 +18,9 @@ crabbox status --provider ssh --target macos --static-host mac-studio.local
 `--id` accepts the canonical `cbx_...` ID or active slug. In
 `blacksmith-testbox` mode it accepts a `tbx_...` ID or local slug and derives a
 normalized Crabbox status view from `blacksmith testbox list --all`. In
-`semaphore` mode it resolves local claims and Semaphore job state through the
+`namespace-devbox` mode it accepts a Crabbox lease ID, local slug, or existing
+Devbox name and prepares SSH through the Namespace CLI. In `semaphore` mode it
+resolves local claims and Semaphore job state through the
 Semaphore API. In `daytona` mode it resolves Crabbox labels and sandbox state
 through Daytona APIs. In `islo` mode it accepts an `isb_...` ID,
 Crabbox-created sandbox name, or local slug and renders SDK status through the
@@ -32,7 +35,7 @@ Flags:
 
 ```text
 --id <lease-id-or-slug>
---provider hetzner|aws|azure|ssh|blacksmith-testbox|semaphore|daytona|islo|e2b
+--provider hetzner|aws|azure|ssh|blacksmith-testbox|namespace-devbox|semaphore|daytona|islo|e2b
 --target linux|macos|windows
 --windows-mode normal|wsl2
 --static-host <host>

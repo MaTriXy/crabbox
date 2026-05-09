@@ -16,7 +16,7 @@ cloud-grade compute, agent-ready observability.
 crabbox run -- pnpm test
 ```
 
-Behind that single command: a Go CLI on your laptop, a Cloudflare Worker broker that owns provider credentials and lease state, and a managed runner on Hetzner Cloud, AWS EC2, or Azure. Azure supports managed Linux and native Windows VMs. Crabbox can also wrap Blacksmith Testboxes when you choose `provider: blacksmith-testbox`, use Daytona, Islo, or E2B sandboxes for direct-provider workflows, use `provider: semaphore` for Semaphore CI environments, or use `provider: ssh` for existing macOS and Windows targets.
+Behind that single command: a Go CLI on your laptop, a Cloudflare Worker broker that owns provider credentials and lease state, and a managed runner on Hetzner Cloud, AWS EC2, or Azure. Azure supports managed Linux and native Windows VMs. Crabbox can also wrap Blacksmith Testboxes when you choose `provider: blacksmith-testbox`, use Namespace Devboxes, Daytona, Islo, or E2B sandboxes for direct-provider workflows, use `provider: semaphore` for Semaphore CI environments, or use `provider: ssh` for existing macOS and Windows targets.
 
 ---
 
@@ -81,6 +81,7 @@ For the full mental model, see [How Crabbox Works](docs/how-it-works.md). For th
 - **Azure Linux and native Windows.** `provider: azure` provisions Linux and native Windows VMs in a configurable Azure subscription using `DefaultAzureCredential` in direct mode or service-principal secrets in the broker. Crabbox creates a shared resource group, vnet, subnet, and NSG on first use, then per-lease public IPs, NICs, and VMs. Linux uses cloud-init; Windows uses VM Agent Custom Script Extension to install OpenSSH/Git and configure the Crabbox user.
 - **macOS and Windows static hosts.** `provider: ssh` reuses existing machines; it does not create macOS or Windows Crabbox boxes. macOS and Windows WSL2 use the POSIX rsync path; native Windows uses PowerShell plus tar archive sync.
 - **Blacksmith Testbox wrapper.** Set `provider: blacksmith-testbox` to delegate warmup/run/list/status/stop to the Blacksmith CLI while Crabbox keeps local slugs, repo claims, timing summaries, config conventions, and portal visibility for active external runners.
+- **Namespace Devbox SSH leases.** Set `provider: namespace-devbox` to create or reuse Namespace Devboxes through the `devbox` CLI, then let Crabbox sync the dirty checkout and run commands over SSH.
 - **Semaphore CI testbox.** Set `provider: semaphore` to lease a Semaphore CI job as a testbox. Same environment as your real pipelines.
 - **Daytona, Islo, and E2B sandboxes.** Set `provider: daytona` for Daytona SDK/toolbox execution from a snapshot with explicit SSH access when needed, `provider: islo` for delegated Islo sandbox execution through the Islo Go SDK, or `provider: e2b` for delegated E2B sandbox execution through E2B sandbox APIs.
 - **Trusted AWS images.** Operators can create AMIs from active brokered AWS leases and promote a known-good image as the coordinator default.
@@ -129,6 +130,11 @@ Azure Win  standard  Standard_D2ads_v6, Standard_D2ds_v6, Standard_D2ads_v5, Sta
            fast      Standard_D4ads_v6, Standard_D4ds_v6, Standard_D4ads_v5, Standard_D4ds_v5, Standard_D4as_v6
            large     Standard_D8ads_v6, Standard_D8ds_v6, Standard_D8ads_v5, Standard_D8ds_v5, Standard_D8as_v6
            beast     Standard_D16ads_v6, Standard_D16ds_v6, Standard_D16ads_v5, Standard_D16ds_v5, Standard_D8ads_v6
+
+Namespace  standard  S
+           fast      M
+           large     L
+           beast     XL
 ```
 
 Override with `--type` or `CRABBOX_SERVER_TYPE` for a specific instance.
@@ -185,6 +191,16 @@ command. Clicking an external row opens a visibility-only runner detail page
 with owner, workflow, timestamps, boundary notes, and the same stop command.
 Those rows are visibility-only records for Blacksmith-owned Testboxes, not
 Crabbox leases.
+
+Optional Namespace Devbox:
+
+```yaml
+provider: namespace-devbox
+namespace:
+  image: builtin:base
+  size: M
+  workRoot: /workspaces/crabbox
+```
 
 Optional Daytona sandbox:
 

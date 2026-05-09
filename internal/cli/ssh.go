@@ -20,16 +20,17 @@ import (
 )
 
 type SSHTarget struct {
-	User          string
-	Host          string
-	Key           string
-	Port          string
-	FallbackPorts []string
-	TargetOS      string
-	WindowsMode   string
-	ReadyCheck    string
-	AuthSecret    bool
-	NetworkKind   NetworkMode
+	User           string
+	Host           string
+	Key            string
+	Port           string
+	FallbackPorts  []string
+	TargetOS       string
+	WindowsMode    string
+	ReadyCheck     string
+	AuthSecret     bool
+	NetworkKind    NetworkMode
+	SSHConfigProxy bool
 }
 
 func sshTargetFromConfig(cfg Config, host string) SSHTarget {
@@ -87,34 +88,41 @@ func waitForSSHReady(ctx context.Context, target *SSHTarget, stderr io.Writer, p
 		if time.Now().After(deadline) {
 			return exit(5, "timed out waiting for SSH on %s during %s", target.Host, phase)
 		}
-		reachablePort := ""
-		transportPort := ""
-		for _, port := range sshPortCandidates(target.Port, target.FallbackPorts) {
-			probe := *target
-			probe.Port = port
-			conn, err := net.DialTimeout("tcp", net.JoinHostPort(probe.Host, probe.Port), 5*time.Second)
-			if err != nil {
-				continue
-			}
-			_ = conn.Close()
-			if reachablePort == "" {
-				reachablePort = probe.Port
-			}
-			if runSSHQuietWithOptions(ctx, probe, sshTransportProbeCommand(probe), "5", "1") != nil {
-				continue
-			}
-			if transportPort == "" {
-				transportPort = probe.Port
-			}
-			if runSSHQuietWithOptions(ctx, probe, sshReadyCommand(probe), "5", "1") == nil {
-				if target.Port != probe.Port {
-					fmt.Fprintf(stderr, "using ssh port %s for %s (configured %s not ready)\n", probe.Port, target.Host, target.Port)
-					target.Port = probe.Port
-				}
+		if target.SSHConfigProxy {
+			if runSSHQuietWithOptions(ctx, *target, sshReadyCommand(*target), "5", "1") == nil {
 				return nil
 			}
+			fmt.Fprintln(stderr, sshWaitProgressMessage(target, phase, target.Port, "", time.Since(start), time.Until(deadline)))
+		} else {
+			reachablePort := ""
+			transportPort := ""
+			for _, port := range sshPortCandidates(target.Port, target.FallbackPorts) {
+				probe := *target
+				probe.Port = port
+				conn, err := net.DialTimeout("tcp", net.JoinHostPort(probe.Host, probe.Port), 5*time.Second)
+				if err != nil {
+					continue
+				}
+				_ = conn.Close()
+				if reachablePort == "" {
+					reachablePort = probe.Port
+				}
+				if runSSHQuietWithOptions(ctx, probe, sshTransportProbeCommand(probe), "5", "1") != nil {
+					continue
+				}
+				if transportPort == "" {
+					transportPort = probe.Port
+				}
+				if runSSHQuietWithOptions(ctx, probe, sshReadyCommand(probe), "5", "1") == nil {
+					if target.Port != probe.Port {
+						fmt.Fprintf(stderr, "using ssh port %s for %s (configured %s not ready)\n", probe.Port, target.Host, target.Port)
+						target.Port = probe.Port
+					}
+					return nil
+				}
+			}
+			fmt.Fprintln(stderr, sshWaitProgressMessage(target, phase, reachablePort, transportPort, time.Since(start), time.Until(deadline)))
 		}
-		fmt.Fprintln(stderr, sshWaitProgressMessage(target, phase, reachablePort, transportPort, time.Since(start), time.Until(deadline)))
 		time.Sleep(10 * time.Second)
 	}
 }
@@ -144,6 +152,9 @@ func probeSSHReady(ctx context.Context, target *SSHTarget, timeout time.Duration
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	if target.SSHConfigProxy {
+		return runSSHQuietWithOptions(ctx, *target, sshReadyCommand(*target), "2", "1") == nil
+	}
 	for _, port := range sshPortCandidates(target.Port, target.FallbackPorts) {
 		probe := *target
 		probe.Port = port
@@ -167,6 +178,9 @@ func probeSSHTransport(ctx context.Context, target *SSHTarget, timeout time.Dura
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	if target.SSHConfigProxy {
+		return runSSHQuietWithOptions(ctx, *target, sshTransportProbeCommand(*target), "2", "1") == nil
+	}
 	for _, port := range sshPortCandidates(target.Port, target.FallbackPorts) {
 		probe := *target
 		probe.Port = port

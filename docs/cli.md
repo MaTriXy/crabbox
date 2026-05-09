@@ -33,8 +33,8 @@ crabbox init [--force]
 crabbox config show [--json]
 crabbox config path
 crabbox config set-broker --url <url> --token-stdin [--provider hetzner|aws|azure]
-crabbox warmup [--provider hetzner|aws|azure|ssh|blacksmith-testbox|semaphore|daytona|islo|e2b] [--target linux|macos|windows] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--profile <name>] [--idle-timeout <duration>] [--timing-json]
-crabbox run [--id <lease-id-or-slug>] [--provider hetzner|aws|azure|ssh|blacksmith-testbox|semaphore|daytona|islo|e2b] [--target linux|macos|windows] [--windows-mode normal|wsl2] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--shell] [--checksum] [--debug] [--force-sync-large] [--timing-json] [--blacksmith-workflow <workflow>] -- <command...>
+crabbox warmup [--provider hetzner|aws|azure|ssh|blacksmith-testbox|namespace-devbox|semaphore|daytona|islo|e2b] [--target linux|macos|windows] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--profile <name>] [--idle-timeout <duration>] [--timing-json]
+crabbox run [--id <lease-id-or-slug>] [--provider hetzner|aws|azure|ssh|blacksmith-testbox|namespace-devbox|semaphore|daytona|islo|e2b] [--target linux|macos|windows] [--windows-mode normal|wsl2] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--shell] [--checksum] [--debug] [--force-sync-large] [--timing-json] [--blacksmith-workflow <workflow>] -- <command...>
 crabbox desktop launch --id <lease-id-or-slug> [--browser] [--url <url>] [--egress <profile>] [--webvnc] [--open] [-- <command...>]
 crabbox desktop doctor --id <lease-id-or-slug> [--network auto|tailscale|public]
 crabbox desktop click --id <lease-id-or-slug> --x <n> --y <n> [--network auto|tailscale|public]
@@ -286,7 +286,7 @@ Flags:
 
 ```text
 --id <lease-id-or-slug>  reuse an existing lease
---provider <name>        hetzner, aws, azure, ssh, blacksmith-testbox, semaphore, daytona, islo, or e2b
+--provider <name>        hetzner, aws, azure, ssh, blacksmith-testbox, namespace-devbox, semaphore, daytona, islo, or e2b
 --target <name>          linux, macos, or windows
 --windows-mode <mode>    normal or wsl2
 --static-host <host>     existing SSH host for provider=ssh
@@ -323,6 +323,14 @@ Flags:
 --blacksmith-workflow <file|name|id> Blacksmith Testbox workflow
 --blacksmith-job <job>  Blacksmith Testbox workflow job
 --blacksmith-ref <ref>  Blacksmith Testbox git ref
+--namespace-image <image> Namespace Devbox image
+--namespace-size <S|M|L|XL> Namespace Devbox size
+--namespace-repository <repo> Namespace Devbox repository checkout
+--namespace-site <site> Namespace Devbox site
+--namespace-volume-size-gb <gb> Namespace Devbox volume size
+--namespace-auto-stop-idle-timeout <duration> Namespace idle auto-stop timeout
+--namespace-work-root <path> Namespace Crabbox work root
+--namespace-delete-on-release delete Namespace Devbox on release
 --semaphore-host <host> Semaphore organization host
 --semaphore-project <project> Semaphore project name
 --semaphore-machine <type> Semaphore machine type
@@ -340,6 +348,11 @@ Secrets must not be accepted as flag values. Env forwarding is name-based only.
 Crabbox stores local lease claims under its state directory. `warmup` and first reuse claim the lease for the current repo; later `run`, `ssh`, `cache`, and `actions hydrate/register` refuse a conflicting repo claim unless `--reclaim` is set.
 
 With `provider: blacksmith-testbox`, Crabbox delegates machine setup, sync, and command transport to the Blacksmith CLI. `--sync-only` is unsupported, sync timing is reported as `sync=delegated`, and Blacksmith auth is handled by `blacksmith auth login`, not `crabbox login`.
+
+With `provider: namespace-devbox`, Crabbox creates or resolves a Namespace
+Devbox through the authenticated `devbox` CLI, reads the generated SSH config,
+then uses normal Crabbox SSH sync/run. `crabbox stop` shuts the Devbox down by
+default; set `namespace.deleteOnRelease` to delete it.
 
 With `provider: semaphore`, Crabbox creates a Semaphore CI job, waits for the
 debug SSH endpoint, then uses the normal Crabbox SSH sync/run path. Auth comes
@@ -542,6 +555,16 @@ blacksmith:
   debug: false
 ```
 
+Namespace Devbox config:
+
+```yaml
+provider: namespace-devbox
+namespace:
+  image: builtin:base
+  size: M
+  workRoot: /workspaces/crabbox
+```
+
 Semaphore config:
 
 ```yaml
@@ -633,6 +656,14 @@ CRABBOX_BLACKSMITH_JOB
 CRABBOX_BLACKSMITH_REF
 CRABBOX_BLACKSMITH_IDLE_TIMEOUT
 CRABBOX_BLACKSMITH_DEBUG
+CRABBOX_NAMESPACE_IMAGE
+CRABBOX_NAMESPACE_SIZE
+CRABBOX_NAMESPACE_REPOSITORY
+CRABBOX_NAMESPACE_SITE
+CRABBOX_NAMESPACE_VOLUME_SIZE_GB
+CRABBOX_NAMESPACE_AUTO_STOP_IDLE_TIMEOUT
+CRABBOX_NAMESPACE_WORK_ROOT
+CRABBOX_NAMESPACE_DELETE_ON_RELEASE
 CRABBOX_SEMAPHORE_HOST
 CRABBOX_SEMAPHORE_TOKEN
 CRABBOX_SEMAPHORE_PROJECT

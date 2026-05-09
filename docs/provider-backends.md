@@ -146,6 +146,7 @@ internal/providers/hetzner
 internal/providers/aws
 internal/providers/ssh
 internal/providers/blacksmith
+internal/providers/namespace
 internal/providers/daytona
 internal/providers/islo
 ```
@@ -174,6 +175,7 @@ internal/providers/aws                    # AWS SSH lease backend
 internal/providers/hetzner                # Hetzner SSH lease backend
 internal/providers/ssh                    # static SSH backend
 internal/providers/blacksmith             # Blacksmith delegated backend
+internal/providers/namespace              # Namespace Devbox SSH backend
 internal/providers/daytona                # Daytona SSH + delegated SDK backend
 internal/providers/islo                   # Islo delegated backend
 ```

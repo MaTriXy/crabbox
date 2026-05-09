@@ -73,7 +73,7 @@ test("crabbox_run passes selected provider", async () => {
   const tools = registerWithConfig({ binary: fake.file });
   const result = await getTool(tools, "crabbox_run").execute("call-1", {
     id: "blue-lobster",
-    provider: "e2b",
+    provider: "namespace-devbox",
     command: ["go", "test", "./..."],
   });
   assert.equal(result.details.code, 0);
@@ -82,7 +82,7 @@ test("crabbox_run passes selected provider", async () => {
     "--id",
     "blue-lobster",
     "--provider",
-    "e2b",
+    "namespace-devbox",
     "--",
     "go",
     "test",

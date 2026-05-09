@@ -73,6 +73,14 @@ func clearConfigEnv(t *testing.T) {
 		"CRABBOX_SEMAPHORE_MACHINE",
 		"CRABBOX_SEMAPHORE_OS_IMAGE",
 		"CRABBOX_SEMAPHORE_IDLE_TIMEOUT",
+		"CRABBOX_NAMESPACE_IMAGE",
+		"CRABBOX_NAMESPACE_SIZE",
+		"CRABBOX_NAMESPACE_REPOSITORY",
+		"CRABBOX_NAMESPACE_SITE",
+		"CRABBOX_NAMESPACE_VOLUME_SIZE_GB",
+		"CRABBOX_NAMESPACE_AUTO_STOP_IDLE_TIMEOUT",
+		"CRABBOX_NAMESPACE_WORK_ROOT",
+		"CRABBOX_NAMESPACE_DELETE_ON_RELEASE",
 	} {
 		t.Setenv(key, "")
 	}
@@ -156,6 +164,15 @@ blacksmith:
   ref: main
   idleTimeout: 90m
   debug: true
+namespace:
+  image: crabbox-ready
+  size: L
+  repository: github.com/openclaw/crabbox
+  site: fra1
+  volumeSizeGB: 120
+  autoStopIdleTimeout: 1h
+  workRoot: /workspaces/test
+  deleteOnRelease: true
 daytona:
   apiUrl: https://daytona.example.test/api
   snapshot: crabbox-ready
@@ -275,6 +292,9 @@ ssh:
 	}
 	if cfg.Blacksmith.Org != "openclaw" || cfg.Blacksmith.Workflow != ".github/workflows/blacksmith-testbox.yml" || cfg.Blacksmith.Job != "hydrate" || cfg.Blacksmith.Ref != "main" || cfg.Blacksmith.IdleTimeout != 90*time.Minute || !cfg.Blacksmith.Debug {
 		t.Fatalf("blacksmith config not loaded: %#v", cfg.Blacksmith)
+	}
+	if cfg.Namespace.Image != "crabbox-ready" || cfg.Namespace.Size != "L" || cfg.Namespace.Repository != "github.com/openclaw/crabbox" || cfg.Namespace.Site != "fra1" || cfg.Namespace.VolumeSizeGB != 120 || cfg.Namespace.AutoStopIdleTimeout != time.Hour || cfg.Namespace.WorkRoot != "/workspaces/test" || !cfg.Namespace.DeleteOnRelease {
+		t.Fatalf("namespace config not loaded: %#v", cfg.Namespace)
 	}
 	if cfg.Daytona.APIURL != "https://daytona.example.test/api" || cfg.Daytona.Snapshot != "crabbox-ready" || cfg.Daytona.Target != "us" || cfg.Daytona.User != "daytona" || cfg.Daytona.WorkRoot != "/home/daytona/crabbox" || cfg.Daytona.SSHGatewayHost != "ssh.daytona.example.test" || cfg.Daytona.SSHAccessMinutes != 12 {
 		t.Fatalf("daytona config not loaded: %#v", cfg.Daytona)
@@ -410,6 +430,14 @@ func TestEnvOverridesConfig(t *testing.T) {
 	t.Setenv("CRABBOX_SEMAPHORE_MACHINE", "f1-standard-env")
 	t.Setenv("CRABBOX_SEMAPHORE_OS_IMAGE", "ubuntu-env")
 	t.Setenv("CRABBOX_SEMAPHORE_IDLE_TIMEOUT", "22m")
+	t.Setenv("CRABBOX_NAMESPACE_IMAGE", "namespace-env-image")
+	t.Setenv("CRABBOX_NAMESPACE_SIZE", "XL")
+	t.Setenv("CRABBOX_NAMESPACE_REPOSITORY", "github.com/openclaw/env")
+	t.Setenv("CRABBOX_NAMESPACE_SITE", "iad1")
+	t.Setenv("CRABBOX_NAMESPACE_VOLUME_SIZE_GB", "300")
+	t.Setenv("CRABBOX_NAMESPACE_AUTO_STOP_IDLE_TIMEOUT", "4h")
+	t.Setenv("CRABBOX_NAMESPACE_WORK_ROOT", "/workspaces/env")
+	t.Setenv("CRABBOX_NAMESPACE_DELETE_ON_RELEASE", "true")
 	t.Setenv("CRABBOX_BLACKSMITH_IDLE_TIMEOUT", "2h")
 	t.Setenv("CRABBOX_BLACKSMITH_DEBUG", "true")
 	t.Setenv("CRABBOX_ACTIONS_RUNNER_LABELS", "crabbox,linux-large")
@@ -486,6 +514,9 @@ func TestEnvOverridesConfig(t *testing.T) {
 	}
 	if cfg.Blacksmith.IdleTimeout != 2*time.Hour || !cfg.Blacksmith.Debug {
 		t.Fatalf("unexpected blacksmith env: %#v", cfg.Blacksmith)
+	}
+	if cfg.Namespace.Image != "namespace-env-image" || cfg.Namespace.Size != "XL" || cfg.Namespace.Repository != "github.com/openclaw/env" || cfg.Namespace.Site != "iad1" || cfg.Namespace.VolumeSizeGB != 300 || cfg.Namespace.AutoStopIdleTimeout != 4*time.Hour || cfg.Namespace.WorkRoot != "/workspaces/env" || !cfg.Namespace.DeleteOnRelease {
+		t.Fatalf("unexpected namespace env: %#v", cfg.Namespace)
 	}
 	if len(cfg.Actions.RunnerLabels) != 2 || cfg.Actions.RunnerLabels[1] != "linux-large" || cfg.Actions.Ephemeral {
 		t.Fatalf("unexpected actions env: %#v", cfg.Actions)

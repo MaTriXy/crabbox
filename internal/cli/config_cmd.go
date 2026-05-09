@@ -77,6 +77,16 @@ func (a App) configShow(args []string) error {
 			"idleTimeout": cfg.Blacksmith.IdleTimeout.String(),
 			"debug":       cfg.Blacksmith.Debug,
 		},
+		"namespace": map[string]any{
+			"image":               cfg.Namespace.Image,
+			"size":                cfg.Namespace.Size,
+			"repository":          cfg.Namespace.Repository,
+			"site":                cfg.Namespace.Site,
+			"volumeSizeGB":        cfg.Namespace.VolumeSizeGB,
+			"autoStopIdleTimeout": cfg.Namespace.AutoStopIdleTimeout.String(),
+			"workRoot":            cfg.Namespace.WorkRoot,
+			"deleteOnRelease":     cfg.Namespace.DeleteOnRelease,
+		},
 		"e2b": map[string]any{
 			"apiUrl":   cfg.E2B.APIURL,
 			"domain":   cfg.E2B.Domain,
@@ -131,6 +141,7 @@ func (a App) configShow(args []string) error {
 	fmt.Fprintf(a.Stdout, "capacity market=%s strategy=%s fallback=%s regions=%s hints=%t\n", cfg.Capacity.Market, cfg.Capacity.Strategy, cfg.Capacity.Fallback, blank(strings.Join(cfg.Capacity.Regions, ","), "-"), cfg.Capacity.Hints)
 	fmt.Fprintf(a.Stdout, "actions repo=%s workflow=%s job=%s ref=%s runner_version=%s ephemeral=%t labels=%s\n", blank(cfg.Actions.Repo, "-"), blank(cfg.Actions.Workflow, "-"), blank(cfg.Actions.Job, "-"), blank(cfg.Actions.Ref, "-"), cfg.Actions.RunnerVersion, cfg.Actions.Ephemeral, blank(strings.Join(cfg.Actions.RunnerLabels, ","), "-"))
 	fmt.Fprintf(a.Stdout, "blacksmith org=%s workflow=%s job=%s ref=%s idle_timeout=%s debug=%t\n", blank(cfg.Blacksmith.Org, "-"), blank(cfg.Blacksmith.Workflow, "-"), blank(cfg.Blacksmith.Job, "-"), blank(cfg.Blacksmith.Ref, "-"), cfg.Blacksmith.IdleTimeout, cfg.Blacksmith.Debug)
+	fmt.Fprintf(a.Stdout, "namespace image=%s size=%s repository=%s site=%s volume_size_gb=%d auto_stop_idle_timeout=%s work_root=%s delete_on_release=%t\n", cfg.Namespace.Image, blank(cfg.Namespace.Size, "-"), blank(cfg.Namespace.Repository, "-"), blank(cfg.Namespace.Site, "-"), cfg.Namespace.VolumeSizeGB, cfg.Namespace.AutoStopIdleTimeout, cfg.Namespace.WorkRoot, cfg.Namespace.DeleteOnRelease)
 	fmt.Fprintf(a.Stdout, "e2b api_url=%s domain=%s template=%s workdir=%s user=%s\n", cfg.E2B.APIURL, cfg.E2B.Domain, cfg.E2B.Template, cfg.E2B.Workdir, blank(cfg.E2B.User, "-"))
 	fmt.Fprintf(a.Stdout, "static id=%s name=%s host=%s user=%s port=%s work_root=%s\n", blank(cfg.Static.ID, "-"), blank(cfg.Static.Name, "-"), blank(cfg.Static.Host, "-"), blank(cfg.Static.User, "-"), blank(cfg.Static.Port, "-"), blank(cfg.Static.WorkRoot, "-"))
 	fmt.Fprintf(a.Stdout, "results junit=%s\n", blank(strings.Join(cfg.Results.JUnit, ","), "-"))
