@@ -124,14 +124,66 @@ func TestResolveIsloLeaseIDRejectsUnclaimedRawSandbox(t *testing.T) {
 }
 
 func TestIsloWorkspacePathDefaultsUnderWorkspace(t *testing.T) {
-	if got := isloWorkspacePath(Config{}); got != "/workspace/crabbox" {
-		t.Fatalf("workspace=%q", got)
+	if got, err := isloWorkspacePath(Config{}); err != nil || got != "/workspace/crabbox" {
+		t.Fatalf("workspace=%q err=%v", got, err)
 	}
-	if got := isloWorkspacePath(Config{Islo: IsloConfig{Workdir: "repo"}}); got != "/workspace/repo" {
-		t.Fatalf("workspace=%q", got)
+	if got, err := isloWorkspacePath(Config{Islo: IsloConfig{Workdir: "repo"}}); err != nil || got != "/workspace/repo" {
+		t.Fatalf("workspace=%q err=%v", got, err)
 	}
-	if got := isloWorkspacePath(Config{Islo: IsloConfig{Workdir: "/work/repo"}}); got != "/work/repo" {
-		t.Fatalf("workspace=%q", got)
+	if got, err := isloWorkspacePath(Config{Islo: IsloConfig{Workdir: "team/repo"}}); err != nil || got != "/workspace/team/repo" {
+		t.Fatalf("workspace=%q err=%v", got, err)
+	}
+}
+
+func TestIsloWorkspacePathRejectsEscapes(t *testing.T) {
+	for _, workdir := range []string{"/work/repo", "/etc", "../etc", "repo/../../../etc", ".", "./.."} {
+		t.Run(workdir, func(t *testing.T) {
+			if got, err := isloWorkspacePath(Config{Islo: IsloConfig{Workdir: workdir}}); err == nil {
+				t.Fatalf("workspace=%q, want error for workdir %q", got, workdir)
+			}
+		})
+	}
+}
+
+func TestIsloRunRejectsUnsafeWorkdirBeforeProviderClient(t *testing.T) {
+	backend := &isloBackend{
+		cfg: Config{Islo: IsloConfig{Workdir: "../etc"}},
+		rt:  Runtime{Stderr: io.Discard},
+	}
+	_, err := backend.Run(context.Background(), RunRequest{NoSync: true})
+	if err == nil || !strings.Contains(err.Error(), "escapes /workspace") {
+		t.Fatalf("Run err=%v, want workdir containment error", err)
+	}
+}
+
+func TestIsloCreateSandboxRejectsUnsafeWorkdirBeforeAPI(t *testing.T) {
+	client := &fakeIsloSyncClient{}
+	backend := &isloBackend{
+		cfg: Config{Islo: IsloConfig{Workdir: "../etc"}},
+		rt:  Runtime{Stderr: io.Discard},
+	}
+	_, _, _, err := backend.createSandbox(context.Background(), client, Repo{Root: t.TempDir(), Name: "repo"}, false)
+	if err == nil || !strings.Contains(err.Error(), "escapes /workspace") {
+		t.Fatalf("createSandbox err=%v, want workdir containment error", err)
+	}
+	if client.createRequest != nil {
+		t.Fatalf("CreateSandbox was called with %#v", client.createRequest)
+	}
+}
+
+func TestIsloCreateSandboxPassesRelativeWorkdirToProvider(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	client := &fakeIsloSyncClient{createName: "crabbox-repo-abcdef"}
+	backend := &isloBackend{
+		cfg: Config{Islo: IsloConfig{Workdir: "team/repo"}},
+		rt:  Runtime{Stderr: io.Discard},
+	}
+	_, _, _, err := backend.createSandbox(context.Background(), client, Repo{Root: t.TempDir(), Name: "repo"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client.createRequest == nil || client.createRequest.Workdir == nil || *client.createRequest.Workdir != "team/repo" {
+		t.Fatalf("create workdir=%v", client.createRequest)
 	}
 }
 
@@ -337,10 +389,17 @@ type fakeIsloSyncClient struct {
 	uploaded          bytes.Buffer
 	uploadErr         error
 	closeUploadReader bool
+	createRequest     *gosdk.SandboxCreate
+	createName        string
 }
 
-func (f *fakeIsloSyncClient) CreateSandbox(context.Context, *gosdk.SandboxCreate) (*gosdk.SandboxResponse, error) {
-	return nil, nil
+func (f *fakeIsloSyncClient) CreateSandbox(_ context.Context, req *gosdk.SandboxCreate) (*gosdk.SandboxResponse, error) {
+	f.createRequest = req
+	name := f.createName
+	if name == "" {
+		name = "crabbox-test-abcdef"
+	}
+	return &gosdk.SandboxResponse{Name: name}, nil
 }
 
 func (f *fakeIsloSyncClient) GetSandbox(context.Context, string) (*gosdk.SandboxResponse, error) {
