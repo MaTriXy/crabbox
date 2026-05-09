@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -142,4 +143,94 @@ func TestAttachCommandStreamsOverControlWebSocket(t *testing.T) {
 	if eventCalls != 0 {
 		t.Fatalf("HTTP eventCalls=%d, want websocket attach to avoid polling events", eventCalls)
 	}
+}
+
+func TestAttachCommandDrainsControlWebSocketBacklogPages(t *testing.T) {
+	controlSubscribes := 0
+	eventCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/control":
+			conn, err := websocket.Accept(w, r, nil)
+			if err != nil {
+				t.Errorf("accept control websocket: %v", err)
+				return
+			}
+			defer conn.Close(websocket.StatusNormalClosure, "")
+			for {
+				_, data, err := conn.Read(r.Context())
+				if err != nil {
+					return
+				}
+				var msg map[string]any
+				if err := json.Unmarshal(data, &msg); err != nil {
+					t.Errorf("control message JSON: %v", err)
+					return
+				}
+				if msg["type"] != "subscribe_run" {
+					continue
+				}
+				controlSubscribes++
+				after := int(msg["after"].(float64))
+				events := make([]map[string]any, 0, coordinatorControlRunEventLimit)
+				start, end := after+1, after+coordinatorControlRunEventLimit
+				if after >= coordinatorControlRunEventLimit {
+					end = after + 1
+				}
+				for seq := start; seq <= end; seq++ {
+					events = append(events, map[string]any{
+						"runID":     "run_123",
+						"seq":       seq,
+						"type":      "stdout",
+						"stream":    "stdout",
+						"data":      fmt.Sprintf("line %03d\n", seq),
+						"createdAt": "2026-05-02T00:00:00Z",
+					})
+				}
+				if err := conn.Write(r.Context(), websocket.MessageText, mustJSON(t, map[string]any{
+					"type":    "run_events",
+					"runID":   "run_123",
+					"events":  events,
+					"nextSeq": events[len(events)-1]["seq"],
+				})); err != nil {
+					t.Errorf("write control events: %v", err)
+					return
+				}
+			}
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/runs/run_123":
+			_, _ = w.Write([]byte(`{"run":{"id":"run_123","leaseID":"cbx_123","owner":"peter@example.com","org":"openclaw","provider":"aws","class":"standard","serverType":"t3.small","command":["true"],"state":"succeeded","phase":"finished","logBytes":0,"logTruncated":false,"startedAt":"2026-05-02T00:00:00Z"}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/runs/run_123/events":
+			eventCalls++
+			_, _ = w.Write([]byte(`{"events":[]}`))
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer server.Close()
+	t.Setenv("CRABBOX_COORDINATOR", server.URL)
+	t.Setenv("CRABBOX_COORDINATOR_TOKEN", "")
+
+	var stdout, stderr bytes.Buffer
+	app := App{Stdout: &stdout, Stderr: &stderr}
+	if err := app.attach(context.Background(), []string{"run_123", "--poll", "1ms"}); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte("line 001\n")) || !bytes.Contains(stdout.Bytes(), []byte("line 101\n")) {
+		t.Fatalf("stdout missing backlog boundary lines: %q", stdout.String())
+	}
+	if controlSubscribes < 2 {
+		t.Fatalf("controlSubscribes=%d, want backlog page follow-up", controlSubscribes)
+	}
+	if eventCalls != 0 {
+		t.Fatalf("HTTP eventCalls=%d, want websocket attach to avoid polling events", eventCalls)
+	}
+}
+
+func mustJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }

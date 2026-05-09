@@ -20,7 +20,9 @@ fallback ports just like readiness and helper probes.
 When the broker supports it, `crabbox attach` and lease heartbeats use one
 authenticated coordinator WebSocket instead of repeated HTTP polls. If the
 socket cannot connect or drops, the CLI resumes through the existing HTTPS API
-from the last acknowledged run-event sequence.
+from the last acknowledged run-event sequence. WebSocket attach still catches
+up from older sequences in bounded pages before switching to live pushed
+events, so reconnects do not skip retained output.
 
 ## Warm Leases
 

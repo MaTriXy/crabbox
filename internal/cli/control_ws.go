@@ -15,6 +15,7 @@ import (
 )
 
 const coordinatorControlDialTimeout = 1500 * time.Millisecond
+const coordinatorControlRunEventLimit = 100
 
 type coordinatorControlConn struct {
 	conn *websocket.Conn
@@ -122,15 +123,7 @@ func followRunControlWebSocket(ctx context.Context, coord *CoordinatorClient, ru
 	}
 	defer control.close()
 	nextAfter := after
-	writeCtx, writeCancel := context.WithTimeout(ctx, 5*time.Second)
-	err = control.write(writeCtx, map[string]any{
-		"type":  "subscribe_run",
-		"runID": runID,
-		"after": nextAfter,
-		"limit": 100,
-	})
-	writeCancel()
-	if err != nil {
+	if !subscribeRunControl(ctx, control, runID, nextAfter) {
 		return nextAfter, false, true, nil
 	}
 	for {
@@ -180,8 +173,25 @@ func followRunControlWebSocket(ctx context.Context, coord *CoordinatorClient, ru
 				"seq":   nextAfter,
 			})
 			ackCancel()
+			if len(msg.Events) >= coordinatorControlRunEventLimit {
+				if !subscribeRunControl(ctx, control, runID, nextAfter) {
+					return nextAfter, false, true, nil
+				}
+			}
 		}
 	}
+}
+
+func subscribeRunControl(ctx context.Context, control *coordinatorControlConn, runID string, after int) bool {
+	writeCtx, writeCancel := context.WithTimeout(ctx, 5*time.Second)
+	err := control.write(writeCtx, map[string]any{
+		"type":  "subscribe_run",
+		"runID": runID,
+		"after": after,
+		"limit": coordinatorControlRunEventLimit,
+	})
+	writeCancel()
+	return err == nil
 }
 
 func coordinatorRunDone(ctx context.Context, coord *CoordinatorClient, runID string) (bool, error) {

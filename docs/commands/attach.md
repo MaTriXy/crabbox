@@ -22,6 +22,8 @@ the HTTPS events API from the last printed sequence.
   message;
 - when the run has already finished, attach prints any remaining events
   and exits;
+- when a WebSocket attach starts behind the run's current event sequence,
+  attach drains the backlog in bounded pages before waiting for live pushes;
 - when the run is still active, attach waits for streamed events or polls until
   it sees the run finish.
 
