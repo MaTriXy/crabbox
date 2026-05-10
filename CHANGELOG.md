@@ -12,6 +12,7 @@
 ### Changed
 
 - Updated docs for output capture, desktop terminal/proof capture, Windows desktop bootstrap, artifact contact sheets, and managed-provider readiness checks.
+- Reworked the WebVNC share dialog into an inline Google-style sharing flow with add-user, org access, copy-link, and done actions.
 
 ### Fixed
 

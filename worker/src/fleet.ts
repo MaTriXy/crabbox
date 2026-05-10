@@ -1228,7 +1228,9 @@ export class FleetDurableObject implements DurableObject {
       if (error) {
         return portalError("WebVNC unavailable", error, 409);
       }
-      return portalVNC(lease);
+      return portalVNC(lease, {
+        canManage: this.leaseManageableByRequest(lease, request, isAdminRequest(request)),
+      });
     }
     if (
       method === "GET" &&
@@ -1348,7 +1350,17 @@ export class FleetDurableObject implements DurableObject {
     if (!this.leaseManageableByRequest(lease, request, isAdminRequest(request))) {
       return portalError("Share unavailable", "Lease manage access is required.", 403);
     }
-    const embedded = new URL(request.url).searchParams.get("embed") === "1";
+    const url = new URL(request.url);
+    if (url.searchParams.get("format") === "json") {
+      return json({
+        leaseID: lease.id,
+        slug: lease.slug || lease.id,
+        owner: lease.owner,
+        org: lease.org,
+        share: normalizedLeaseShare(lease.share),
+      });
+    }
+    const embedded = url.searchParams.get("embed") === "1";
     return portalShareLease(lease, { embedded });
   }
 
@@ -1363,6 +1375,20 @@ export class FleetDurableObject implements DurableObject {
     }
     if (!this.leaseManageableByRequest(lease, request, isAdminRequest(request))) {
       return portalError("Share unavailable", "Lease manage access is required.", 403);
+    }
+    const url = new URL(request.url);
+    if (request.headers.get("content-type")?.includes("application/json")) {
+      const input = await readJson<Partial<LeaseShare>>(request);
+      lease.share = sanitizeLeaseShare(input, requestOwner(request));
+      lease.updatedAt = new Date().toISOString();
+      await this.putLease(lease);
+      return json({
+        leaseID: lease.id,
+        slug: lease.slug || lease.id,
+        owner: lease.owner,
+        org: lease.org,
+        share: normalizedLeaseShare(lease.share),
+      });
     }
     const form = await request.formData();
     const action = String(form.get("action") || "");
@@ -1392,7 +1418,7 @@ export class FleetDurableObject implements DurableObject {
     lease.share = sanitizeLeaseShare(share, requestOwner(request));
     lease.updatedAt = new Date().toISOString();
     await this.putLease(lease);
-    const embedded = new URL(request.url).searchParams.get("embed") === "1";
+    const embedded = url.searchParams.get("embed") === "1";
     return new Response(null, {
       status: 303,
       headers: {

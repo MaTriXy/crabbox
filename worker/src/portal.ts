@@ -517,7 +517,7 @@ export function portalRunDetail(
   );
 }
 
-export function portalVNC(lease: LeaseRecord): Response {
+export function portalVNC(lease: LeaseRecord, options: { canManage?: boolean } = {}): Response {
   const nonce = scriptNonce();
   const slug = lease.slug || lease.id;
   const target = lease.target || "linux";
@@ -526,7 +526,29 @@ export function portalVNC(lease: LeaseRecord): Response {
   const statusPath = `/portal/leases/${encodeURIComponent(lease.id)}/vnc/status`;
   const controlPath = `/portal/leases/${encodeURIComponent(lease.id)}/vnc/control`;
   const sharePath = `/portal/leases/${encodeURIComponent(lease.id)}/share`;
-  const embeddedSharePath = `${sharePath}?embed=1`;
+  const shareAPIPath = `${sharePath}?format=json`;
+  const canManage = options.canManage === true;
+  const shareData = canManage
+    ? {
+        leaseID: lease.id,
+        slug,
+        owner: lease.owner,
+        org: lease.org,
+        share: {
+          users: lease.share?.users ?? {},
+          org: lease.share?.org ?? "",
+        },
+      }
+    : {
+        leaseID: lease.id,
+        slug,
+        owner: "",
+        org: "",
+        share: {
+          users: {},
+          org: "",
+        },
+      };
   const bridgeCmd = webVNCBridgeCommand(lease);
   const fullscreenIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/></svg>`;
   const reconnectIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>`;
@@ -544,7 +566,7 @@ export function portalVNC(lease: LeaseRecord): Response {
           <button id="vnc-paste" class="icon-btn" type="button" title="paste clipboard" aria-label="paste clipboard">${pasteIcon}</button>
           <button id="vnc-reconnect" class="icon-btn" type="button" title="reconnect" aria-label="reconnect">${reconnectIcon}</button>
           <button id="vnc-fullscreen" class="icon-btn" type="button" title="fullscreen" aria-label="toggle fullscreen">${fullscreenIcon}</button>
-          <button id="vnc-share" class="button secondary" type="button">share</button>
+          ${canManage ? `<button id="vnc-share" class="button secondary" type="button">share</button>` : ""}
           <a class="button secondary" href="/portal">leases</a>
           <a class="button secondary" href="/portal/logout">log out</a>
         `,
@@ -555,13 +577,51 @@ export function portalVNC(lease: LeaseRecord): Response {
         <code id="vnc-bridge-cmd" class="vnc-bridge-cmd">${escapeHTML(bridgeCmd)}</code>
         <button id="vnc-copy" class="icon-btn" type="button" title="copy command" aria-label="copy bridge command">${copyIcon}</button>
       </footer>
-      <dialog id="vnc-share-dialog" class="vnc-share-dialog" aria-label="Share lease">
+      ${
+        canManage
+          ? `<dialog id="vnc-share-dialog" class="vnc-share-dialog" aria-label="Share lease">
         <div class="vnc-share-head">
-          <div><strong>share ${escapeHTML(slug)}</strong><small>${escapeHTML(lease.id)}</small></div>
+          <div><strong>Share ${escapeHTML(slug)}</strong><small>${escapeHTML(lease.id)}</small></div>
           <button id="vnc-share-close" class="icon-btn" type="button" title="close share" aria-label="close share">×</button>
         </div>
-        <iframe id="vnc-share-frame" class="vnc-share-frame" title="Share ${escapeHTML(slug)}" loading="lazy"></iframe>
-      </dialog>
+        <div class="vnc-share-body">
+          <div class="vnc-share-add" aria-label="Add people">
+            <input id="vnc-share-user" type="email" autocomplete="email" placeholder="friend@example.com" aria-label="person email">
+            <select id="vnc-share-role" aria-label="new user role">
+              <option value="use">Can use</option>
+              <option value="manage">Can manage</option>
+            </select>
+            <button id="vnc-share-add" class="button action" type="button">add</button>
+          </div>
+          <section class="vnc-share-section" aria-label="People with access">
+            <h2>People with access</h2>
+            <div id="vnc-share-people" class="vnc-share-list"></div>
+          </section>
+          <section class="vnc-share-section" aria-label="General access">
+            <h2>General access</h2>
+            <div class="vnc-share-access-row">
+              <div class="vnc-share-avatar" aria-hidden="true">org</div>
+              <div class="vnc-share-access-text">
+                <strong>${escapeHTML(lease.org || "org")}</strong>
+                <span id="vnc-share-org-summary">Only explicitly shared users can access</span>
+              </div>
+              <select id="vnc-share-org" aria-label="org access">
+                <option value="">Off</option>
+                <option value="use">Can use</option>
+                <option value="manage">Can manage</option>
+              </select>
+            </div>
+          </section>
+          <p id="vnc-share-status" class="vnc-share-status" role="status"></p>
+        </div>
+        <div class="vnc-share-foot">
+          <button id="vnc-share-copy-link" class="button secondary" type="button">copy WebVNC link</button>
+          <button id="vnc-share-clear" class="button secondary danger-text" type="button">clear sharing</button>
+          <button id="vnc-share-done" class="button" type="button">done</button>
+        </div>
+      </dialog>`
+          : ""
+      }
     </main>
     <script type="module" nonce="${nonce}">
       import RFBModule from ${JSON.stringify(novncModuleURL)};
@@ -572,7 +632,9 @@ export function portalVNC(lease: LeaseRecord): Response {
       wsURL.protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const statusURL = new URL(${JSON.stringify(statusPath)}, window.location.href);
       const controlURL = new URL(${JSON.stringify(controlPath)}, window.location.href);
-      const shareURL = new URL(${JSON.stringify(embeddedSharePath)}, window.location.href);
+      const sharePageURL = new URL(${JSON.stringify(sharePath)}, window.location.href);
+      const shareAPIURL = new URL(${JSON.stringify(shareAPIPath)}, window.location.href);
+      const shareInitial = ${scriptJSON(shareData)};
       const viewerID = "viewer_" + (crypto.randomUUID?.() || String(Date.now()) + Math.random()).replace(/[^A-Za-z0-9_.:-]/g, "");
       wsURL.searchParams.set("viewer", viewerID);
       statusURL.searchParams.set("viewer", viewerID);
@@ -828,21 +890,214 @@ export function portalVNC(lease: LeaseRecord): Response {
       });
       const shareBtn = document.getElementById("vnc-share");
       const shareDialog = document.getElementById("vnc-share-dialog");
-      const shareFrame = document.getElementById("vnc-share-frame");
       const shareCloseBtn = document.getElementById("vnc-share-close");
-      shareBtn?.addEventListener("click", () => {
-        if (shareFrame && !shareFrame.src) {
-          shareFrame.src = shareURL.toString();
+      const shareDoneBtn = document.getElementById("vnc-share-done");
+      const shareAddBtn = document.getElementById("vnc-share-add");
+      const shareUserInput = document.getElementById("vnc-share-user");
+      const shareRoleSelect = document.getElementById("vnc-share-role");
+      const shareOrgSelect = document.getElementById("vnc-share-org");
+      const sharePeople = document.getElementById("vnc-share-people");
+      const shareStatus = document.getElementById("vnc-share-status");
+      const shareCopyLinkBtn = document.getElementById("vnc-share-copy-link");
+      const shareClearBtn = document.getElementById("vnc-share-clear");
+      const shareControls = [shareAddBtn, shareUserInput, shareRoleSelect, shareOrgSelect, shareCopyLinkBtn, shareClearBtn].filter(Boolean);
+      let shareState = {
+        users: { ...(shareInitial.share?.users || {}) },
+        org: shareInitial.share?.org || "",
+      };
+      let shareStatusTimer;
+      function shareRoleLabel(role) {
+        return role === "manage" ? "Can manage" : "Can use";
+      }
+      function normalizedShareUser(value) {
+        return String(value || "").trim().toLowerCase();
+      }
+      function shareableWebVNCURL() {
+        const url = new URL(window.location.href);
+        const linkFragment = new URLSearchParams();
+        if (username) linkFragment.set("username", username);
+        if (password) linkFragment.set("password", password);
+        url.hash = linkFragment.toString();
+        return url.toString();
+      }
+      function setShareBusy(busy) {
+        for (const control of shareControls) {
+          control.disabled = busy;
         }
+      }
+      function setShareStatus(message, tone = "") {
+        if (!shareStatus) return;
+        shareStatus.textContent = message;
+        shareStatus.dataset.tone = tone;
+        window.clearTimeout(shareStatusTimer);
+        if (message && tone !== "bad") {
+          shareStatusTimer = window.setTimeout(() => setShareStatus(""), 1800);
+        }
+      }
+      function sharePayload() {
+        const payload = {};
+        const users = {};
+        for (const [user, role] of Object.entries(shareState.users || {}).sort(([a], [b]) => a.localeCompare(b))) {
+          if (user && (role === "use" || role === "manage")) users[user] = role;
+        }
+        if (Object.keys(users).length) payload.users = users;
+        if (shareState.org === "use" || shareState.org === "manage") payload.org = shareState.org;
+        return payload;
+      }
+      function shareStateFromResponse(body) {
+        return {
+          users: { ...(body.share?.users || {}) },
+          org: body.share?.org || "",
+        };
+      }
+      async function refreshShareState() {
+        const response = await fetch(shareAPIURL, { headers: { accept: "application/json" } });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.message || body.error || "share refresh failed");
+        shareState = shareStateFromResponse(body);
+        renderSharePeople();
+        return shareState;
+      }
+      function renderSharePeople() {
+        if (!sharePeople) return;
+        sharePeople.replaceChildren();
+        const ownerRow = document.createElement("div");
+        ownerRow.className = "vnc-share-person";
+        ownerRow.innerHTML = '<div class="vnc-share-avatar" aria-hidden="true">you</div><div class="vnc-share-person-main"><strong></strong><span></span></div><span class="vnc-share-role-label">Owner</span>';
+        ownerRow.querySelector("strong").textContent = shareInitial.owner || "Owner";
+        ownerRow.querySelector("span").textContent = "Lease owner";
+        sharePeople.appendChild(ownerRow);
+        const users = Object.entries(shareState.users || {}).sort(([a], [b]) => a.localeCompare(b));
+        if (!users.length) {
+          const empty = document.createElement("p");
+          empty.className = "vnc-share-empty";
+          empty.textContent = "No shared users yet";
+          sharePeople.appendChild(empty);
+        }
+        for (const [user, role] of users) {
+          const row = document.createElement("div");
+          row.className = "vnc-share-person";
+          const avatar = document.createElement("div");
+          avatar.className = "vnc-share-avatar";
+          avatar.setAttribute("aria-hidden", "true");
+          avatar.textContent = user.slice(0, 2) || "u";
+          const main = document.createElement("div");
+          main.className = "vnc-share-person-main";
+          const strong = document.createElement("strong");
+          strong.textContent = user;
+          const small = document.createElement("span");
+          small.textContent = shareRoleLabel(role);
+          main.append(strong, small);
+          const remove = document.createElement("button");
+          remove.className = "icon-btn mini";
+          remove.type = "button";
+          remove.title = "remove " + user;
+          remove.setAttribute("aria-label", "remove " + user);
+          remove.dataset.removeUser = user;
+          remove.textContent = "×";
+          row.append(avatar, main, remove);
+          sharePeople.appendChild(row);
+        }
+        if (shareOrgSelect) shareOrgSelect.value = shareState.org || "";
+        const orgSummary = document.getElementById("vnc-share-org-summary");
+        if (orgSummary) {
+          orgSummary.textContent = shareState.org
+            ? shareInitial.org + " members " + shareRoleLabel(shareState.org).toLowerCase()
+            : "Only explicitly shared users can access";
+        }
+      }
+      async function saveShare(updateShareState, message) {
+        setShareBusy(true);
+        setShareStatus("saving");
+        const previousState = shareState;
+        try {
+          await refreshShareState();
+          shareState = updateShareState(shareState);
+          const response = await fetch(shareAPIURL, {
+            method: "POST",
+            headers: { "content-type": "application/json", accept: "application/json" },
+            body: JSON.stringify(sharePayload()),
+          });
+          const body = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(body.message || body.error || "share update failed");
+          shareState = shareStateFromResponse(body);
+          renderSharePeople();
+          setShareStatus(message || "saved", "ok");
+          return true;
+        } catch (error) {
+          shareState = previousState;
+          renderSharePeople();
+          setShareStatus(error instanceof Error ? error.message : String(error), "bad");
+          return false;
+        } finally {
+          setShareBusy(false);
+        }
+      }
+      shareBtn?.addEventListener("click", () => {
+        renderSharePeople();
         if (shareDialog?.showModal) {
           shareDialog.showModal();
         } else {
-          window.location.href = ${JSON.stringify(sharePath)};
+          window.location.href = sharePageURL.toString();
         }
+        setShareBusy(true);
+        setShareStatus("refreshing");
+        void refreshShareState()
+          .then(() => setShareStatus(""))
+          .catch((error) => setShareStatus(error instanceof Error ? error.message : String(error), "bad"))
+          .finally(() => setShareBusy(false));
       });
       shareCloseBtn?.addEventListener("click", () => shareDialog?.close());
+      shareDoneBtn?.addEventListener("click", () => shareDialog?.close());
       shareDialog?.addEventListener("click", (event) => {
         if (event.target === shareDialog) shareDialog.close();
+      });
+      shareAddBtn?.addEventListener("click", () => {
+        const user = normalizedShareUser(shareUserInput?.value);
+        if (!user) {
+          setShareStatus("enter an email address", "bad");
+          shareUserInput?.focus();
+          return;
+        }
+        const role = shareRoleSelect?.value === "manage" ? "manage" : "use";
+        void saveShare((state) => ({ users: { ...state.users, [user]: role }, org: state.org }), "shared with " + user).then((saved) => {
+          if (saved && shareUserInput) shareUserInput.value = "";
+        });
+      });
+      shareUserInput?.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          shareAddBtn?.click();
+        }
+      });
+      shareOrgSelect?.addEventListener("change", () => {
+        const role = shareOrgSelect.value === "manage" || shareOrgSelect.value === "use" ? shareOrgSelect.value : "";
+        void saveShare((state) => ({ users: { ...state.users }, org: role }), role ? "org access updated" : "org access off");
+      });
+      sharePeople?.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+        const user = target.dataset.removeUser;
+        if (!user) return;
+        void saveShare(
+          (state) => {
+            const users = { ...state.users };
+            delete users[user];
+            return { users, org: state.org };
+          },
+          "removed " + user,
+        );
+      });
+      shareCopyLinkBtn?.addEventListener("click", async () => {
+        try {
+          await writeClipboardText(shareableWebVNCURL());
+          setShareStatus("WebVNC link copied", "ok");
+        } catch (error) {
+          setShareStatus(error instanceof Error ? error.message : String(error), "bad");
+        }
+      });
+      shareClearBtn?.addEventListener("click", () => {
+        void saveShare(() => ({ users: {}, org: "" }), "sharing cleared");
       });
       async function readClipboardText() {
         if (navigator.clipboard?.readText) {
@@ -2017,12 +2272,31 @@ function html(
     .vnc-bridge { display:flex; align-items:center; gap:10px; padding:6px 10px; border:1px solid var(--line); border-radius:8px; background:var(--panel); }
     .vnc-bridge-label { font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); flex-shrink:0; padding-left:4px; }
     .vnc-bridge-cmd { display:block; flex:1; min-width:0; padding:6px 10px; border:none; border-radius:5px; background:transparent; color:#d1fae5; font-family:var(--mono); font-size:13px; overflow-x:auto; white-space:nowrap; }
-    .vnc-share-dialog { width:min(760px, calc(100vw - 36px)); max-height:min(640px, calc(100dvh - 48px)); padding:0; border:1px solid var(--line); border-radius:10px; background:var(--panel); color:var(--fg); box-shadow:0 24px 90px rgba(0,0,0,0.58); overflow:hidden; }
+    .vnc-share-dialog { width:min(640px, calc(100vw - 36px)); max-height:min(720px, calc(100dvh - 48px)); padding:0; border:1px solid var(--line); border-radius:12px; background:var(--panel); color:var(--fg); box-shadow:0 24px 90px rgba(0,0,0,0.58); overflow:hidden; }
     .vnc-share-dialog::backdrop { background:rgba(0,0,0,0.58); backdrop-filter:blur(2px); }
-    .vnc-share-head { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:42px; padding:8px 10px 8px 14px; border-bottom:1px solid var(--line); background:var(--panel-2); }
-    .vnc-share-head strong { display:block; font-size:13px; }
+    .vnc-share-head { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:58px; padding:12px 14px 10px 18px; border-bottom:1px solid var(--line); background:var(--panel-2); }
+    .vnc-share-head strong { display:block; font-size:18px; letter-spacing:0; }
     .vnc-share-head small { display:block; margin-top:1px; color:var(--muted); font-family:var(--mono); font-size:11px; }
-    .vnc-share-frame { display:block; width:100%; height:min(540px, calc(100dvh - 104px)); border:0; background:var(--bg); }
+    .vnc-share-body { display:grid; gap:18px; padding:16px 18px 14px; background:var(--panel); }
+    .vnc-share-add { display:grid; grid-template-columns:minmax(0,1fr) 132px auto; gap:8px; }
+    .vnc-share-add input,.vnc-share-add select,.vnc-share-access-row select { min-width:0; height:38px; padding:0 11px; border:1px solid var(--line); border-radius:8px; background:#0b0d0f; color:var(--fg); font:inherit; font-size:13px; }
+    .vnc-share-add input:focus,.vnc-share-add select:focus,.vnc-share-access-row select:focus { outline:2px solid color-mix(in srgb, var(--accent) 35%, transparent); outline-offset:1px; border-color:color-mix(in srgb, var(--accent) 58%, var(--line)); }
+    .vnc-share-section { display:grid; gap:8px; }
+    .vnc-share-list { display:grid; gap:2px; }
+    .vnc-share-person,.vnc-share-access-row { display:grid; grid-template-columns:36px minmax(0,1fr) auto; gap:12px; align-items:center; min-height:48px; }
+    .vnc-share-avatar { display:grid; place-items:center; width:36px; height:36px; border-radius:50%; border:1px solid color-mix(in srgb, var(--accent) 32%, var(--line)); background:color-mix(in srgb, var(--accent) 13%, var(--panel-2)); color:#bae6fd; font-size:10px; font-weight:800; text-transform:uppercase; }
+    .vnc-share-person-main,.vnc-share-access-text { min-width:0; }
+    .vnc-share-person-main strong,.vnc-share-access-text strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }
+    .vnc-share-person-main span,.vnc-share-access-text span { display:block; margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); font-size:12px; }
+    .vnc-share-role-label { color:var(--muted); font-size:12px; white-space:nowrap; }
+    .vnc-share-empty { margin-left:48px; color:var(--muted); font-size:13px; }
+    .vnc-share-status { min-height:18px; color:var(--muted); font-size:12px; }
+    .vnc-share-status[data-tone="ok"] { color:var(--ok); }
+    .vnc-share-status[data-tone="bad"] { color:var(--bad); }
+    .vnc-share-foot { display:flex; align-items:center; justify-content:flex-end; gap:8px; padding:12px 18px 16px; border-top:1px solid var(--line); background:var(--panel-2); }
+    .vnc-share-foot #vnc-share-copy-link { margin-right:auto; }
+    .danger-text { color:#fecaca; border-color:color-mix(in srgb, var(--bad) 38%, var(--line)); }
+    .danger-text:hover { background:color-mix(in srgb, var(--bad) 13%, transparent); border-color:color-mix(in srgb, var(--bad) 52%, var(--line)); }
     .commands { padding:12px; display:grid; gap:8px; }
     .command-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:end; }
     .command-row > div { min-width:0; overflow:hidden; }
@@ -2062,7 +2336,11 @@ function html(
       .portal-actions { gap:6px; }
       .portal-actions .button { min-height:30px; padding:0 10px; }
       .vnc-share-dialog { width:calc(100vw - 20px); }
-      .vnc-share-frame { height:calc(100dvh - 104px); }
+      .vnc-share-add { grid-template-columns:1fr; }
+      .vnc-share-person,.vnc-share-access-row { grid-template-columns:32px minmax(0,1fr); }
+      .vnc-share-access-row select,.vnc-share-person .icon-btn,.vnc-share-role-label { grid-column:2; justify-self:start; }
+      .vnc-share-foot { align-items:stretch; flex-direction:column; }
+      .vnc-share-foot #vnc-share-copy-link { margin-right:0; }
       .vnc-bridge-label { display:none; }
     }
   </style>
@@ -2392,4 +2670,13 @@ function escapeHTML(value: string | undefined): string {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function scriptJSON(value: unknown): string {
+  return JSON.stringify(value)
+    .replaceAll("<", "\\u003c")
+    .replaceAll(">", "\\u003e")
+    .replaceAll("&", "\\u0026")
+    .replaceAll("\u2028", "\\u2028")
+    .replaceAll("\u2029", "\\u2029");
 }

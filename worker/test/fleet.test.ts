@@ -248,6 +248,31 @@ describe("fleet lease identity and idle", () => {
     expect(embeddedShareBody).toContain("/portal/leases/cbx_000000000001/share?embed=1");
     expect(embeddedShareBody).not.toContain("back to lease");
 
+    const shareJSON = await fleet.fetch(
+      request("GET", "/portal/leases/blue-lobster/share?format=json", {
+        headers: friendHeaders,
+      }),
+    );
+    expect(shareJSON.status).toBe(200);
+    await expect(shareJSON.json()).resolves.toMatchObject({
+      leaseID: "cbx_000000000001",
+      slug: "blue-lobster",
+      owner: "peter@example.com",
+      org: "openclaw",
+      share: { users: { "friend@example.com": "use" }, org: "manage" },
+    });
+
+    const shareJSONUpdate = await fleet.fetch(
+      request("POST", "/portal/leases/blue-lobster/share?format=json", {
+        headers: friendHeaders,
+        body: { users: { "Teammate@Example.com": "manage" }, org: "use" },
+      }),
+    );
+    expect(shareJSONUpdate.status).toBe(200);
+    await expect(shareJSONUpdate.json()).resolves.toMatchObject({
+      share: { users: { "teammate@example.com": "manage" }, org: "use" },
+    });
+
     const stranger = await fleet.fetch(
       request("GET", "/v1/leases/blue-lobster", { headers: strangerHeaders }),
     );
@@ -1721,6 +1746,13 @@ describe("fleet lease identity and idle", () => {
         owner: "peter@example.com",
         org: "openclaw",
         desktop: true,
+        share: {
+          users: {
+            "friend@example.com": "use",
+            "teammate@example.com": "manage",
+          },
+          org: "use",
+        },
         expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       }),
     );
@@ -1749,9 +1781,18 @@ describe("fleet lease identity and idle", () => {
     expect(pageBody).toContain("function scheduleRetry");
     expect(pageBody).toContain("/portal/leases/cbx_000000000001/vnc/status");
     expect(pageBody).toContain("/portal/leases/cbx_000000000001/share");
-    expect(pageBody).toContain("/portal/leases/cbx_000000000001/share?embed=1");
+    expect(pageBody).toContain("/portal/leases/cbx_000000000001/share?format=json");
     expect(pageBody).toContain("vnc-share-dialog");
-    expect(pageBody).toContain("vnc-share-frame");
+    expect(pageBody).toContain("People with access");
+    expect(pageBody).toContain("General access");
+    expect(pageBody).toContain("copy WebVNC link");
+    expect(pageBody).toContain("saveShare");
+    expect(pageBody).toContain("teammate@example.com");
+    expect(pageBody).toContain("shareableWebVNCURL");
+    expect(pageBody).toContain('linkFragment.set("username", username)');
+    expect(pageBody).toContain('linkFragment.set("password", password)');
+    expect(pageBody).toContain("await refreshShareState()");
+    expect(pageBody).toContain("writeClipboardText(shareableWebVNCURL())");
     expect(pageBody).toContain('document.getElementById("vnc-share")');
     expect(pageBody).toContain("vnc-copy-remote");
     expect(pageBody).toContain("vnc-paste");
@@ -1787,6 +1828,24 @@ describe("fleet lease identity and idle", () => {
     expect(pageBody).toContain('fragment.get("username")');
     expect(pageBody).toContain('types.includes("username")');
     expect(pageBody).not.toContain("cdn.jsdelivr.net");
+
+    const friendPage = await fleet.fetch(
+      request("GET", "/portal/leases/blue-lobster/vnc", {
+        headers: {
+          "x-crabbox-owner": "friend@example.com",
+          "x-crabbox-org": "openclaw",
+        },
+      }),
+    );
+    expect(friendPage.status).toBe(200);
+    const friendPageBody = await friendPage.text();
+    expect(friendPageBody).not.toContain('<button id="vnc-share"');
+    expect(friendPageBody).not.toContain('<dialog id="vnc-share-dialog"');
+    expect(friendPageBody).not.toContain("People with access");
+    expect(friendPageBody).not.toContain("copy WebVNC link");
+    expect(friendPageBody).not.toContain("friend@example.com");
+    expect(friendPageBody).not.toContain("teammate@example.com");
+    expect(friendPageBody).not.toContain('"org":"use"');
 
     const status = await fleet.fetch(
       request("GET", "/portal/leases/blue-lobster/vnc/status", { headers }),
