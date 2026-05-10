@@ -10,5 +10,6 @@ import (
 	_ "github.com/openclaw/crabbox/internal/providers/islo"
 	_ "github.com/openclaw/crabbox/internal/providers/namespace"
 	_ "github.com/openclaw/crabbox/internal/providers/semaphore"
+	_ "github.com/openclaw/crabbox/internal/providers/sprites"
 	_ "github.com/openclaw/crabbox/internal/providers/ssh"
 )

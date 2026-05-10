@@ -73,6 +73,13 @@ func clearConfigEnv(t *testing.T) {
 		"CRABBOX_SEMAPHORE_MACHINE",
 		"CRABBOX_SEMAPHORE_OS_IMAGE",
 		"CRABBOX_SEMAPHORE_IDLE_TIMEOUT",
+		"CRABBOX_SPRITES_TOKEN",
+		"SPRITES_TOKEN",
+		"SPRITE_TOKEN",
+		"SETUP_SPRITE_TOKEN",
+		"CRABBOX_SPRITES_API_URL",
+		"SPRITES_API_URL",
+		"CRABBOX_SPRITES_WORK_ROOT",
 		"CRABBOX_NAMESPACE_IMAGE",
 		"CRABBOX_NAMESPACE_SIZE",
 		"CRABBOX_NAMESPACE_REPOSITORY",
@@ -203,6 +210,9 @@ semaphore:
   machine: f1-standard-4
   osImage: ubuntu2404
   idleTimeout: 15m
+sprites:
+  apiUrl: https://api.sprites.example.test
+  workRoot: /home/sprite/test
 static:
   id: win-dev
   name: windows-dev
@@ -307,6 +317,9 @@ ssh:
 	}
 	if cfg.Semaphore.Host != "semaphore.example.test" || cfg.Semaphore.Token != "semaphore-token" || cfg.Semaphore.Project != "crabbox" || cfg.Semaphore.Machine != "f1-standard-4" || cfg.Semaphore.OSImage != "ubuntu2404" || cfg.Semaphore.IdleTimeout != "15m" {
 		t.Fatalf("semaphore config not loaded: %#v", cfg.Semaphore)
+	}
+	if cfg.Sprites.APIURL != "https://api.sprites.example.test" || cfg.Sprites.WorkRoot != "/home/sprite/test" {
+		t.Fatalf("sprites config not loaded: %#v", cfg.Sprites)
 	}
 	if cfg.Static.Host != "win-dev.local" || cfg.Static.User != "peter" || cfg.Static.Port != "22" || cfg.WorkRoot != "/home/peter/crabbox" {
 		t.Fatalf("static config not loaded: static=%#v workRoot=%s", cfg.Static, cfg.WorkRoot)
@@ -430,6 +443,13 @@ func TestEnvOverridesConfig(t *testing.T) {
 	t.Setenv("CRABBOX_SEMAPHORE_MACHINE", "f1-standard-env")
 	t.Setenv("CRABBOX_SEMAPHORE_OS_IMAGE", "ubuntu-env")
 	t.Setenv("CRABBOX_SEMAPHORE_IDLE_TIMEOUT", "22m")
+	t.Setenv("SPRITE_TOKEN", "sprite-token-file")
+	t.Setenv("SETUP_SPRITE_TOKEN", "setup-sprite-token-file")
+	t.Setenv("SPRITES_TOKEN", "sprites-token-file")
+	t.Setenv("CRABBOX_SPRITES_TOKEN", "sprites-token-env")
+	t.Setenv("SPRITES_API_URL", "https://api.sprites-file.example")
+	t.Setenv("CRABBOX_SPRITES_API_URL", "https://api.sprites-env.example")
+	t.Setenv("CRABBOX_SPRITES_WORK_ROOT", "/home/sprite/env")
 	t.Setenv("CRABBOX_NAMESPACE_IMAGE", "namespace-env-image")
 	t.Setenv("CRABBOX_NAMESPACE_SIZE", "XL")
 	t.Setenv("CRABBOX_NAMESPACE_REPOSITORY", "github.com/openclaw/env")
@@ -511,6 +531,9 @@ func TestEnvOverridesConfig(t *testing.T) {
 	}
 	if cfg.Semaphore.Host != "semaphore-env.example.test" || cfg.Semaphore.Token != "semaphore-token-env" || cfg.Semaphore.Project != "semaphore-project-env" || cfg.Semaphore.Machine != "f1-standard-env" || cfg.Semaphore.OSImage != "ubuntu-env" || cfg.Semaphore.IdleTimeout != "22m" {
 		t.Fatalf("unexpected semaphore env: %#v", cfg.Semaphore)
+	}
+	if cfg.Sprites.Token != "sprites-token-env" || cfg.Sprites.APIURL != "https://api.sprites-env.example" || cfg.Sprites.WorkRoot != "/home/sprite/env" {
+		t.Fatalf("unexpected sprites env: %#v", cfg.Sprites)
 	}
 	if cfg.Blacksmith.IdleTimeout != 2*time.Hour || !cfg.Blacksmith.Debug {
 		t.Fatalf("unexpected blacksmith env: %#v", cfg.Blacksmith)

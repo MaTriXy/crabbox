@@ -1067,7 +1067,7 @@ func (a App) stop(ctx context.Context, args []string) error {
 	if !ok {
 		return exit(2, "provider=%s does not support stop", backend.Spec().Name)
 	}
-	lease, err := sshBackend.Resolve(ctx, ResolveRequest{Options: leaseOptionsFromConfig(cfg), ID: fs.Arg(0)})
+	lease, err := sshBackend.Resolve(ctx, ResolveRequest{Options: leaseOptionsFromConfig(cfg), ID: fs.Arg(0), ReleaseOnly: true})
 	if err != nil {
 		if backendCoordinator(backend) != nil {
 			fmt.Fprintf(a.Stderr, "warning: could not inspect lease before release: %v\n", err)

@@ -31,6 +31,7 @@ type SSHTarget struct {
 	AuthSecret     bool
 	NetworkKind    NetworkMode
 	SSHConfigProxy bool
+	ProxyCommand   string
 }
 
 func sshTargetFromConfig(cfg Config, host string) SSHTarget {
@@ -403,6 +404,9 @@ func sshBaseArgsWithOptions(target SSHTarget, connectTimeout, connectionAttempts
 	}
 	if target.Key != "" {
 		args = append([]string{"-i", target.Key, "-o", "IdentitiesOnly=yes"}, args...)
+	}
+	if target.ProxyCommand != "" {
+		args = append(args, "-o", "ProxyCommand="+target.ProxyCommand)
 	}
 	return args
 }

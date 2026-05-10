@@ -185,10 +185,11 @@ type AcquireRequest struct {
 }
 
 type ResolveRequest struct {
-	Repo    Repo
-	Options LeaseOptions
-	ID      string
-	Reclaim bool
+	Repo        Repo
+	Options     LeaseOptions
+	ID          string
+	Reclaim     bool
+	ReleaseOnly bool
 }
 
 type ReleaseLeaseRequest struct {
@@ -311,11 +312,11 @@ func normalizeProviderName(name string) string {
 }
 
 func providerHelpAll() string {
-	return "provider: hetzner, aws, azure, ssh, blacksmith-testbox, namespace-devbox, semaphore, daytona, islo, or e2b"
+	return "provider: hetzner, aws, azure, ssh, blacksmith-testbox, namespace-devbox, semaphore, daytona, islo, e2b, or sprites"
 }
 
 func providerHelpSSH() string {
-	return "provider: hetzner, aws, azure, ssh, namespace-devbox, semaphore, or daytona"
+	return "provider: hetzner, aws, azure, ssh, namespace-devbox, semaphore, daytona, or sprites"
 }
 
 func isBlacksmithProvider(provider string) bool {

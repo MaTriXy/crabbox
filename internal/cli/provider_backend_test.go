@@ -22,7 +22,7 @@ func testRuntimeWithRunner(r CommandRunner) Runtime {
 }
 
 func TestProviderRegistryCanonicalAndAliases(t *testing.T) {
-	for _, name := range []string{"hetzner", "aws", "ssh", "static", "static-ssh", "blacksmith", "blacksmith-testbox", "namespace", "namespace-devbox", "daytona", "islo", "e2b"} {
+	for _, name := range []string{"hetzner", "aws", "ssh", "static", "static-ssh", "blacksmith", "blacksmith-testbox", "namespace", "namespace-devbox", "daytona", "islo", "e2b", "sprites"} {
 		if _, err := ProviderFor(name); err != nil {
 			t.Fatalf("ProviderFor(%q): %v", name, err)
 		}
@@ -78,6 +78,15 @@ func TestLoadBackendWrapsCoordinatorOnlyForSupportedSSHProviders(t *testing.T) {
 	}
 	if _, ok := backend.(DelegatedRunBackend); !ok {
 		t.Fatalf("backend=%T, want delegated run backend", backend)
+	}
+
+	cfg.Provider = "sprites"
+	backend, err = loadBackend(cfg, testRuntimeWithRunner(&recordingCommandRunner{}))
+	if err != nil {
+		t.Fatalf("load sprites backend: %v", err)
+	}
+	if _, ok := backend.(SSHLeaseBackend); !ok {
+		t.Fatalf("backend=%T, want ssh lease backend", backend)
 	}
 }
 
@@ -136,6 +145,8 @@ func TestLeaseCreateFlagsRejectSnapshotSandboxResourceNoops(t *testing.T) {
 		{name: "type", args: []string{"--provider", "daytona", "--type", "large"}},
 		{name: "e2b class", args: []string{"--provider", "e2b", "--class", "standard"}},
 		{name: "e2b type", args: []string{"--provider", "e2b", "--type", "large"}},
+		{name: "sprites class", args: []string{"--provider", "sprites", "--class", "standard"}},
+		{name: "sprites type", args: []string{"--provider", "sprites", "--type", "large"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fs := newFlagSet("test", io.Discard)
@@ -226,6 +237,25 @@ func TestProviderFlagsApplyDaytonaAndIsloWithoutCoreEdits(t *testing.T) {
 	}
 	if cfg.E2B.Template != "crabbox-ready" || cfg.E2B.Workdir != "work/repo" {
 		t.Fatalf("e2b flags not applied: %#v", cfg.E2B)
+	}
+
+	fs = newFlagSet("test", io.Discard)
+	provider = fs.String("provider", defaults.Provider, "")
+	values = registerProviderFlags(fs, defaults)
+	if err := parseFlags(fs, []string{
+		"--provider", "sprites",
+		"--sprites-api-url", "https://sprites.example.test",
+		"--sprites-work-root", "/home/sprite/work",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cfg = defaults
+	cfg.Provider = *provider
+	if err := applyProviderFlags(&cfg, fs, values); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Sprites.APIURL != "https://sprites.example.test" || cfg.Sprites.WorkRoot != "/home/sprite/work" {
+		t.Fatalf("sprites flags not applied: %#v", cfg.Sprites)
 	}
 }
 

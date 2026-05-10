@@ -66,6 +66,7 @@ type Config struct {
 	E2B                E2BConfig
 	Islo               IsloConfig
 	Semaphore          SemaphoreConfig
+	Sprites            SpritesConfig
 	Tailscale          TailscaleConfig
 	Static             StaticConfig
 	Results            ResultsConfig
@@ -168,6 +169,12 @@ type SemaphoreConfig struct {
 	Machine     string
 	OSImage     string
 	IdleTimeout string
+}
+
+type SpritesConfig struct {
+	Token    string
+	APIURL   string
+	WorkRoot string
 }
 
 type StaticConfig struct {
@@ -310,6 +317,10 @@ func baseConfig() Config {
 			MemoryMB: 4096,
 			DiskGB:   20,
 		},
+		Sprites: SpritesConfig{
+			APIURL:   "https://api.sprites.dev",
+			WorkRoot: "/home/sprite/crabbox",
+		},
 		Tailscale: TailscaleConfig{
 			Tags:             []string{"tag:crabbox"},
 			HostnameTemplate: "crabbox-{slug}",
@@ -354,6 +365,7 @@ type fileConfig struct {
 	E2B              *fileE2BConfig        `yaml:"e2b,omitempty"`
 	Islo             *fileIsloConfig       `yaml:"islo,omitempty"`
 	Semaphore        *fileSemaphoreConfig  `yaml:"semaphore,omitempty"`
+	Sprites          *fileSpritesConfig    `yaml:"sprites,omitempty"`
 	Tailscale        *fileTailscaleConfig  `yaml:"tailscale,omitempty"`
 	Static           *fileStaticConfig     `yaml:"static,omitempty"`
 	Results          *fileResultsConfig    `yaml:"results,omitempty"`
@@ -515,6 +527,11 @@ type fileSemaphoreConfig struct {
 	Machine     string `yaml:"machine,omitempty"`
 	OSImage     string `yaml:"osImage,omitempty"`
 	IdleTimeout string `yaml:"idleTimeout,omitempty"`
+}
+
+type fileSpritesConfig struct {
+	APIURL   string `yaml:"apiUrl,omitempty"`
+	WorkRoot string `yaml:"workRoot,omitempty"`
 }
 
 type fileTailscaleConfig struct {
@@ -1023,6 +1040,14 @@ func applyFileConfig(cfg *Config, file fileConfig) {
 			cfg.Semaphore.IdleTimeout = file.Semaphore.IdleTimeout
 		}
 	}
+	if file.Sprites != nil {
+		if file.Sprites.APIURL != "" {
+			cfg.Sprites.APIURL = file.Sprites.APIURL
+		}
+		if file.Sprites.WorkRoot != "" {
+			cfg.Sprites.WorkRoot = file.Sprites.WorkRoot
+		}
+	}
 	if file.Tailscale != nil {
 		if file.Tailscale.Enabled != nil {
 			cfg.Tailscale.Enabled = *file.Tailscale.Enabled
@@ -1224,6 +1249,9 @@ func applyEnv(cfg *Config) {
 	cfg.Semaphore.Machine = getenv("CRABBOX_SEMAPHORE_MACHINE", cfg.Semaphore.Machine)
 	cfg.Semaphore.OSImage = getenv("CRABBOX_SEMAPHORE_OS_IMAGE", cfg.Semaphore.OSImage)
 	cfg.Semaphore.IdleTimeout = getenv("CRABBOX_SEMAPHORE_IDLE_TIMEOUT", cfg.Semaphore.IdleTimeout)
+	cfg.Sprites.Token = getenv("CRABBOX_SPRITES_TOKEN", getenv("SPRITES_TOKEN", getenv("SPRITE_TOKEN", getenv("SETUP_SPRITE_TOKEN", cfg.Sprites.Token))))
+	cfg.Sprites.APIURL = getenv("CRABBOX_SPRITES_API_URL", getenv("SPRITES_API_URL", cfg.Sprites.APIURL))
+	cfg.Sprites.WorkRoot = getenv("CRABBOX_SPRITES_WORK_ROOT", cfg.Sprites.WorkRoot)
 	if value, ok := getenvBool("CRABBOX_TAILSCALE"); ok {
 		cfg.Tailscale.Enabled = value
 	}
@@ -1333,7 +1361,7 @@ func serverTypeForClass(class string) string {
 }
 
 func serverTypeForConfig(cfg Config) string {
-	if isBlacksmithProvider(cfg.Provider) || isStaticProvider(cfg.Provider) || cfg.Provider == "islo" {
+	if isBlacksmithProvider(cfg.Provider) || isStaticProvider(cfg.Provider) || cfg.Provider == "islo" || cfg.Provider == "sprites" {
 		return ""
 	}
 	if cfg.Provider == "namespace-devbox" || cfg.Provider == "namespace" {
@@ -1355,7 +1383,7 @@ func serverTypeForConfig(cfg Config) string {
 }
 
 func serverTypeForProviderClass(provider, class string) string {
-	if isBlacksmithProvider(provider) || isStaticProvider(provider) || provider == "islo" {
+	if isBlacksmithProvider(provider) || isStaticProvider(provider) || provider == "islo" || provider == "sprites" {
 		return ""
 	}
 	if provider == "namespace-devbox" || provider == "namespace" {

@@ -15,6 +15,7 @@ func init() {
 	RegisterProvider(testDaytonaProvider{})
 	RegisterProvider(testIsloProvider{})
 	RegisterProvider(testE2BProvider{})
+	RegisterProvider(testSpritesProvider{})
 }
 
 type testAzureProvider struct{}
@@ -368,6 +369,56 @@ func (testE2BProvider) ApplyFlags(cfg *Config, fs *flag.FlagSet, values any) err
 }
 func (p testE2BProvider) Configure(cfg Config, rt Runtime) (Backend, error) {
 	return testDelegatedBackend{spec: p.Spec()}, nil
+}
+
+type testSpritesProvider struct{}
+
+func (testSpritesProvider) Name() string      { return "sprites" }
+func (testSpritesProvider) Aliases() []string { return nil }
+func (testSpritesProvider) Spec() ProviderSpec {
+	return ProviderSpec{
+		Name:        "sprites",
+		Kind:        ProviderKindSSHLease,
+		Targets:     []TargetSpec{{OS: targetLinux}},
+		Features:    FeatureSet{FeatureSSH, FeatureCrabboxSync},
+		Coordinator: CoordinatorNever,
+	}
+}
+
+type testSpritesFlagValues struct {
+	APIURL   *string
+	WorkRoot *string
+}
+
+func (testSpritesProvider) RegisterFlags(fs *flag.FlagSet, defaults Config) any {
+	return testSpritesFlagValues{
+		APIURL:   fs.String("sprites-api-url", defaults.Sprites.APIURL, "Sprites API URL"),
+		WorkRoot: fs.String("sprites-work-root", defaults.Sprites.WorkRoot, "Sprites work root"),
+	}
+}
+func (testSpritesProvider) ApplyFlags(cfg *Config, fs *flag.FlagSet, values any) error {
+	if cfg.Provider == "sprites" {
+		if flagWasSet(fs, "class") {
+			return exit(2, "--class is not supported for provider=sprites")
+		}
+		if flagWasSet(fs, "type") {
+			return exit(2, "--type is not supported for provider=sprites")
+		}
+	}
+	v, ok := values.(testSpritesFlagValues)
+	if !ok {
+		return nil
+	}
+	if flagWasSet(fs, "sprites-api-url") {
+		cfg.Sprites.APIURL = *v.APIURL
+	}
+	if flagWasSet(fs, "sprites-work-root") {
+		cfg.Sprites.WorkRoot = *v.WorkRoot
+	}
+	return nil
+}
+func (p testSpritesProvider) Configure(cfg Config, rt Runtime) (Backend, error) {
+	return testSSHBackend{spec: p.Spec()}, nil
 }
 
 type testDelegatedBackend struct {

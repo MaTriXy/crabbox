@@ -23,7 +23,7 @@ const envSchema = {
 
 const providerSchema = {
   type: "string",
-  enum: ["aws", "hetzner", "ssh", "blacksmith-testbox", "blacksmith", "namespace-devbox", "namespace", "semaphore", "daytona", "islo", "e2b"],
+  enum: ["aws", "hetzner", "ssh", "blacksmith-testbox", "blacksmith", "namespace-devbox", "namespace", "semaphore", "sprites", "daytona", "islo", "e2b"],
 };
 
 function readConfig(api) {
