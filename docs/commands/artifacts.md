@@ -23,10 +23,11 @@ By default `collect` writes:
 - `webvnc-status.json` when a coordinator login is configured
 - `logs.txt` and `run.json` when `--run <run-id>` is provided
 
-`--all` also records `screen.mp4`, creates `screen.trimmed.gif`, and writes
-`screen.trimmed.mp4` using the same motion window. Linux video uses remote
-`ffmpeg`/X11 capture. Native Windows video captures frames in the interactive
-console session and encodes the MP4 locally with `ffmpeg`.
+`--all` also records `screen.mp4`, writes `screen.contact.png`, creates
+`screen.trimmed.gif`, and writes `screen.trimmed.mp4` using the same motion
+window. Linux video uses remote `ffmpeg`/X11 capture. Native Windows video
+captures frames in the interactive console session and encodes the MP4 locally
+with `ffmpeg`.
 
 Useful flags:
 
@@ -44,6 +45,10 @@ Useful flags:
 --duration <duration> default 10s
 --fps <n>             default 15
 --gif-width <px>      default 640
+--no-contact-sheet
+--contact-sheet-frames <n> default 5
+--contact-sheet-cols <n>   default 5
+--contact-sheet-width <px> default 320
 --provider <name>
 --network auto|public|tailscale
 --json
@@ -63,8 +68,10 @@ stable code and message.
 crabbox artifacts video --id blue-lobster --duration 15s --output screen.mp4
 ```
 
-`video` records only an MP4 from a Linux desktop lease. It is useful when you
-want to keep capture separate from bundle collection.
+`video` records an MP4 from a desktop lease and writes a sampled
+`*.contact.png` contact sheet beside it by default. It is useful when you want
+to keep capture separate from bundle collection. Disable the sidecar with
+`--no-contact-sheet` or set `--contact-sheet-output <path>`.
 
 ## GIF
 

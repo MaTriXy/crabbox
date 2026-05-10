@@ -12,6 +12,8 @@ crabbox desktop launch --id blue-lobster -- xterm
 crabbox desktop terminal --id blue-lobster --sixel -- ./scripts/visual-smoke.sh
 crabbox desktop terminal --id blue-lobster --record terminal.mp4 --record-duration 6s -- ./scripts/visual-smoke.sh
 crabbox desktop record --id blue-lobster --duration 6s --fps 8 --output desktop.mp4
+crabbox desktop proof --id blue-lobster --output artifacts/blue-lobster-proof -- ./scripts/visual-smoke.sh
+crabbox desktop proof --id blue-lobster --publish-pr 123 -- ./scripts/visual-smoke.sh
 crabbox desktop doctor --id blue-lobster
 crabbox desktop click --id blue-lobster --x 640 --y 420
 crabbox desktop paste --id blue-lobster --text "peter@example.com"
@@ -51,11 +53,46 @@ launcher starts `mintty.exe` directly through the interactive PowerShell task so
 paths under `Program Files` and shell arguments keep normal Windows quoting.
 That keeps visual terminal smokes from needing hand-written batch launchers.
 Add `--screenshot <path>` or `--record <path>` to capture proof after launch;
-`--wait-visible` controls the settle delay before capture.
+`--wait-visible` controls the settle delay before capture. `--record` also
+writes a sampled `*.contact.png` contact sheet by default. A contact sheet is a
+single PNG grid made from frames sampled across the MP4, so reviewers can verify
+animation/progress without opening the video. Disable it with
+`--no-contact-sheet` or tune it with `--contact-sheet-frames`,
+`--contact-sheet-cols`, and `--contact-sheet-width`.
 
 `crabbox desktop record` records the active desktop to MP4. Linux uses remote
 `ffmpeg`/X11 capture. Native Windows captures a frame sequence inside the
-interactive console session and encodes the MP4 locally with `ffmpeg`.
+interactive console session and encodes the MP4 locally with `ffmpeg`. The
+command writes a sidecar contact sheet unless `--no-contact-sheet` is passed.
+MP4 recording currently supports Linux and native Windows targets; macOS
+desktop commands support launch, screenshot, VNC, and input flows, but not
+recording.
+
+`crabbox desktop proof` is the one-shot visual QA command for terminal smokes.
+It launches the terminal command, waits for the UI to settle, and writes a
+bundle:
+
+- `metadata.json`
+- `screenshot.png`
+- `diagnostics.txt`
+- `screen.mp4`
+- `screen.contact.png`
+
+Use `--publish-pr <n>` to publish that bundle directly through the same
+artifact backend as `crabbox artifacts publish`. The default storage is
+`auto`, so a logged-in coordinator uploads through broker-owned artifact
+storage; otherwise pass `--publish-storage`, `--publish-bucket`,
+`--publish-base-url`, or use `crabbox artifacts publish` for advanced storage
+flags. `desktop terminal --record` supports the same `--publish-pr` flow when
+the record path lives inside an artifact directory, for example
+`--record artifacts/proof/screen.mp4 --screenshot artifacts/proof/screenshot.png`.
+
+Recorder diagnostics are written by `desktop proof` and can also be requested
+from `desktop terminal --diagnostics <path>`. They include local
+`ffmpeg`/`ffprobe`, VNC loopback status, and target-specific recorder probes:
+Task Scheduler, TightVNC service, and interactive user state on Windows;
+`DISPLAY`, remote `ffmpeg`, `xdpyinfo`, screen size, and VNC listener state on
+Linux.
 
 `crabbox desktop doctor` checks the selected lease without syncing the repo.
 For Linux desktop leases it reports VM/session health separately from portal
@@ -110,8 +147,9 @@ Input helper flags:
 
 ```text
 desktop terminal --id <lease-id-or-slug> [--font-size <n>] [--cols <n>] [--rows <n>] [--sixel]
-desktop terminal --id <lease-id-or-slug> [--screenshot <path>] [--record <path>] [--record-duration <duration>] [--record-fps <n>] [--wait-visible <duration>] -- <command...>
-desktop record --id <lease-id-or-slug> [--output <path>] [--duration <duration>] [--fps <n>]
+desktop terminal --id <lease-id-or-slug> [--screenshot <path>] [--record <path>] [--record-duration <duration>] [--record-fps <n>] [--wait-visible <duration>] [--diagnostics <path>] [--publish-pr <n>] -- <command...>
+desktop record --id <lease-id-or-slug> [--output <path>] [--duration <duration>] [--fps <n>] [--no-contact-sheet]
+desktop proof --id <lease-id-or-slug> [--output <dir>] [--record-duration <duration>] [--record-fps <n>] [--publish-pr <n>] -- <command...>
 desktop doctor --id <lease-id-or-slug>
 desktop click --id <lease-id-or-slug> --x <n> --y <n>
 desktop paste --id <lease-id-or-slug> --text <text>

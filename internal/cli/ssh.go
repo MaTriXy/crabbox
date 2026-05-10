@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -32,6 +33,27 @@ type SSHTarget struct {
 	NetworkKind    NetworkMode
 	SSHConfigProxy bool
 	ProxyCommand   string
+}
+
+func isLocalMacTarget(target SSHTarget) bool {
+	if runtime.GOOS != "darwin" || target.TargetOS != targetMacOS {
+		return false
+	}
+	return isLocalHost(target.Host)
+}
+
+func isLocalHost(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" || host == "localhost" || host == "127.0.0.1" || host == "::1" {
+		return true
+	}
+	name, err := os.Hostname()
+	if err != nil {
+		return false
+	}
+	name = strings.ToLower(strings.TrimSpace(name))
+	short, _, _ := strings.Cut(name, ".")
+	return host == name || host == short
 }
 
 func sshTargetFromConfig(cfg Config, host string) SSHTarget {

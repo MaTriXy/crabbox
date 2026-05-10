@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -129,6 +130,26 @@ func TestStringFlagValueAcceptsGoFlagForms(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Fatalf("value=%q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBoolFlagValueOrAcceptsGoFlagForms(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{name: "default", args: nil, want: true},
+		{name: "bare true", args: []string{"--contact-sheet"}, want: true},
+		{name: "equals false", args: []string{"--contact-sheet=false"}, want: false},
+		{name: "equals zero", args: []string{"-contact-sheet=0"}, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := boolFlagValueOr(tt.args, "contact-sheet", true); got != tt.want {
+				t.Fatalf("boolFlagValueOr=%t, want %t", got, tt.want)
 			}
 		})
 	}
@@ -274,6 +295,33 @@ func TestWindowsDesktopTerminalUsesMinttyWithSixelDefaults(t *testing.T) {
 	}
 }
 
+func TestMacOSDesktopTerminalUsesGhostty(t *testing.T) {
+	got, err := desktopTerminalCommand(
+		SSHTarget{TargetOS: targetMacOS},
+		[]string{"/tmp/run-demo.sh"},
+		desktopTerminalOptions{FontSize: 18, Cols: 118, Rows: 34},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(got, " ")
+	for _, want := range []string{
+		"open -na Ghostty.app --args",
+		"--title=gifgrep tui",
+		"--font-size=18",
+		"--window-width=118",
+		"--window-height=34",
+		"--window-save-state=never",
+		"GIFGREP_INLINE",
+		"GIFGREP_SOFTWARE_ANIM",
+		"'/tmp/run-demo.sh'",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("terminal command missing %q: %v", want, got)
+		}
+	}
+}
+
 func TestDesktopTerminalPositionalIDSkipsStaticProviders(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -295,5 +343,126 @@ func TestDesktopTerminalPositionalIDSkipsStaticProviders(t *testing.T) {
 				t.Fatalf("shouldConsumeDesktopTerminalPositionalID=%t want %t", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestTrimCommandSeparatorAfterPositionalProofID(t *testing.T) {
+	got := trimCommandSeparator([]string{"--", "./scripts/smoke.sh", "--flag"})
+	want := []string{"./scripts/smoke.sh", "--flag"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("trimCommandSeparator=%v want %v", got, want)
+	}
+	if got := trimCommandSeparator([]string{"./scripts/smoke.sh"}); !reflect.DeepEqual(got, []string{"./scripts/smoke.sh"}) {
+		t.Fatalf("trimCommandSeparator without separator=%v", got)
+	}
+}
+
+func TestDesktopPublishOptionsRequireArtifactDirectory(t *testing.T) {
+	pr := 123
+	dir := ""
+	storage := "local"
+	baseURL := "https://artifacts.example.com"
+	flags := desktopPublishFlagValues{
+		PR:       &pr,
+		Dir:      &dir,
+		Storage:  &storage,
+		BaseURL:  &baseURL,
+		Explicit: map[string]bool{"storage": true},
+	}
+	if _, ok, err := publishOptionsFromDesktopFlags(".", flags); err == nil || ok {
+		t.Fatalf("expected missing publish directory error, ok=%t err=%v", ok, err)
+	}
+
+	dir = "artifacts/proof"
+	opts, ok, err := publishOptionsFromDesktopFlags("", flags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("expected publish options")
+	}
+	if opts.Directory != dir || opts.PR != pr || opts.Storage != storage || opts.BaseURL != baseURL {
+		t.Fatalf("opts=%#v", opts)
+	}
+}
+
+func TestDesktopPublishOptionsHonorArtifactStorageEnv(t *testing.T) {
+	t.Setenv("CRABBOX_ARTIFACTS_STORAGE", "s3")
+	t.Setenv("CRABBOX_ARTIFACTS_BUCKET", "proof-bucket")
+	pr := 123
+	dir := "artifacts/proof"
+	storage := "auto"
+	flags := desktopPublishFlagValues{
+		PR:      &pr,
+		Dir:     &dir,
+		Storage: &storage,
+	}
+	opts, ok, err := publishOptionsFromDesktopFlags("", flags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("expected publish options")
+	}
+	if opts.Storage != "s3" {
+		t.Fatalf("storage=%q want env default s3", opts.Storage)
+	}
+	flags.Explicit = map[string]bool{"storage": true}
+	opts, ok, err = publishOptionsFromDesktopFlags("", flags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("expected publish options")
+	}
+	if opts.Storage != "auto" {
+		t.Fatalf("explicit storage=%q want auto", opts.Storage)
+	}
+}
+
+func TestDesktopVideoTargetGate(t *testing.T) {
+	tests := []struct {
+		name   string
+		target SSHTarget
+		want   bool
+	}{
+		{name: "linux", target: SSHTarget{TargetOS: targetLinux}, want: true},
+		{name: "native windows", target: SSHTarget{TargetOS: targetWindows, WindowsMode: windowsModeNormal}, want: true},
+		{name: "wsl2 windows", target: SSHTarget{TargetOS: targetWindows, WindowsMode: windowsModeWSL2}, want: false},
+		{name: "macos", target: SSHTarget{TargetOS: targetMacOS}, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := supportsDesktopVideoTarget(tt.target); got != tt.want {
+				t.Fatalf("supportsDesktopVideoTarget=%t want %t", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDesktopRecorderDiagnosticsCommandsCoverWindowsAndLinux(t *testing.T) {
+	win := desktopRecorderDiagnosticsRemoteCommand(SSHTarget{TargetOS: targetWindows, WindowsMode: windowsModeNormal})
+	for _, want := range []string{"powershell.exe", "-EncodedCommand"} {
+		if !strings.Contains(win, want) {
+			t.Fatalf("windows diagnostics missing %q:\n%s", want, win)
+		}
+	}
+	linux := desktopRecorderDiagnosticsRemoteCommand(SSHTarget{TargetOS: targetLinux})
+	for _, want := range []string{"remote-ffmpeg", "xdpyinfo", "vnc-listener"} {
+		if !strings.Contains(linux, want) {
+			t.Fatalf("linux diagnostics missing %q:\n%s", want, linux)
+		}
+	}
+}
+
+func TestContactSheetFlagsDefaultEnabled(t *testing.T) {
+	enabled := true
+	skip := false
+	if !contactSheetEnabled(contactSheetFlagValues{Enabled: &enabled, Skip: &skip}) {
+		t.Fatal("contact sheet should default enabled")
+	}
+	skip = true
+	if contactSheetEnabled(contactSheetFlagValues{Enabled: &enabled, Skip: &skip}) {
+		t.Fatal("skip flag should disable contact sheet")
 	}
 }

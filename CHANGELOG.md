@@ -7,10 +7,11 @@
 - Added `crabbox run --capture-stdout <path>` and repeatable `--download remote=local` for binary-safe proof capture without streaming arbitrary bytes into the terminal or run-log previews.
 - Added `crabbox desktop terminal` for visible terminal smokes, including Sixel-friendly Git-for-Windows `mintty` launch defaults on native Windows.
 - Added `crabbox desktop record` plus `desktop terminal --screenshot/--record` for one-command visual proof capture, including native Windows MP4 recording through interactive desktop frames.
+- Added automatic contact-sheet PNGs for desktop recordings, `crabbox desktop proof` for one-shot visual proof bundles, recorder diagnostics, and direct PR publishing from terminal/proof captures.
 
 ### Changed
 
-- Updated docs for output capture, desktop terminal proof capture, Windows desktop bootstrap, and managed-provider readiness checks.
+- Updated docs for output capture, desktop terminal/proof capture, Windows desktop bootstrap, artifact contact sheets, and managed-provider readiness checks.
 
 ### Fixed
 

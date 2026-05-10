@@ -47,3 +47,14 @@ func TestScreenshotRemoteCommandSupportsWindowsAndMacOS(t *testing.T) {
 		t.Fatalf("mac screenshot command=%s", mac)
 	}
 }
+
+func TestIsLocalHost(t *testing.T) {
+	for _, host := range []string{"", "localhost", "127.0.0.1", "::1"} {
+		if !isLocalHost(host) {
+			t.Fatalf("expected %q to be local", host)
+		}
+	}
+	if isLocalHost("example.com") {
+		t.Fatal("example.com must not be local")
+	}
+}

@@ -84,12 +84,17 @@ func (a App) artifactsCollect(ctx context.Context, args []string) error {
 	screenshot := fs.Bool("screenshot", true, "capture desktop screenshot")
 	video := fs.Bool("video", false, "record desktop video")
 	gif := fs.Bool("gif", false, "create trimmed GIF from recorded video")
+	contactSheet := fs.Bool("contact-sheet", true, "create a sampled contact sheet PNG next to recorded video")
+	noContactSheet := fs.Bool("no-contact-sheet", false, "skip contact sheet generation")
 	doctor := fs.Bool("doctor", true, "write desktop doctor output")
 	webvncStatus := fs.Bool("webvnc-status", true, "write WebVNC portal status when coordinator is configured")
 	metadata := fs.Bool("metadata", true, "write metadata.json")
 	duration := fs.Duration("duration", 10*time.Second, "video capture duration")
 	fps := fs.Float64("fps", 15, "video frames per second")
 	gifWidth := fs.Int("gif-width", 640, "trimmed GIF width")
+	contactSheetFrames := fs.Int("contact-sheet-frames", 5, "number of sampled frames in the contact sheet")
+	contactSheetCols := fs.Int("contact-sheet-cols", 5, "contact sheet columns")
+	contactSheetWidth := fs.Int("contact-sheet-width", 320, "width of each contact sheet tile")
 	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
 	targetFlags := registerTargetFlags(fs, defaults)
 	networkFlags := registerNetworkModeFlag(fs, defaults)
@@ -113,6 +118,18 @@ func (a App) artifactsCollect(ctx context.Context, args []string) error {
 	}
 	if *gifWidth <= 0 {
 		return exit(2, "artifacts collect --gif-width must be positive")
+	}
+	if *contactSheetFrames <= 0 {
+		return exit(2, "artifacts collect --contact-sheet-frames must be positive")
+	}
+	if *contactSheetCols <= 0 {
+		return exit(2, "artifacts collect --contact-sheet-cols must be positive")
+	}
+	if *contactSheetWidth <= 0 {
+		return exit(2, "artifacts collect --contact-sheet-width must be positive")
+	}
+	if *noContactSheet {
+		*contactSheet = false
 	}
 	cfg, err := loadLeaseTargetConfig(fs, *provider, targetFlags, networkFlags, leaseTargetConfigOptions{Desktop: true})
 	if err != nil {
@@ -243,6 +260,20 @@ func (a App) artifactsCollect(ctx context.Context, args []string) error {
 			})
 		}
 		addFile("video", path)
+		if *contactSheet {
+			contactPath := filepath.Join(dir, "screen.contact.png")
+			if _, err := createMediaContactSheet(ctx, mediaContactSheetOptions{
+				Input:  path,
+				Output: contactPath,
+				Frames: *contactSheetFrames,
+				Cols:   *contactSheetCols,
+				Width:  *contactSheetWidth,
+			}); err != nil {
+				appendContactSheetWarning(&result.Warnings, err)
+			} else {
+				addFile("contact-sheet", contactPath)
+			}
+		}
 		if *gif {
 			gifPath := filepath.Join(dir, "screen.trimmed.gif")
 			trimmedPath := filepath.Join(dir, "screen.trimmed.mp4")
@@ -336,11 +367,41 @@ func (a App) artifactsVideo(ctx context.Context, args []string) error {
 	if fps <= 0 {
 		return exit(2, "artifacts video --fps must be positive")
 	}
+	contactEnabled := boolFlagValueOr(args, "contact-sheet", true) && !boolFlagPresent(args, "no-contact-sheet")
+	contactPath, _ := stringFlagValue(args, "contact-sheet-output")
+	if strings.TrimSpace(contactPath) == "" {
+		contactPath = contactSheetPathForVideo(output)
+	}
+	contactFrames := intFlagValueOr(args, "contact-sheet-frames", 5)
+	contactCols := intFlagValueOr(args, "contact-sheet-cols", 5)
+	contactWidth := intFlagValueOr(args, "contact-sheet-width", 320)
+	if contactFrames <= 0 {
+		return exit(2, "artifacts video --contact-sheet-frames must be positive")
+	}
+	if contactCols <= 0 {
+		return exit(2, "artifacts video --contact-sheet-cols must be positive")
+	}
+	if contactWidth <= 0 {
+		return exit(2, "artifacts video --contact-sheet-width must be positive")
+	}
 	if err := captureDesktopVideo(ctx, target, output, duration, fps); err != nil {
 		printRescue(a.Stdout, classifyDesktopFailure(err.Error()), err.Error(), desktopDoctorCommand(rescueContext{Cfg: cfg, Target: target, LeaseID: leaseID}))
 		return err
 	}
 	fmt.Fprintf(a.Stdout, "video: %s\n", output)
+	if contactEnabled {
+		if _, err := createMediaContactSheet(ctx, mediaContactSheetOptions{
+			Input:  output,
+			Output: contactPath,
+			Frames: contactFrames,
+			Cols:   contactCols,
+			Width:  contactWidth,
+		}); err != nil {
+			printContactSheetWarning(a.Stdout, err)
+		} else {
+			fmt.Fprintf(a.Stdout, "contact-sheet: %s\n", contactPath)
+		}
+	}
 	return nil
 }
 
@@ -386,16 +447,33 @@ func (a App) artifactsPublish(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	published, bodyPath, err := a.publishArtifactDirectory(ctx, opts)
+	if err != nil {
+		return err
+	}
+	for _, file := range published {
+		if file.URL != "" {
+			fmt.Fprintf(a.Stdout, "%s: %s\n", file.Kind, file.URL)
+		} else {
+			fmt.Fprintf(a.Stdout, "%s: %s\n", file.Kind, file.Path)
+		}
+	}
+	fmt.Fprintf(a.Stdout, "markdown: %s\n", bodyPath)
+	return nil
+}
+
+func (a App) publishArtifactDirectory(ctx context.Context, opts artifactPublishOptions) ([]artifactFile, string, error) {
+	var err error
 	var coord *CoordinatorClient
 	if opts.Storage == "auto" || opts.Storage == "broker" {
 		cfg, cfgErr := loadConfig()
 		if cfgErr != nil {
-			return cfgErr
+			return nil, "", cfgErr
 		}
 		var useCoordinator bool
 		coord, useCoordinator, err = newCoordinatorClient(cfg)
 		if err != nil {
-			return err
+			return nil, "", err
 		}
 		if opts.Storage == "auto" {
 			if useCoordinator && coord != nil && coord.Token != "" {
@@ -408,14 +486,14 @@ func (a App) artifactsPublish(ctx context.Context, args []string) error {
 	ensureArtifactPublishPrefix(&opts)
 	files, err := listArtifactBundleFiles(opts.Directory)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 	if len(files) == 0 {
-		return exit(2, "artifact directory has no files: %s", opts.Directory)
+		return nil, "", exit(2, "artifact directory has no files: %s", opts.Directory)
 	}
 	summary, err := summaryText(opts.Summary, opts.SummaryFile)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 	var published []artifactFile
 	if opts.Storage == "broker" {
@@ -424,32 +502,24 @@ func (a App) artifactsPublish(ctx context.Context, args []string) error {
 		published, err = publishArtifactFiles(ctx, opts, files)
 	}
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 	body := artifactTemplateMarkdown(opts.Template, summary, "", "", published)
 	bodyPath := filepath.Join(opts.Directory, "published-artifacts.md")
 	if err := os.WriteFile(bodyPath, []byte(body), 0o644); err != nil {
-		return exit(2, "write publish markdown: %v", err)
+		return nil, "", exit(2, "write publish markdown: %v", err)
 	}
 	if opts.PR > 0 && !opts.NoComment {
 		if opts.Storage == "local" && opts.BaseURL == "" {
-			return exit(2, "artifacts publish --pr needs brokered publishing, --storage s3|r2|cloudflare, or --base-url for already-hosted local assets")
+			return nil, "", exit(2, "artifacts publish --pr needs brokered publishing, --storage s3|r2|cloudflare, or --base-url for already-hosted local assets")
 		}
 		if opts.DryRun {
 			fmt.Fprintf(a.Stdout, "dry-run comment: gh issue comment %d --body-file %s\n", opts.PR, bodyPath)
 		} else if err := postGitHubPRComment(ctx, opts.PR, opts.Repo, bodyPath); err != nil {
-			return err
+			return nil, "", err
 		}
 	}
-	for _, file := range published {
-		if file.URL != "" {
-			fmt.Fprintf(a.Stdout, "%s: %s\n", file.Kind, file.URL)
-		} else {
-			fmt.Fprintf(a.Stdout, "%s: %s\n", file.Kind, file.Path)
-		}
-	}
-	fmt.Fprintf(a.Stdout, "markdown: %s\n", bodyPath)
-	return nil
+	return published, bodyPath, nil
 }
 
 func defaultArtifactBundleDir(leaseID, slug string) string {
@@ -513,6 +583,13 @@ func appendArtifactWarning(warnings *[]artifactWarning, problem, detail, fallbac
 	if clean.Problem != "" {
 		*warnings = append(*warnings, clean)
 	}
+}
+
+func appendContactSheetWarning(warnings *[]artifactWarning, err error) {
+	if err == nil {
+		return
+	}
+	appendArtifactWarning(warnings, rescueArtifactCaptureFailed, "contact-sheet skipped: "+err.Error(), "")
 }
 
 func normalizeArtifactWarning(warning artifactWarning) artifactWarning {

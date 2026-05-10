@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -90,6 +91,7 @@ func (a App) desktopLaunchWithCommand(ctx context.Context, args []string, comman
 	if positionalID && len(command) > 0 && command[0] == *id {
 		command = command[1:]
 	}
+	command = trimCommandSeparator(command)
 	if commandOverride != nil {
 		command = commandOverride
 	}
@@ -157,11 +159,26 @@ func (a App) desktopTerminal(ctx context.Context, args []string) error {
 	record := fs.String("record", "", "record an MP4 after launch")
 	recordDuration := fs.Duration("record-duration", 5*time.Second, "recording duration for --record")
 	recordFPS := fs.Float64("record-fps", 8, "recording frames per second for --record")
+	diagnostics := fs.String("diagnostics", "", "write recorder diagnostics after launch")
+	contactFlags := registerContactSheetFlags(fs)
+	publishFlags := registerDesktopPublishFlags(fs)
 	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
 	targetFlags := registerTargetFlags(fs, defaults)
 	networkFlags := registerNetworkModeFlag(fs, defaults)
 	if err := parseFlags(fs, args); err != nil {
 		return err
+	}
+	markDesktopPublishExplicitFlags(fs, &publishFlags)
+	if err := validateContactSheetFlags("desktop terminal", contactFlags); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*record) != "" {
+		if *recordDuration <= 0 {
+			return exit(2, "desktop terminal --record-duration must be positive")
+		}
+		if *recordFPS <= 0 {
+			return exit(2, "desktop terminal --record-fps must be positive")
+		}
 	}
 	positionalID := false
 	if shouldConsumeDesktopTerminalPositionalID(*provider, *id, fs.NArg()) {
@@ -190,9 +207,13 @@ func (a App) desktopTerminal(ctx context.Context, args []string) error {
 	if positionalID && len(command) > 0 && command[0] == *id {
 		command = command[1:]
 	}
+	command = trimCommandSeparator(command)
 	server, target, leaseID, err := a.resolveNetworkLeaseTarget(ctx, cfg, *id, false)
 	if err != nil {
 		return err
+	}
+	if strings.TrimSpace(*record) != "" && !supportsDesktopVideoTarget(target) {
+		return exit(2, "desktop terminal --record currently requires target=linux with ffmpeg/x11grab or native Windows desktop capture")
 	}
 	if err := enforceManagedLeaseCapabilities(cfg, server, leaseID); err != nil {
 		return err
@@ -255,17 +276,55 @@ func (a App) desktopTerminal(ctx context.Context, args []string) error {
 		}
 		fmt.Fprintf(a.Stdout, "screenshot: %s\n", path)
 	}
+	if path := strings.TrimSpace(*diagnostics); path != "" {
+		if err := writeDesktopRecorderDiagnostics(ctx, target, path); err != nil {
+			return err
+		}
+		fmt.Fprintf(a.Stdout, "diagnostics: %s\n", path)
+	}
 	if path := strings.TrimSpace(*record); path != "" {
-		if *recordDuration <= 0 {
-			return exit(2, "desktop terminal --record-duration must be positive")
-		}
-		if *recordFPS <= 0 {
-			return exit(2, "desktop terminal --record-fps must be positive")
-		}
 		if err := captureDesktopVideo(ctx, target, path, *recordDuration, *recordFPS); err != nil {
 			return err
 		}
 		fmt.Fprintf(a.Stdout, "video: %s\n", path)
+		if contactPath, err := writeContactSheetForVideo(ctx, path, contactFlags); err != nil {
+			printContactSheetWarning(a.Stdout, err)
+		} else if contactPath != "" {
+			fmt.Fprintf(a.Stdout, "contact-sheet: %s\n", contactPath)
+		}
+		if opts, ok, err := publishOptionsFromDesktopFlags(filepath.Dir(path), publishFlags); err != nil {
+			return err
+		} else if ok {
+			if err := writeProofMetadata(filepath.Join(opts.Directory, "metadata.json"), desktopProofMetadata{
+				CreatedAt:      time.Now().UTC().Format(time.RFC3339),
+				Version:        version,
+				LeaseID:        leaseID,
+				Slug:           serverSlug(server),
+				Provider:       cfg.Provider,
+				Network:        string(cfg.Network),
+				TargetOS:       target.TargetOS,
+				Command:        command,
+				TerminalCols:   *cols,
+				TerminalRows:   *rows,
+				TerminalSixel:  *sixel,
+				RecordDuration: recordDuration.String(),
+				RecordFPS:      *recordFPS,
+			}); err != nil {
+				return err
+			}
+			published, markdownPath, err := a.publishArtifactDirectory(ctx, opts)
+			if err != nil {
+				return err
+			}
+			for _, file := range published {
+				if file.URL != "" {
+					fmt.Fprintf(a.Stdout, "%s: %s\n", file.Kind, file.URL)
+				} else {
+					fmt.Fprintf(a.Stdout, "%s: %s\n", file.Kind, file.Path)
+				}
+			}
+			fmt.Fprintf(a.Stdout, "markdown: %s\n", markdownPath)
+		}
 	}
 	return nil
 }
@@ -274,8 +333,198 @@ func (a App) desktopRecord(ctx context.Context, args []string) error {
 	return a.artifactsVideo(ctx, args)
 }
 
+func (a App) desktopProof(ctx context.Context, args []string) error {
+	defaults := defaultConfig()
+	fs := newFlagSet("desktop proof", a.Stderr)
+	provider := fs.String("provider", defaults.Provider, providerHelpSSH())
+	id := fs.String("id", "", "lease id or slug")
+	output := fs.String("output", "", "proof artifact directory")
+	fontSize := fs.Int("font-size", 14, "terminal font size")
+	cols := fs.Int("cols", 100, "terminal columns")
+	rows := fs.Int("rows", 32, "terminal rows")
+	sixel := fs.Bool("sixel", false, "prefer a Sixel-capable terminal configuration")
+	waitVisible := fs.Duration("wait-visible", 2*time.Second, "delay after launch before capture")
+	recordDuration := fs.Duration("record-duration", 5*time.Second, "recording duration")
+	recordFPS := fs.Float64("record-fps", 8, "recording frames per second")
+	contactFlags := registerContactSheetFlags(fs)
+	publishFlags := registerDesktopPublishFlags(fs)
+	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
+	targetFlags := registerTargetFlags(fs, defaults)
+	networkFlags := registerNetworkModeFlag(fs, defaults)
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
+	markDesktopPublishExplicitFlags(fs, &publishFlags)
+	if err := validateContactSheetFlags("desktop proof", contactFlags); err != nil {
+		return err
+	}
+	if *recordDuration <= 0 {
+		return exit(2, "desktop proof --record-duration must be positive")
+	}
+	if *recordFPS <= 0 {
+		return exit(2, "desktop proof --record-fps must be positive")
+	}
+	positionalID := false
+	if shouldConsumeDesktopTerminalPositionalID(*provider, *id, fs.NArg()) {
+		*id = fs.Arg(0)
+		positionalID = true
+	}
+	cfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	cfg.Provider = *provider
+	cfg.Desktop = true
+	if err := applyTargetFlagOverrides(&cfg, fs, targetFlags); err != nil {
+		return err
+	}
+	if err := applyNetworkModeFlagOverride(&cfg, fs, networkFlags); err != nil {
+		return err
+	}
+	if err := validateRequestedCapabilities(cfg); err != nil {
+		return err
+	}
+	if *id == "" && !isStaticProvider(cfg.Provider) {
+		return exit(2, "usage: crabbox desktop proof --id <lease-id-or-slug> -- <command...>")
+	}
+	command := fs.Args()
+	if positionalID && len(command) > 0 && command[0] == *id {
+		command = command[1:]
+	}
+	command = trimCommandSeparator(command)
+	server, target, leaseID, err := a.resolveNetworkLeaseTarget(ctx, cfg, *id, false)
+	if err != nil {
+		return err
+	}
+	if !supportsDesktopVideoTarget(target) {
+		return exit(2, "desktop proof currently requires target=linux with ffmpeg/x11grab or native Windows desktop capture")
+	}
+	if err := enforceManagedLeaseCapabilities(cfg, server, leaseID); err != nil {
+		return err
+	}
+	repo, err := findRepo()
+	if err != nil {
+		return err
+	}
+	if err := claimLeaseForRepoConfig(leaseID, serverSlug(server), cfg, repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
+		return err
+	}
+	a.touchLeaseTargetBestEffort(ctx, cfg, LeaseTarget{Server: server, SSH: target, LeaseID: leaseID}, "")
+	if err := waitForLoopbackVNC(ctx, &target); err != nil {
+		return err
+	}
+	dir := strings.TrimSpace(*output)
+	if dir == "" {
+		name := normalizeLeaseSlug(firstNonBlank(serverSlug(server), leaseID))
+		if name == "" {
+			name = time.Now().UTC().Format("20060102-150405")
+		}
+		dir = filepath.Join("artifacts", name+"-proof")
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return exit(2, "create proof directory: %v", err)
+	}
+	terminalCommand, err := desktopTerminalCommand(target, command, desktopTerminalOptions{
+		FontSize: *fontSize,
+		Cols:     *cols,
+		Rows:     *rows,
+		Sixel:    *sixel,
+	})
+	if err != nil {
+		return err
+	}
+	workdir := remoteJoin(cfg, leaseID, repo.Name)
+	env, err := requestedCapabilityEnv(ctx, cfg, target)
+	if err != nil {
+		return err
+	}
+	rescueCtx := rescueContext{Cfg: cfg, Target: target, LeaseID: leaseID}
+	if out, err := runSSHCombinedOutput(ctx, target, desktopLaunchRemoteCommand(target, workdir, env, terminalCommand, false)); err != nil {
+		printRescue(a.Stdout, classifyDesktopFailure(out), trimFailureDetail(out), desktopDoctorCommand(rescueCtx), desktopLaunchRetryCommand(rescueCtx, terminalCommand))
+		return exit(5, "launch desktop proof terminal: %v", err)
+	}
+	fmt.Fprintf(a.Stdout, "launched terminal: %s\n", strings.Join(terminalCommand, " "))
+	if *waitVisible > 0 {
+		timer := time.NewTimer(*waitVisible)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	metadataPath := filepath.Join(dir, "metadata.json")
+	if err := writeProofMetadata(metadataPath, desktopProofMetadata{
+		CreatedAt:      time.Now().UTC().Format(time.RFC3339),
+		Version:        version,
+		LeaseID:        leaseID,
+		Slug:           serverSlug(server),
+		Provider:       cfg.Provider,
+		Network:        string(cfg.Network),
+		TargetOS:       target.TargetOS,
+		Command:        command,
+		TerminalCols:   *cols,
+		TerminalRows:   *rows,
+		TerminalSixel:  *sixel,
+		RecordDuration: recordDuration.String(),
+		RecordFPS:      *recordFPS,
+	}); err != nil {
+		return err
+	}
+	fmt.Fprintf(a.Stdout, "metadata: %s\n", metadataPath)
+	screenshotPath := filepath.Join(dir, "screenshot.png")
+	if err := captureDesktopScreenshot(ctx, target, screenshotPath); err != nil {
+		return err
+	}
+	fmt.Fprintf(a.Stdout, "screenshot: %s\n", screenshotPath)
+	diagnosticsPath := filepath.Join(dir, "diagnostics.txt")
+	if err := writeDesktopRecorderDiagnostics(ctx, target, diagnosticsPath); err != nil {
+		return err
+	}
+	fmt.Fprintf(a.Stdout, "diagnostics: %s\n", diagnosticsPath)
+	videoPath := filepath.Join(dir, "screen.mp4")
+	if err := captureDesktopVideo(ctx, target, videoPath, *recordDuration, *recordFPS); err != nil {
+		return err
+	}
+	fmt.Fprintf(a.Stdout, "video: %s\n", videoPath)
+	if contactPath, err := writeContactSheetForVideo(ctx, videoPath, contactFlags); err != nil {
+		printContactSheetWarning(a.Stdout, err)
+	} else if contactPath != "" {
+		fmt.Fprintf(a.Stdout, "contact-sheet: %s\n", contactPath)
+	}
+	fmt.Fprintf(a.Stdout, "proof: %s\n", dir)
+	if opts, ok, err := publishOptionsFromDesktopFlags(dir, publishFlags); err != nil {
+		return err
+	} else if ok {
+		published, markdownPath, err := a.publishArtifactDirectory(ctx, opts)
+		if err != nil {
+			return err
+		}
+		for _, file := range published {
+			if file.URL != "" {
+				fmt.Fprintf(a.Stdout, "%s: %s\n", file.Kind, file.URL)
+			} else {
+				fmt.Fprintf(a.Stdout, "%s: %s\n", file.Kind, file.Path)
+			}
+		}
+		fmt.Fprintf(a.Stdout, "markdown: %s\n", markdownPath)
+	}
+	return nil
+}
+
 func shouldConsumeDesktopTerminalPositionalID(provider, id string, argCount int) bool {
 	return id == "" && argCount > 0 && !isStaticProvider(provider)
+}
+
+func trimCommandSeparator(command []string) []string {
+	if len(command) > 0 && command[0] == "--" {
+		return command[1:]
+	}
+	return command
+}
+
+func supportsDesktopVideoTarget(target SSHTarget) bool {
+	return target.TargetOS == targetLinux || isWindowsNativeTarget(target)
 }
 
 type desktopTerminalOptions struct {
@@ -317,6 +566,27 @@ func desktopTerminalCommand(target SSHTarget, command []string, opts desktopTerm
 			"-o", fmt.Sprintf("Rows=%d", opts.Rows),
 			"-o", "Scrollbar=none",
 			"/usr/bin/bash", "-lc", shellCommand,
+		}, nil
+	}
+	if target.TargetOS == targetMacOS {
+		shellCommand := "exec /bin/zsh -l"
+		if len(command) > 0 {
+			shellCommand = shellJoin(command)
+		}
+		prefix := "export TERM=${TERM:-xterm-ghostty}; export GIFGREP_INLINE=${GIFGREP_INLINE:-kitty}; export GIFGREP_SOFTWARE_ANIM=${GIFGREP_SOFTWARE_ANIM:-1}; "
+		return []string{
+			"open", "-na", "Ghostty.app", "--args",
+			"--title=gifgrep tui",
+			fmt.Sprintf("--font-size=%d", opts.FontSize),
+			fmt.Sprintf("--window-width=%d", opts.Cols),
+			fmt.Sprintf("--window-height=%d", opts.Rows),
+			"--window-padding-x=14",
+			"--window-padding-y=14",
+			"--background-opacity=1",
+			"--macos-titlebar-style=native",
+			"--window-save-state=never",
+			"--quit-after-last-window-closed=true",
+			"-e", "/bin/zsh", "-lc", prefix + shellCommand,
 		}, nil
 	}
 	if len(command) == 0 {

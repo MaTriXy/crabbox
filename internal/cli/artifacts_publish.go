@@ -455,8 +455,12 @@ func artifactKindForPath(path string) string {
 		return "gif"
 	case artifactExtIsVideo(ext):
 		return "video"
+	case strings.Contains(name, "contact"):
+		return "contact-sheet"
 	case (artifactExtIsImage(ext) || ext == "") && (strings.Contains(name, "screenshot") || strings.Contains(name, "before") || strings.Contains(name, "after")):
 		return "screenshot"
+	case strings.Contains(name, "diagnostic"):
+		return "diagnostics"
 	case strings.Contains(name, "doctor"):
 		return "doctor"
 	case strings.Contains(name, "webvnc"):

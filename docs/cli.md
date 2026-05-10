@@ -36,7 +36,8 @@ crabbox config set-broker --url <url> --token-stdin [--provider hetzner|aws|azur
 crabbox warmup [--provider hetzner|aws|azure|ssh|blacksmith-testbox|namespace-devbox|semaphore|sprites|daytona|islo|e2b] [--target linux|macos|windows] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--profile <name>] [--idle-timeout <duration>] [--timing-json]
 crabbox run [--id <lease-id-or-slug>] [--provider hetzner|aws|azure|ssh|blacksmith-testbox|namespace-devbox|semaphore|sprites|daytona|islo|e2b] [--target linux|macos|windows] [--windows-mode normal|wsl2] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--shell] [--checksum] [--debug] [--force-sync-large] [--capture-stdout <path>] [--download remote=local] [--timing-json] [--blacksmith-workflow <workflow>] -- <command...>
 crabbox desktop launch --id <lease-id-or-slug> [--browser] [--url <url>] [--egress <profile>] [--webvnc] [--open] [-- <command...>]
-crabbox desktop terminal --id <lease-id-or-slug> [--font-size <n>] [--cols <n>] [--rows <n>] [--sixel] [--screenshot <path>] [--record <path>] [-- <command...>]
+crabbox desktop terminal --id <lease-id-or-slug> [--font-size <n>] [--cols <n>] [--rows <n>] [--sixel] [--screenshot <path>] [--record <path>] [--publish-pr <n>] [-- <command...>]
+crabbox desktop proof --id <lease-id-or-slug> [--output <dir>] [--publish-pr <n>] [-- <command...>]
 crabbox desktop doctor --id <lease-id-or-slug> [--network auto|tailscale|public]
 crabbox desktop click --id <lease-id-or-slug> --x <n> --y <n> [--network auto|tailscale|public]
 crabbox desktop paste --id <lease-id-or-slug> --text <text> [--network auto|tailscale|public]
@@ -51,8 +52,8 @@ crabbox egress status --id <lease-id-or-slug>
 crabbox egress stop --id <lease-id-or-slug>
 crabbox media preview --input <video> --output <preview.gif> [--trimmed-video-output <change.mp4>]
 crabbox artifacts collect --id <lease-id-or-slug> [--output <dir>] [--run <run-id>] [--all] [--screenshot] [--video] [--gif] [--doctor] [--webvnc-status] [--metadata] [--duration <duration>] [--fps <n>] [--gif-width <px>] [--network auto|tailscale|public] [--json]
-crabbox artifacts video --id <lease-id-or-slug> [--output <path>] [--duration <duration>] [--fps <n>]
-crabbox desktop record --id <lease-id-or-slug> [--output <path>] [--duration <duration>] [--fps <n>]
+crabbox artifacts video --id <lease-id-or-slug> [--output <path>] [--duration <duration>] [--fps <n>] [--no-contact-sheet]
+crabbox desktop record --id <lease-id-or-slug> [--output <path>] [--duration <duration>] [--fps <n>] [--no-contact-sheet]
 crabbox artifacts gif --input <video> --output <preview.gif> [--trimmed-video-output <change.mp4>]
 crabbox artifacts template openclaw|mantis [--summary <text>|--summary-file <path>] [--before <path>] [--after <path>] [--output <path>]
 crabbox artifacts publish --dir <dir> [--pr <n>] [--repo owner/name] [--storage auto|broker|s3|cloudflare|r2|local] [--bucket <name>] [--prefix <path>] [--base-url <url>] [--region <region>] [--profile <profile>] [--endpoint-url <url>] [--acl <acl>] [--presign] [--expires <duration>] [--dry-run] [--no-comment]
@@ -118,6 +119,7 @@ crabbox webvnc daemon start --id blue-lobster --open
 crabbox code --id blue-lobster --open
 crabbox desktop launch --id blue-lobster --browser --url https://example.com --webvnc --open
 crabbox desktop terminal --id blue-lobster --sixel --record terminal.mp4 -- ./scripts/visual-smoke.sh
+crabbox desktop proof --id blue-lobster --output artifacts/blue-lobster-proof -- ./scripts/visual-smoke.sh
 crabbox desktop doctor --id blue-lobster
 crabbox desktop paste --id blue-lobster --text "peter@example.com"
 crabbox desktop key --id blue-lobster ctrl+l

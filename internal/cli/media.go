@@ -28,6 +28,16 @@ type mediaPreviewResult struct {
 	DetectedMotionWindowNote string  `json:"detectedMotionWindowNote,omitempty"`
 }
 
+type mediaContactSheetResult struct {
+	Input                 string  `json:"input"`
+	Output                string  `json:"output"`
+	SourceDurationSeconds float64 `json:"sourceDurationSeconds"`
+	Frames                int     `json:"frames"`
+	Cols                  int     `json:"cols"`
+	Rows                  int     `json:"rows"`
+	Width                 int     `json:"width"`
+}
+
 type mediaPreviewOptions struct {
 	Input              string
 	Output             string
@@ -40,6 +50,14 @@ type mediaPreviewOptions struct {
 	FreezeNoise        string
 	MinDuration        time.Duration
 	JSON               bool
+}
+
+type mediaContactSheetOptions struct {
+	Input  string
+	Output string
+	Frames int
+	Cols   int
+	Width  int
 }
 
 type mediaInterval struct {
@@ -183,6 +201,53 @@ func createMediaPreview(ctx context.Context, opts mediaPreviewOptions) (mediaPre
 	}, nil
 }
 
+func createMediaContactSheet(ctx context.Context, opts mediaContactSheetOptions) (mediaContactSheetResult, error) {
+	if strings.TrimSpace(opts.Input) == "" {
+		return mediaContactSheetResult{}, exit(2, "media contact sheet requires input")
+	}
+	if strings.TrimSpace(opts.Output) == "" {
+		return mediaContactSheetResult{}, exit(2, "media contact sheet requires output")
+	}
+	if opts.Frames <= 0 {
+		opts.Frames = 5
+	}
+	if opts.Cols <= 0 || opts.Cols > opts.Frames {
+		opts.Cols = opts.Frames
+	}
+	if opts.Width <= 0 {
+		opts.Width = 320
+	}
+	if _, err := os.Stat(opts.Input); err != nil {
+		return mediaContactSheetResult{}, exit(2, "read input video: %v", err)
+	}
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		return mediaContactSheetResult{}, exit(2, "ffmpeg is required for media contact sheet: %v", err)
+	}
+	if _, err := exec.LookPath("ffprobe"); err != nil {
+		return mediaContactSheetResult{}, exit(2, "ffprobe is required for media contact sheet: %v", err)
+	}
+	duration, err := probeMediaDuration(ctx, opts.Input)
+	if err != nil {
+		return mediaContactSheetResult{}, err
+	}
+	rows := int(math.Ceil(float64(opts.Frames) / float64(opts.Cols)))
+	if err := os.MkdirAll(filepath.Dir(opts.Output), 0o755); err != nil && filepath.Dir(opts.Output) != "." {
+		return mediaContactSheetResult{}, exit(2, "create contact sheet directory: %v", err)
+	}
+	if err := runMediaCommand(ctx, "ffmpeg", contactSheetArgs(opts.Input, opts.Output, opts.Frames, opts.Cols, rows, opts.Width, duration)...); err != nil {
+		return mediaContactSheetResult{}, err
+	}
+	return mediaContactSheetResult{
+		Input:                 opts.Input,
+		Output:                opts.Output,
+		SourceDurationSeconds: roundMillis(duration),
+		Frames:                opts.Frames,
+		Cols:                  opts.Cols,
+		Rows:                  rows,
+		Width:                 opts.Width,
+	}, nil
+}
+
 func probeMediaDuration(ctx context.Context, input string) (float64, error) {
 	out, err := commandOutput(ctx, "ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", input)
 	if err != nil {
@@ -240,6 +305,29 @@ func trimmedVideoArgs(input, output string, start, duration float64) []string {
 		output,
 	)
 	return args
+}
+
+func contactSheetArgs(input, output string, frames, cols, rows, width int, duration float64) []string {
+	sampleFPS := 1.0
+	if duration > 0 {
+		sampleFPS = float64(frames) / duration
+	}
+	filter := fmt.Sprintf("fps=%s,scale=%d:-1:flags=lanczos,tile=%dx%d:padding=4:margin=4:color=black", formatMediaSeconds(sampleFPS), width, cols, rows)
+	return []string{
+		"-hide_banner", "-loglevel", "error", "-y",
+		"-i", input,
+		"-vf", filter,
+		"-frames:v", "1",
+		output,
+	}
+}
+
+func contactSheetPathForVideo(path string) string {
+	ext := filepath.Ext(path)
+	if ext == "" {
+		return path + ".contact.png"
+	}
+	return strings.TrimSuffix(path, ext) + ".contact.png"
 }
 
 func appendTrimInputArgs(args []string, input string, start, duration float64) []string {

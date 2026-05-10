@@ -151,6 +151,12 @@ func (a App) desktopCommandTarget(ctx context.Context, name string, args []strin
 		fs.String("output", "", "local MP4 output path")
 		fs.Duration("duration", 10*time.Second, "video capture duration")
 		fs.Float64("fps", 15, "video frames per second")
+		fs.Bool("contact-sheet", true, "create a sampled contact sheet PNG next to recorded video")
+		fs.String("contact-sheet-output", "", "contact sheet PNG output path")
+		fs.Bool("no-contact-sheet", false, "skip contact sheet generation")
+		fs.Int("contact-sheet-frames", 5, "number of sampled frames in the contact sheet")
+		fs.Int("contact-sheet-cols", 5, "contact sheet columns")
+		fs.Int("contact-sheet-width", 320, "width of each contact sheet tile")
 	}
 	if err := parseFlags(fs, args); err != nil {
 		return SSHTarget{}, Config{}, "", err
@@ -243,6 +249,58 @@ func intFlagValue(args []string, name string) (int, bool) {
 	}
 	n, err := strconv.Atoi(value)
 	return n, err == nil
+}
+
+func intFlagValueOr(args []string, name string, fallback int) int {
+	value, ok := intFlagValue(args, name)
+	if !ok {
+		return fallback
+	}
+	return value
+}
+
+func boolFlagValueOr(args []string, name string, fallback bool) bool {
+	prefixes := []string{"--" + name + "=", "-" + name + "="}
+	names := map[string]bool{"--" + name: true, "-" + name: true}
+	for _, arg := range args {
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(arg, prefix) {
+				return parseBoolFlagValue(strings.TrimPrefix(arg, prefix), fallback)
+			}
+		}
+		if names[arg] {
+			return true
+		}
+	}
+	return fallback
+}
+
+func parseBoolFlagValue(value string, fallback bool) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "t", "true", "y", "yes", "on":
+		return true
+	case "0", "f", "false", "n", "no", "off":
+		return false
+	default:
+		return fallback
+	}
+}
+
+func boolFlagPresent(args []string, name string) bool {
+	prefixes := []string{"--" + name + "=", "-" + name + "="}
+	names := map[string]bool{"--" + name: true, "-" + name: true}
+	for _, arg := range args {
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(arg, prefix) {
+				value := strings.TrimPrefix(arg, prefix)
+				return !strings.EqualFold(value, "false") && value != "0"
+			}
+		}
+		if names[arg] {
+			return true
+		}
+	}
+	return false
 }
 
 func floatFlagValue(args []string, name string, fallback float64) float64 {

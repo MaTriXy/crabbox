@@ -76,6 +76,9 @@ func captureDesktopScreenshot(ctx context.Context, target SSHTarget, outputPath 
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
 		return exit(2, "create screenshot directory: %v", err)
 	}
+	if isLocalMacTarget(target) {
+		return captureLocalMacScreenshot(ctx, outputPath)
+	}
 	file, err := os.Create(outputPath)
 	if err != nil {
 		return exit(2, "create screenshot %s: %v", outputPath, err)
@@ -91,6 +94,23 @@ func captureDesktopScreenshot(ctx context.Context, target SSHTarget, outputPath 
 		return exit(5, "capture screenshot: %v", err)
 	}
 	ok = true
+	return nil
+}
+
+func captureLocalMacScreenshot(ctx context.Context, outputPath string) error {
+	if err := os.Remove(outputPath); err != nil && !os.IsNotExist(err) {
+		return exit(2, "prepare screenshot %s: %v", outputPath, err)
+	}
+	cmd := exec.CommandContext(ctx, "screencapture", "-x", "-t", "png", outputPath)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		_ = os.Remove(outputPath)
+		if detail := strings.TrimSpace(stderr.String()); detail != "" {
+			return exit(5, "capture local macOS screenshot: %v: %s", err, detail)
+		}
+		return exit(5, "capture local macOS screenshot: %v", err)
+	}
 	return nil
 }
 

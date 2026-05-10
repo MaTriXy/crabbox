@@ -25,8 +25,8 @@ to reproduce what happened, and publish a concise before/after/summary comment.
   backed.
 - `logs.txt` and `run.json`: retained run output and run metadata when
   `--run <run-id>` is set.
-- `screen.mp4`, `screen.trimmed.gif`, and `screen.trimmed.mp4` when video/GIF
-  capture is requested.
+- `screen.mp4`, `screen.contact.png`, `screen.trimmed.gif`, and
+  `screen.trimmed.mp4` when video/GIF capture is requested.
 
 Failures keep the rescue-first UX. If the input stack is dead, the VNC bridge
 is disconnected, the browser did not launch, or screenshot/video capture fails,
@@ -40,10 +40,16 @@ still returning a nonzero exit code.
 Video capture is intentionally desktop-session scoped. Linux leases record the
 X11 desktop with remote `ffmpeg` and stream the MP4 back over SSH. Native
 Windows leases capture a frame sequence inside the interactive console session,
-stream that archive back, and encode the MP4 locally with `ffmpeg`. GIF
-generation reuses the local motion-trimming logic from `crabbox media preview`:
-leading/trailing static regions are removed and an optional trimmed MP4 can be
-emitted beside the GIF.
+stream that archive back, and encode the MP4 locally with `ffmpeg`. MP4 capture
+also writes a contact sheet by default: one PNG grid sampled across the video
+for quick PR review. GIF generation reuses the local motion-trimming logic from
+`crabbox media preview`: leading/trailing static regions are removed and an
+optional trimmed MP4 can be emitted beside the GIF.
+
+`crabbox desktop proof` produces the same bundle shape for visual terminal
+smokes without a separate collect step: metadata, screenshot, recorder
+diagnostics, MP4, and contact sheet. `desktop proof --publish-pr <n>` publishes
+that bundle through the artifact backend immediately.
 
 Use `desktop launch --fullscreen` only when the artifact should show a
 browser-only capture. The standard human QA profile remains windowed so panel

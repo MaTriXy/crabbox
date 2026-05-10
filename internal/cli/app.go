@@ -176,6 +176,7 @@ Common Flows:
   crabbox ssh --id blue-lobster
   crabbox vnc --id blue-lobster --open
   crabbox desktop launch --id blue-lobster --browser --url https://example.com --webvnc --open
+  crabbox desktop proof --id blue-lobster --output artifacts/blue-lobster-proof -- ./scripts/visual-smoke.sh
   crabbox media preview --input desktop.mp4 --output desktop-preview.gif --trimmed-video-output desktop-change.mp4
   crabbox artifacts collect --id blue-lobster --all --output artifacts/blue-lobster
   crabbox artifacts publish --pr 123 --dir artifacts/blue-lobster --storage s3 --bucket qa-artifacts

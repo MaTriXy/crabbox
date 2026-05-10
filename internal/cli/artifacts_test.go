@@ -224,6 +224,23 @@ func TestArtifactKindClassifiesBeforeAfterVideosAsVideo(t *testing.T) {
 	}
 }
 
+func TestArtifactKindClassifiesProofSidecars(t *testing.T) {
+	tests := map[string]string{
+		"screen.contact.png":     "contact-sheet",
+		"screenshot.contact.png": "contact-sheet",
+		"diagnostics.txt":        "diagnostics",
+	}
+	for name, want := range tests {
+		if got := artifactKindForPath(name); got != want {
+			t.Fatalf("kind for %s=%q want %q", name, got, want)
+		}
+		markdown := artifactMarkdownForFile(artifactFile{Kind: artifactKindForPath(name), Name: filepath.Base(name)}, "https://cdn.example.com/"+filepath.Base(name))
+		if strings.HasSuffix(name, ".png") && !strings.HasPrefix(markdown, "![") {
+			t.Fatalf("contact sheet should render inline, got %s", markdown)
+		}
+	}
+}
+
 func TestWindowsDesktopVideoRemoteCommandCapturesInteractiveFrames(t *testing.T) {
 	frames, intervalMS := windowsDesktopVideoFrameTiming(2*time.Second, 4)
 	if frames != 8 || intervalMS != 250 {
@@ -487,6 +504,32 @@ func TestArtifactCollectFailureJSONIsParseable(t *testing.T) {
 	}
 	if len(decoded.Warnings) != 1 || decoded.Warnings[0].Problem != rescueScreenshotCaptureBroken {
 		t.Fatalf("warnings=%#v", decoded.Warnings)
+	}
+}
+
+func TestContactSheetWarningJSONIsParseable(t *testing.T) {
+	var stdout bytes.Buffer
+	result := artifactCollectResult{
+		Directory: "/tmp/bundle",
+		Metadata:  artifactBundleMetadata{LeaseID: "cbx_123"},
+		Files:     []artifactFile{{Kind: "video", Name: "screen.mp4", Path: "/tmp/bundle/screen.mp4"}},
+	}
+	appendContactSheetWarning(&result.Warnings, exit(2, "ffprobe is required"))
+	if err := json.NewEncoder(&stdout).Encode(result); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(stdout.String(), "warning:") || strings.Contains(stdout.String(), "problem:") {
+		t.Fatalf("json stdout contains human warning text: %q", stdout.String())
+	}
+	var decoded artifactCollectResult
+	if err := json.Unmarshal(stdout.Bytes(), &decoded); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\n%s", err, stdout.String())
+	}
+	if len(decoded.Warnings) != 1 {
+		t.Fatalf("warnings=%#v", decoded.Warnings)
+	}
+	if decoded.Warnings[0].Problem != rescueArtifactCaptureFailed || !strings.Contains(decoded.Warnings[0].Detail, "contact-sheet skipped") {
+		t.Fatalf("warning=%#v", decoded.Warnings[0])
 	}
 }
 

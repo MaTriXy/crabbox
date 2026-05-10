@@ -208,6 +208,7 @@ type desktopKongCmd struct {
 	Launch   desktopLaunchKongCmd   `cmd:"" passthrough:"" help:"Start an app inside a desktop lease."`
 	Terminal desktopTerminalKongCmd `cmd:"" passthrough:"" help:"Start a visible terminal inside a desktop lease."`
 	Record   desktopRecordKongCmd   `cmd:"" passthrough:"" help:"Record desktop video from a lease."`
+	Proof    desktopProofKongCmd    `cmd:"" passthrough:"" help:"Launch a terminal and collect proof artifacts."`
 	Doctor   desktopDoctorKongCmd   `cmd:"" passthrough:"" help:"Check desktop session readiness for a lease."`
 	Click    desktopClickKongCmd    `cmd:"" passthrough:"" help:"Click inside a desktop lease."`
 	Paste    desktopPasteKongCmd    `cmd:"" passthrough:"" help:"Paste text into a desktop lease."`
@@ -221,6 +222,9 @@ type desktopTerminalKongCmd struct {
 	Args []string `arg:"" optional:""`
 }
 type desktopRecordKongCmd struct {
+	Args []string `arg:"" optional:""`
+}
+type desktopProofKongCmd struct {
 	Args []string `arg:"" optional:""`
 }
 type desktopDoctorKongCmd struct {
@@ -397,6 +401,9 @@ func (c *desktopTerminalKongCmd) Run(ctx context.Context, app App) error {
 }
 func (c *desktopRecordKongCmd) Run(ctx context.Context, app App) error {
 	return app.desktopRecord(ctx, c.Args)
+}
+func (c *desktopProofKongCmd) Run(ctx context.Context, app App) error {
+	return app.desktopProof(ctx, c.Args)
 }
 func (c *desktopDoctorKongCmd) Run(ctx context.Context, app App) error {
 	return app.desktopDoctor(ctx, c.Args)

@@ -93,3 +93,30 @@ func TestTrimmedVideoCommandUsesSameWindow(t *testing.T) {
 		}
 	}
 }
+
+func TestContactSheetCommandSamplesAndTilesFrames(t *testing.T) {
+	got := strings.Join(contactSheetArgs("desktop.mp4", "desktop.contact.png", 5, 5, 1, 320, 5), " ")
+	for _, want := range []string{
+		"-i desktop.mp4",
+		"fps=1.000,scale=320:-1:flags=lanczos,tile=5x1:padding=4:margin=4:color=black",
+		"-frames:v 1",
+		"desktop.contact.png",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("contact sheet args missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestContactSheetPathForVideo(t *testing.T) {
+	tests := map[string]string{
+		"screen.mp4":       "screen.contact.png",
+		"/tmp/screen.webm": "/tmp/screen.contact.png",
+		"screen":           "screen.contact.png",
+	}
+	for input, want := range tests {
+		if got := contactSheetPathForVideo(input); got != want {
+			t.Fatalf("contactSheetPathForVideo(%q)=%q want %q", input, got, want)
+		}
+	}
+}
