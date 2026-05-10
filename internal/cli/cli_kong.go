@@ -46,7 +46,7 @@ type crabboxKongCLI struct {
 	Inspect    inspectKongCmd    `cmd:"" passthrough:"" help:"Print lease/provider details; add --json for scripts."`
 	Stop       stopKongCmd       `cmd:"" passthrough:"" help:"Release a lease or delete a direct-provider machine."`
 	Release    releaseKongCmd    `cmd:"" passthrough:"" help:"Alias for stop."`
-	Cleanup    cleanupKongCmd    `cmd:"" passthrough:"" help:"Sweep expired direct-provider machines."`
+	Cleanup    cleanupKongCmd    `cmd:"" passthrough:"" help:"Sweep expired direct-provider machines or local provider state."`
 	Config     configKongCmd     `cmd:"" help:"Show or update user config."`
 	Pool       poolKongCmd       `cmd:"" help:"Alias commands for machine pools."`
 	Machine    machineKongCmd    `cmd:"" help:"Alias commands for direct-provider machines."`

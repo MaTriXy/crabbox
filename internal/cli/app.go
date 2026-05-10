@@ -165,7 +165,7 @@ Commands:
   screenshot  Capture a PNG from a desktop lease
   inspect     Print lease/provider details; add --json for scripts
   stop        Release a lease or delete a direct-provider machine
-  cleanup     Sweep expired direct-provider machines
+  cleanup     Sweep expired direct-provider machines or local provider state
   config      Show or update user config
 
 Common Flows:

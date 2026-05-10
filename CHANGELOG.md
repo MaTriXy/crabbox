@@ -4,10 +4,15 @@
 
 ### Added
 
+- Added Daytona and Namespace Devbox lanes to `scripts/live-smoke.sh` so delegated live smoke coverage can run through the shared harness.
+- Added `crabbox cleanup --provider namespace-devbox` to remove Crabbox-owned Namespace SSH snippets and keys.
+
 ### Changed
 
 ### Fixed
 
+- Fixed Namespace Devbox release-only resolution so `crabbox stop --provider namespace-devbox --namespace-delete-on-release <name>` deletes without re-preparing SSH.
+- Fixed Namespace Devbox release cleanup so stopping a Crabbox Devbox removes its local `~/.namespace/ssh/crabbox-*` snippet and key files.
 - Fixed `crabbox webvnc daemon start` so it starts with a fresh bridge log and waits briefly for the bridge-ready marker before returning.
 
 ## 0.10.0 - 2026-05-10
