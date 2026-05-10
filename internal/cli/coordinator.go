@@ -134,6 +134,13 @@ type CoordinatorWhoami struct {
 	Auth  string `json:"auth"`
 }
 
+type CoordinatorProviderReadiness struct {
+	Provider   string   `json:"provider"`
+	Configured bool     `json:"configured"`
+	Missing    []string `json:"missing,omitempty"`
+	Message    string   `json:"message,omitempty"`
+}
+
 type CoordinatorImage struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
@@ -672,6 +679,13 @@ func (c *CoordinatorClient) Usage(ctx context.Context, scope, owner, org, month 
 func (c *CoordinatorClient) Whoami(ctx context.Context) (CoordinatorWhoami, error) {
 	var res CoordinatorWhoami
 	err := c.do(ctx, http.MethodGet, "/v1/whoami", nil, &res)
+	return res, err
+}
+
+func (c *CoordinatorClient) ProviderReadiness(ctx context.Context, provider string) (CoordinatorProviderReadiness, error) {
+	var res CoordinatorProviderReadiness
+	path := "/v1/providers/" + url.PathEscape(provider) + "/readiness"
+	err := c.do(ctx, http.MethodGet, path, nil, &res)
 	return res, err
 }
 

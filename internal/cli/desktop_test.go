@@ -229,14 +229,71 @@ func TestWindowsDesktopLaunchScriptStartsAndForegroundsProcess(t *testing.T) {
 		`New-Item -ItemType Directory -Force -Path 'C:\crabbox\cbx_1\repo'`,
 		`Set-Location -LiteralPath 'C:\crabbox\cbx_1\repo'`,
 		`$env:BROWSER = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'`,
-		"Shell.Application",
-		"MinimizeAll",
-		"Start-Process -FilePath $file",
-		"WScript.Shell",
-		"AppActivate",
+		"ProcessStartInfo",
+		"function Q",
+		"$psi.Arguments=",
+		"[System.Diagnostics.Process]::Start($psi)",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("windows desktop launch script missing %q:\n%s", want, got)
 		}
+	}
+	if strings.Contains(got, "ArgumentList") {
+		t.Fatalf("windows desktop launch script must not use PowerShell 7-only ArgumentList:\n%s", got)
+	}
+}
+
+func TestWindowsDesktopTerminalUsesMinttyWithSixelDefaults(t *testing.T) {
+	got, err := desktopTerminalCommand(
+		SSHTarget{TargetOS: targetWindows, WindowsMode: windowsModeNormal},
+		[]string{"/c/gifgrep-smoke/run.sh"},
+		desktopTerminalOptions{FontSize: 24, Cols: 84, Rows: 26, Sixel: true},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(got, " ")
+	for _, want := range []string{
+		`C:\Program Files\Git\usr\bin\mintty.exe`,
+		"FontHeight=24",
+		"Columns=84",
+		"Rows=26",
+		"Scrollbar=none",
+		"TERM=xterm-256color",
+		"GIFGREP_INLINE",
+		"'/c/gifgrep-smoke/run.sh'",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("terminal command missing %q: %v", want, got)
+		}
+	}
+	for _, bad := range []string{"cmd.exe", "start"} {
+		if strings.Contains(joined, bad) {
+			t.Fatalf("terminal command should launch mintty directly, found %q: %v", bad, got)
+		}
+	}
+}
+
+func TestDesktopTerminalPositionalIDSkipsStaticProviders(t *testing.T) {
+	tests := []struct {
+		name     string
+		provider string
+		id       string
+		argCount int
+		want     bool
+	}{
+		{name: "managed positional id", provider: "aws", argCount: 1, want: true},
+		{name: "explicit id", provider: "aws", id: "cbx_1", argCount: 1, want: false},
+		{name: "no args", provider: "aws", argCount: 0, want: false},
+		{name: "ssh command", provider: "ssh", argCount: 1, want: false},
+		{name: "static alias command", provider: "static", argCount: 1, want: false},
+		{name: "static ssh alias command", provider: "static-ssh", argCount: 1, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldConsumeDesktopTerminalPositionalID(tt.provider, tt.id, tt.argCount); got != tt.want {
+				t.Fatalf("shouldConsumeDesktopTerminalPositionalID=%t want %t", got, tt.want)
+			}
+		})
 	}
 }

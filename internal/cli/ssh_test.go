@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -327,6 +328,40 @@ exit 0
 	}
 }
 
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) {
+	return 0, fmt.Errorf("capture disk full")
+}
+
+func TestRunSSHStreamResultReturnsWriterErrors(t *testing.T) {
+	dir := t.TempDir()
+	sshPath := filepath.Join(dir, "ssh")
+	script := `#!/bin/sh
+printf 'hello\n'
+exit 0
+`
+	if err := os.WriteFile(sshPath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	code, err := runSSHStreamResult(context.Background(), SSHTarget{
+		User: "crabbox",
+		Host: "203.0.113.10",
+		Port: "22",
+	}, "true", failingWriter{}, io.Discard)
+	if code != 1 {
+		t.Fatalf("code=%d want 1", code)
+	}
+	if err == nil || !strings.Contains(err.Error(), "capture disk full") {
+		t.Fatalf("err=%v want capture disk full", err)
+	}
+	if isSSHCommandExitError(err) {
+		t.Fatalf("writer error should not be treated as SSH exit error: %v", err)
+	}
+}
+
 func TestSSHCommandLineRedactsSecretAuthUser(t *testing.T) {
 	target := SSHTarget{
 		User:       "tok_live_secret",
@@ -390,6 +425,7 @@ func TestSSHWaitProgressIncludesElapsedAndRemaining(t *testing.T) {
 		"bootstrap",
 		"2222",
 		"2222",
+		"2222:auth",
 		95*time.Second,
 		10*time.Minute,
 	)
@@ -397,6 +433,7 @@ func TestSSHWaitProgressIncludesElapsedAndRemaining(t *testing.T) {
 		"waiting for 203.0.113.10:2222 bootstrap ready-check...",
 		"elapsed=1m35s",
 		"remaining=10m0s",
+		"ports=2222:auth",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("progress message missing %q in %q", want, got)
@@ -406,11 +443,11 @@ func TestSSHWaitProgressIncludesElapsedAndRemaining(t *testing.T) {
 
 func TestSSHWaitProgressDistinguishesAuthFromReadiness(t *testing.T) {
 	target := &SSHTarget{Host: "203.0.113.10", Port: "2222"}
-	got := sshWaitProgressMessage(target, "bootstrap", "2222", "", 5*time.Second, time.Minute)
+	got := sshWaitProgressMessage(target, "bootstrap", "2222", "", "2222:tcp", 5*time.Second, time.Minute)
 	if !strings.Contains(got, "bootstrap ssh-auth") {
 		t.Fatalf("TCP-only progress should report ssh-auth stage: %q", got)
 	}
-	got = sshWaitProgressMessage(target, "bootstrap", "2222", "2222", 5*time.Second, time.Minute)
+	got = sshWaitProgressMessage(target, "bootstrap", "2222", "2222", "2222:auth", 5*time.Second, time.Minute)
 	if !strings.Contains(got, "bootstrap ready-check") {
 		t.Fatalf("SSH transport progress should report ready-check stage: %q", got)
 	}

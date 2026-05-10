@@ -220,6 +220,8 @@ type RunRequest struct {
 	ShellMode      bool
 	ChecksumSync   bool
 	ForceSyncLarge bool
+	CaptureStdout  string
+	Downloads      []string
 	Command        []string
 	TimingJSON     bool
 }
@@ -438,6 +440,12 @@ func rejectDelegatedSyncOptions(provider string, req RunRequest) error {
 	}
 	if req.ForceSyncLarge {
 		return exit(2, "%s delegates sync; --force-sync-large is not supported", provider)
+	}
+	if req.CaptureStdout != "" {
+		return exit(2, "%s delegates run execution; --capture-stdout is not supported", provider)
+	}
+	if len(req.Downloads) > 0 {
+		return exit(2, "%s delegates run execution; --download is not supported", provider)
 	}
 	return nil
 }

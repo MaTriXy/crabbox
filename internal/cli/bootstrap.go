@@ -131,6 +131,7 @@ $setupCompletePath = Join-Path $base "setup-complete"
 $openSSHZip = "$env:TEMP\OpenSSH-Win64.zip"
 $gitInstaller = "$env:TEMP\Git-2.52.0-64-bit.exe"
 New-Item -ItemType Directory -Force -Path $base, $workRoot | Out-Null
+New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Network\NewNetworkWindowOff" -Force | Out-Null
 `
 }
 
@@ -394,8 +395,8 @@ Set-Content -Encoding ASCII -LiteralPath $userVNCStartupCommandPath -Value ('@ec
 $startupTask = "CrabboxUserVNC"
 cmd.exe /c "schtasks.exe /Delete /TN $startupTask /F 2>NUL" | Out-Null
 schtasks.exe /Create /TN $startupTask /SC ONCE /ST ((Get-Date).AddMinutes(1).ToString("HH:mm")) /TR "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File $userVNCStartupPath" /RU $user /IT /F | Out-Null
-Get-Service -Name tvnserver -ErrorAction SilentlyContinue | Set-Service -StartupType Disabled
-Stop-Service -Name tvnserver -Force -ErrorAction SilentlyContinue
+Get-Service -Name tvnserver -ErrorAction SilentlyContinue | Set-Service -StartupType Manual
+Start-Service -Name tvnserver -ErrorAction SilentlyContinue
 $winlogon = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
 Set-ItemProperty -Path $winlogon -Name AutoAdminLogon -Value "1" -Type String
 Set-ItemProperty -Path $winlogon -Name ForceAutoLogon -Value "1" -Type String

@@ -87,6 +87,11 @@ Brokered mode uses the same Azure service-principal secrets on the Worker:
 NSG, and SSH CIDR defaults through `CRABBOX_AZURE_*` env vars. A lease
 request may override only `azureLocation` and `azureImage`.
 
+Run `crabbox doctor --provider azure --target windows` before leasing through
+the broker. The coordinator readiness check reports missing Worker secret names
+without exposing values, and lease creation fails with `provider_not_configured`
+until the required service-principal secrets are present.
+
 ## Auth
 
 If `azure.tenantId` and `azure.clientId` (or `CRABBOX_AZURE_TENANT_ID` /

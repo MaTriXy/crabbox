@@ -6,9 +6,14 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 func (a App) desktopLaunch(ctx context.Context, args []string) error {
+	return a.desktopLaunchWithCommand(ctx, args, nil)
+}
+
+func (a App) desktopLaunchWithCommand(ctx context.Context, args []string, commandOverride []string) error {
 	defaults := defaultConfig()
 	fs := newFlagSet("desktop launch", a.Stderr)
 	provider := fs.String("provider", defaults.Provider, providerHelpSSH())
@@ -85,6 +90,9 @@ func (a App) desktopLaunch(ctx context.Context, args []string) error {
 	if positionalID && len(command) > 0 && command[0] == *id {
 		command = command[1:]
 	}
+	if commandOverride != nil {
+		command = commandOverride
+	}
 	expectBrowserLaunch := false
 	if *browser {
 		if len(command) == 0 {
@@ -133,6 +141,194 @@ func (a App) desktopLaunch(ctx context.Context, args []string) error {
 		return a.webvnc(ctx, desktopLaunchWebVNCArgs(cfg, target, leaseID, *openPortal))
 	}
 	return nil
+}
+
+func (a App) desktopTerminal(ctx context.Context, args []string) error {
+	defaults := defaultConfig()
+	fs := newFlagSet("desktop terminal", a.Stderr)
+	provider := fs.String("provider", defaults.Provider, providerHelpSSH())
+	id := fs.String("id", "", "lease id or slug")
+	fontSize := fs.Int("font-size", 14, "terminal font size")
+	cols := fs.Int("cols", 100, "terminal columns")
+	rows := fs.Int("rows", 32, "terminal rows")
+	sixel := fs.Bool("sixel", false, "prefer a Sixel-capable terminal configuration")
+	waitVisible := fs.Duration("wait-visible", 0, "delay after launch before capture")
+	screenshot := fs.String("screenshot", "", "capture a screenshot after launch")
+	record := fs.String("record", "", "record an MP4 after launch")
+	recordDuration := fs.Duration("record-duration", 5*time.Second, "recording duration for --record")
+	recordFPS := fs.Float64("record-fps", 8, "recording frames per second for --record")
+	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
+	targetFlags := registerTargetFlags(fs, defaults)
+	networkFlags := registerNetworkModeFlag(fs, defaults)
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
+	positionalID := false
+	if shouldConsumeDesktopTerminalPositionalID(*provider, *id, fs.NArg()) {
+		*id = fs.Arg(0)
+		positionalID = true
+	}
+	cfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	cfg.Provider = *provider
+	cfg.Desktop = true
+	if err := applyTargetFlagOverrides(&cfg, fs, targetFlags); err != nil {
+		return err
+	}
+	if err := applyNetworkModeFlagOverride(&cfg, fs, networkFlags); err != nil {
+		return err
+	}
+	if err := validateRequestedCapabilities(cfg); err != nil {
+		return err
+	}
+	if *id == "" && !isStaticProvider(cfg.Provider) {
+		return exit(2, "usage: crabbox desktop terminal --id <lease-id-or-slug> -- <command...>")
+	}
+	command := fs.Args()
+	if positionalID && len(command) > 0 && command[0] == *id {
+		command = command[1:]
+	}
+	server, target, leaseID, err := a.resolveNetworkLeaseTarget(ctx, cfg, *id, false)
+	if err != nil {
+		return err
+	}
+	if err := enforceManagedLeaseCapabilities(cfg, server, leaseID); err != nil {
+		return err
+	}
+	repo, err := findRepo()
+	if err != nil {
+		return err
+	}
+	if err := claimLeaseForRepoConfig(leaseID, serverSlug(server), cfg, repo.Root, cfg.IdleTimeout, *reclaim); err != nil {
+		return err
+	}
+	a.touchLeaseTargetBestEffort(ctx, cfg, LeaseTarget{Server: server, SSH: target, LeaseID: leaseID}, "")
+	if err := waitForLoopbackVNC(ctx, &target); err != nil {
+		return err
+	}
+	terminalCommand, err := desktopTerminalCommand(target, command, desktopTerminalOptions{
+		FontSize: *fontSize,
+		Cols:     *cols,
+		Rows:     *rows,
+		Sixel:    *sixel,
+	})
+	if err != nil {
+		return err
+	}
+	workdir := remoteJoin(cfg, leaseID, repo.Name)
+	env, err := requestedCapabilityEnv(ctx, cfg, target)
+	if err != nil {
+		return err
+	}
+	rescueCtx := rescueContext{Cfg: cfg, Target: target, LeaseID: leaseID}
+	if out, err := runSSHCombinedOutput(ctx, target, desktopLaunchRemoteCommand(target, workdir, env, terminalCommand, false)); err != nil {
+		printRescue(a.Stdout, classifyDesktopFailure(out), trimFailureDetail(out), desktopDoctorCommand(rescueCtx), desktopLaunchRetryCommand(rescueCtx, terminalCommand))
+		return exit(5, "launch desktop terminal: %v", err)
+	}
+	fmt.Fprintf(a.Stdout, "launched terminal: %s\n", strings.Join(terminalCommand, " "))
+	if strings.TrimSpace(*screenshot) != "" || strings.TrimSpace(*record) != "" {
+		delay := *waitVisible
+		if delay <= 0 {
+			delay = 2 * time.Second
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	} else if *waitVisible > 0 {
+		timer := time.NewTimer(*waitVisible)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	if path := strings.TrimSpace(*screenshot); path != "" {
+		if err := captureDesktopScreenshot(ctx, target, path); err != nil {
+			return err
+		}
+		fmt.Fprintf(a.Stdout, "screenshot: %s\n", path)
+	}
+	if path := strings.TrimSpace(*record); path != "" {
+		if *recordDuration <= 0 {
+			return exit(2, "desktop terminal --record-duration must be positive")
+		}
+		if *recordFPS <= 0 {
+			return exit(2, "desktop terminal --record-fps must be positive")
+		}
+		if err := captureDesktopVideo(ctx, target, path, *recordDuration, *recordFPS); err != nil {
+			return err
+		}
+		fmt.Fprintf(a.Stdout, "video: %s\n", path)
+	}
+	return nil
+}
+
+func (a App) desktopRecord(ctx context.Context, args []string) error {
+	return a.artifactsVideo(ctx, args)
+}
+
+func shouldConsumeDesktopTerminalPositionalID(provider, id string, argCount int) bool {
+	return id == "" && argCount > 0 && !isStaticProvider(provider)
+}
+
+type desktopTerminalOptions struct {
+	FontSize int
+	Cols     int
+	Rows     int
+	Sixel    bool
+}
+
+func desktopTerminalCommand(target SSHTarget, command []string, opts desktopTerminalOptions) ([]string, error) {
+	if opts.FontSize <= 0 {
+		opts.FontSize = 14
+	}
+	if opts.Cols <= 0 {
+		opts.Cols = 100
+	}
+	if opts.Rows <= 0 {
+		opts.Rows = 32
+	}
+	if isWindowsNativeTarget(target) {
+		shellCommand := ""
+		if len(command) > 0 {
+			shellCommand = shellJoin(command)
+		}
+		if opts.Sixel {
+			prefix := "export TERM=xterm-256color GIFGREP_INLINE=${GIFGREP_INLINE:-sixel}; "
+			if shellCommand == "" {
+				shellCommand = prefix + "exec /usr/bin/bash -l"
+			} else {
+				shellCommand = prefix + shellCommand
+			}
+		} else if shellCommand == "" {
+			shellCommand = "exec /usr/bin/bash -l"
+		}
+		return []string{
+			`C:\Program Files\Git\usr\bin\mintty.exe`,
+			"-o", fmt.Sprintf("FontHeight=%d", opts.FontSize),
+			"-o", fmt.Sprintf("Columns=%d", opts.Cols),
+			"-o", fmt.Sprintf("Rows=%d", opts.Rows),
+			"-o", "Scrollbar=none",
+			"/usr/bin/bash", "-lc", shellCommand,
+		}, nil
+	}
+	if len(command) == 0 {
+		command = []string{"bash", "-l"}
+	}
+	return append([]string{"xterm", "-fa", "monospace", "-fs", fmt.Sprintf("%d", opts.FontSize), "-geometry", fmt.Sprintf("%dx%d", opts.Cols, opts.Rows), "-e"}, command...), nil
+}
+
+func shellJoin(args []string) string {
+	var b bytes.Buffer
+	writeShellArgv(&b, args)
+	return b.String()
 }
 
 func desktopLaunchWebVNCArgs(cfg Config, target SSHTarget, leaseID string, openPortal bool) []string {
@@ -311,22 +507,14 @@ func windowsDesktopLaunchScript(workdir string, env map[string]string, command [
 		b.WriteString(psQuote(arg))
 	}
 	b.WriteString(")\n")
-	b.WriteString(`try {
-  $shell = New-Object -ComObject Shell.Application
-  $shell.MinimizeAll()
-  Start-Sleep -Milliseconds 250
-} catch {}
-$process = Start-Process -FilePath $file -ArgumentList $arguments -WorkingDirectory (Get-Location).Path -WindowStyle Normal -PassThru
-Start-Sleep -Seconds 2
-try {
-  $wshell = New-Object -ComObject WScript.Shell
-  $names = @()
-  if ($process -and $process.ProcessName) { $names += $process.ProcessName }
-  $names += [IO.Path]::GetFileNameWithoutExtension($file)
-  foreach ($name in ($names | Where-Object { $_ } | Select-Object -Unique)) {
-    if ($wshell.AppActivate($name)) { break }
-  }
-} catch {}
+	b.WriteString(`function Q([string]$s){if($null -eq $s){$s=""};if($s.Length -gt 0 -and $s -notmatch '[\s"]'){return $s};$r='"';$bs=0;foreach($ch in $s.ToCharArray()){if($ch -eq '\'){$bs++;continue};if($ch -eq '"'){if($bs -gt 0){$r+=('\'*($bs*2))};$r+='\"';$bs=0;continue};if($bs -gt 0){$r+=('\'*$bs);$bs=0};$r+=$ch};if($bs -gt 0){$r+=('\'*($bs*2))};$r+='"';return $r}
+$psi=New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName=$file
+$psi.Arguments=(($arguments|ForEach-Object{Q $_}) -join ' ')
+$psi.WorkingDirectory=(Get-Location).Path
+$psi.UseShellExecute=$false
+$psi.WindowStyle=[System.Diagnostics.ProcessWindowStyle]::Normal
+[System.Diagnostics.Process]::Start($psi)|Out-Null
 `)
 	return b.String()
 }

@@ -2,9 +2,11 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -121,6 +123,62 @@ func TestTimingJSONIncludesActionsRunURLWhenAvailable(t *testing.T) {
 	}
 	if got.ActionsRunURL != "https://github.com/openclaw/openclaw/actions/runs/123" {
 		t.Fatalf("actionsRunUrl=%q", got.ActionsRunURL)
+	}
+}
+
+func TestRunCommandRejectsUnsupportedDelegatedCaptureOptions(t *testing.T) {
+	tests := []struct {
+		name     string
+		provider string
+		args     []string
+		want     string
+	}{
+		{name: "daytona capture stdout", provider: "daytona", args: []string{"--capture-stdout", "stdout.bin"}, want: "daytona delegates run execution; --capture-stdout is not supported"},
+		{name: "islo capture stdout", provider: "islo", args: []string{"--capture-stdout", "stdout.bin"}, want: "islo delegates run execution; --capture-stdout is not supported"},
+		{name: "e2b capture stdout", provider: "e2b", args: []string{"--capture-stdout", "stdout.bin"}, want: "e2b delegates run execution; --capture-stdout is not supported"},
+		{name: "daytona download", provider: "daytona", args: []string{"--download", "/tmp/proof=proof.bin"}, want: "daytona delegates run execution; --download is not supported"},
+		{name: "islo download", provider: "islo", args: []string{"--download", "/tmp/proof=proof.bin"}, want: "islo delegates run execution; --download is not supported"},
+		{name: "e2b download", provider: "e2b", args: []string{"--download", "/tmp/proof=proof.bin"}, want: "e2b delegates run execution; --download is not supported"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			app := App{Stdout: &stdout, Stderr: &stderr}
+			args := append([]string{"--provider", tt.provider}, tt.args...)
+			args = append(args, "--", "true")
+			err := app.runCommand(context.Background(), args)
+			var exitErr ExitError
+			if !AsExitError(err, &exitErr) || exitErr.Code != 2 {
+				t.Fatalf("error=%v, want exit 2", err)
+			}
+			if !strings.Contains(exitErr.Message, tt.want) {
+				t.Fatalf("message=%q want %q", exitErr.Message, tt.want)
+			}
+		})
+	}
+}
+
+func TestRunCommandPreflightsLocalOutputOptions(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "malformed download", args: []string{"--download", "out.bin", "--", "true"}, want: "--download expects remote=local"},
+		{name: "missing capture directory", args: []string{"--capture-stdout", filepath.Join(t.TempDir(), "missing", "stdout.bin"), "--", "true"}, want: "capture stdout:"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			err := (App{Stdout: &stdout, Stderr: &stderr}).runCommand(context.Background(), tt.args)
+			var exitErr ExitError
+			if !AsExitError(err, &exitErr) || exitErr.Code != 2 {
+				t.Fatalf("error=%v, want exit 2", err)
+			}
+			if !strings.Contains(exitErr.Message, tt.want) {
+				t.Fatalf("message=%q want %q", exitErr.Message, tt.want)
+			}
+		})
 	}
 }
 

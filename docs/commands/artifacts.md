@@ -24,8 +24,9 @@ By default `collect` writes:
 - `logs.txt` and `run.json` when `--run <run-id>` is provided
 
 `--all` also records `screen.mp4`, creates `screen.trimmed.gif`, and writes
-`screen.trimmed.mp4` using the same motion window. Video/GIF capture currently
-requires a Linux desktop lease with `ffmpeg` and X11 capture support.
+`screen.trimmed.mp4` using the same motion window. Linux video uses remote
+`ffmpeg`/X11 capture. Native Windows video captures frames in the interactive
+console session and encodes the MP4 locally with `ffmpeg`.
 
 Useful flags:
 

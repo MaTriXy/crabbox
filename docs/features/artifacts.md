@@ -37,11 +37,13 @@ still returning a nonzero exit code.
 
 ## Media
 
-Video capture is intentionally lease-local and Linux-first. The CLI records
-the X11 desktop with remote `ffmpeg` and streams the MP4 back over SSH. GIF
-generation then reuses the local motion-trimming logic from `crabbox media
-preview`: leading/trailing static regions are removed and an optional trimmed
-MP4 can be emitted beside the GIF.
+Video capture is intentionally desktop-session scoped. Linux leases record the
+X11 desktop with remote `ffmpeg` and stream the MP4 back over SSH. Native
+Windows leases capture a frame sequence inside the interactive console session,
+stream that archive back, and encode the MP4 locally with `ffmpeg`. GIF
+generation reuses the local motion-trimming logic from `crabbox media preview`:
+leading/trailing static regions are removed and an optional trimmed MP4 can be
+emitted beside the GIF.
 
 Use `desktop launch --fullscreen` only when the artifact should show a
 browser-only capture. The standard human QA profile remains windowed so panel

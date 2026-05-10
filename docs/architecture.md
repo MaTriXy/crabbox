@@ -41,7 +41,8 @@ leased machine
 7. CLI waits for `crabbox-ready`.
 8. CLI seeds remote Git when possible, compares sync fingerprints, and syncs changed files with `rsync --delete`.
 9. CLI runs sync sanity and configured base-ref hydration.
-10. CLI runs the command over SSH and streams stdout/stderr.
+10. CLI runs the command over SSH and streams stdout/stderr, or writes stdout
+    to a local file when `--capture-stdout` is set.
 11. CLI heartbeats while the command runs; heartbeats touch `lastTouchedAt`, recompute idle expiry up to the TTL cap, and attach a best-effort latest Linux telemetry snapshot when SSH is reachable.
 12. CLI releases the lease when done.
 13. Durable Object alarm cleans up stale leases and expired machines.

@@ -66,8 +66,12 @@ bin/crabbox results run_...
 History is for command debugging, not unlimited log archival. Events are ordered
 phase and output chunks for reconnect/inspection, and `attach` can follow those
 events while the original CLI is still alive. Logs are bounded retained remote
-stdout/stderr captures. Test results are stored as structured summaries when `--junit`
-or `results.junit` is configured.
+stdout/stderr captures. `run --capture-stdout <path>` stores stdout only in the
+local file and leaves coordinator logs/events to stderr plus lifecycle events.
+`run --download remote=local` copies successful-run artifacts back to the local
+machine without adding file bytes to coordinator logs.
+Test results are stored as structured summaries when `--junit` or
+`results.junit` is configured.
 
 ## Remote Debugging
 

@@ -174,7 +174,11 @@ Do not store:
 - file contents;
 - SSH keys.
 
-Coordinator run records keep bounded stdout/stderr captures and optional structured JUnit summaries for debugging.
+Coordinator run records keep bounded stdout/stderr captures and optional
+structured JUnit summaries for debugging. For binary or sensitive-by-format
+stdout, use `crabbox run --capture-stdout <path>` so stdout is written to a
+local file and skipped by coordinator log/event capture. Use `run --download
+remote=local` for binary proof files that should stay local.
 
 ## Future Audit Trail
 

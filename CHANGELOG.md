@@ -2,6 +2,27 @@
 
 ## 0.9.1 - Unreleased
 
+### Added
+
+- Added `crabbox run --capture-stdout <path>` and repeatable `--download remote=local` for binary-safe proof capture without streaming arbitrary bytes into the terminal or run-log previews.
+- Added `crabbox desktop terminal` for visible terminal smokes, including Sixel-friendly Git-for-Windows `mintty` launch defaults on native Windows.
+- Added `crabbox desktop record` plus `desktop terminal --screenshot/--record` for one-command visual proof capture, including native Windows MP4 recording through interactive desktop frames.
+
+### Fixed
+
+- Fixed delegated run providers so unsupported `--capture-stdout` and `--download` requests fail instead of streaming stdout and skipping downloads.
+- Fixed `crabbox run` output capture validation so malformed `--download` specs, bad download destinations, and bad `--capture-stdout` paths fail before leasing, syncing, or running remotely.
+- Fixed interrupt handling so a second `Ctrl-C` can terminate slow cleanup after the first signal starts graceful cancellation.
+- Fixed `crabbox doctor --provider ...` so coordinator secret readiness checks only run for managed brokered providers.
+- Fixed `crabbox desktop terminal --provider ssh -- ...` so static SSH command arguments are not consumed as lease IDs.
+- Fixed `crabbox run --capture-stdout` so local capture write failures report as capture errors instead of remote command exits.
+- Fixed brokered provider preflight so `crabbox doctor --provider azure` reports missing Worker secrets and lease creation returns `provider_not_configured` instead of a coordinator `500`.
+- Fixed interrupted one-shot runs so `SIGINT`/`SIGTERM` cancel through the CLI context and still run best-effort lease cleanup.
+- Fixed SSH readiness progress logs to include per-port probe state in timeout errors.
+- Fixed managed AWS Windows desktop bootstrap so WebVNC/screenshot targets start TightVNC reliably and screenshots are not covered by Windows' first-network flyout.
+- Fixed Windows `desktop launch` argument handling so terminal commands such as `bash -lc '...'` and other quoted GUI launches are passed losslessly.
+- Fixed the source-built CLI version so unreleased local builds no longer report the previous release.
+
 ## 0.9.0 - 2026-05-10
 
 ### Added

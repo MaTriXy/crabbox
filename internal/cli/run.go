@@ -150,6 +150,9 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 	checksumSync := fs.Bool("checksum", false, "use checksum rsync instead of size/time")
 	forceSyncLarge := fs.Bool("force-sync-large", false, "allow unusually large sync candidates")
 	junitResults := fs.String("junit", "", "comma-separated remote JUnit XML paths to record")
+	captureStdout := fs.String("capture-stdout", "", "write remote stdout to a local file instead of the terminal")
+	var downloads stringListFlag
+	fs.Var(&downloads, "download", "download a remote file after command success: remote=local; repeatable")
 	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
 	timingJSON := fs.Bool("timing-json", false, "print final timing as JSON")
 	if err := parseFlags(fs, args); err != nil {
@@ -161,6 +164,9 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 	}
 	if len(command) == 0 && !*syncOnly {
 		return exit(2, "usage: crabbox run [flags] -- <command...>")
+	}
+	if err := preflightRunLocalOutputs(*captureStdout, downloads); err != nil {
+		return err
 	}
 
 	cfg, err := loadConfig()
@@ -185,22 +191,28 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 		return err
 	}
 	options := leaseOptionsFromConfig(cfg)
+	runReq := RunRequest{
+		Repo:           repo,
+		ID:             *leaseIDFlag,
+		Options:        options,
+		Keep:           *keep,
+		Reclaim:        *reclaim,
+		NoSync:         *noSync,
+		SyncOnly:       *syncOnly,
+		DebugSync:      *debugSync,
+		ShellMode:      *shellMode,
+		ChecksumSync:   *checksumSync,
+		ForceSyncLarge: *forceSyncLarge,
+		CaptureStdout:  *captureStdout,
+		Downloads:      downloads,
+		Command:        command,
+		TimingJSON:     *timingJSON,
+	}
 	if delegated, ok := backend.(DelegatedRunBackend); ok {
-		_, err := delegated.Run(ctx, RunRequest{
-			Repo:           repo,
-			ID:             *leaseIDFlag,
-			Options:        options,
-			Keep:           *keep,
-			Reclaim:        *reclaim,
-			NoSync:         *noSync,
-			SyncOnly:       *syncOnly,
-			DebugSync:      *debugSync,
-			ShellMode:      *shellMode,
-			ChecksumSync:   *checksumSync,
-			ForceSyncLarge: *forceSyncLarge,
-			Command:        command,
-			TimingJSON:     *timingJSON,
-		})
+		if err := RejectDelegatedSyncOptions(backend.Spec().Name, runReq); err != nil {
+			return err
+		}
+		_, err := delegated.Run(ctx, runReq)
 		return err
 	}
 	sshBackend, ok := backend.(SSHLeaseBackend)
@@ -550,8 +562,30 @@ afterSync:
 	stderrEvents := recorder.StreamWriter("stderr")
 	stdout := io.MultiWriter(a.Stdout, &logBuffer, stdoutEvents)
 	stderr := io.MultiWriter(a.Stderr, &logBuffer, stderrEvents)
-	code := runSSHStream(ctx, target, remote, stdout, stderr)
-	stdoutEvents.Flush()
+	var stdoutCapture *countingWriteCloser
+	if *captureStdout != "" {
+		file, err := os.Create(*captureStdout)
+		if err != nil {
+			return recordFailure(exit(2, "capture stdout: %v", err))
+		}
+		stdoutCapture = &countingWriteCloser{WriteCloser: file}
+		stdout = stdoutCapture
+		stdoutEvents = nil
+		fmt.Fprintf(a.Stderr, "capturing stdout to %s\n", *captureStdout)
+	}
+	code, streamErr := runSSHStreamResult(ctx, target, remote, stdout, stderr)
+	if stdoutCapture != nil {
+		if streamErr != nil && !isSSHCommandExitError(streamErr) {
+			_ = stdoutCapture.Close()
+			return recordFailure(exit(2, "capture stdout: %v", streamErr))
+		}
+		if closeErr := stdoutCapture.Close(); closeErr != nil && code == 0 {
+			return recordFailure(exit(2, "capture stdout close: %v", closeErr))
+		}
+		fmt.Fprintf(a.Stderr, "captured stdout=%s bytes=%d\n", *captureStdout, stdoutCapture.N)
+	} else {
+		stdoutEvents.Flush()
+	}
 	stderrEvents.Flush()
 	timings.command = time.Since(commandStart)
 	var results *TestResultSummary
@@ -561,6 +595,15 @@ afterSync:
 			fmt.Fprintf(a.Stderr, "warning: collect test results failed: %v\n", err)
 		} else if line := resultSummaryLine(results); line != "" {
 			fmt.Fprintln(a.Stderr, line)
+		}
+	}
+	if code == 0 {
+		for _, spec := range downloads {
+			bytes, local, err := downloadRemoteFile(ctx, target, workdir, spec)
+			if err != nil {
+				return recordFailure(err)
+			}
+			fmt.Fprintf(a.Stderr, "downloaded %s bytes=%d\n", local, bytes)
 		}
 	}
 	recorder.Finish(ctx, target, code, timings.sync, timings.command, logBuffer.String(), logBuffer.Truncated(), results)
@@ -576,6 +619,17 @@ afterSync:
 		return recordFailure(ExitError{Code: code, Message: fmt.Sprintf("remote command exited %d", code)})
 	}
 	return nil
+}
+
+type countingWriteCloser struct {
+	io.WriteCloser
+	N int64
+}
+
+func (w *countingWriteCloser) Write(p []byte) (int, error) {
+	n, err := w.WriteCloser.Write(p)
+	w.N += int64(n)
+	return n, err
 }
 
 func recordRunFailure(dst *error, failure error) error {

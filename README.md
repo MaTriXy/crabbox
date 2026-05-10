@@ -120,7 +120,7 @@ For the full mental model, see [How Crabbox Works](docs/how-it-works.md). For th
 - **Agent workspace evidence.** History, logs, events, telemetry, JUnit summaries, screenshots, recordings, artifacts, and PR publishing make autonomous work reviewable instead of only ephemeral terminal output.
 - **Hardened coordinator auth.** GitHub browser login, owner-scoped leases, admin-only routes, optional GitHub team allowlists, Cloudflare Access JWT verification, and service-token support keep normal use and operator automation separate.
 - **OpenClaw plugin.** The repo root is a native OpenClaw plugin for box lifecycle operations: `crabbox_run`, `crabbox_warmup`, `crabbox_status`, `crabbox_list`, and `crabbox_stop`. Run inspection stays in the CLI and Crabbox skill.
-- **Operator surface.** `doctor`, `init`, `status`, `inspect`, `list`, `usage`, `history`, `logs`, `results`, `cache`, `admin`, `cleanup`, plus `--json` output where it matters.
+- **Operator surface.** `doctor`, `init`, `status`, `inspect`, `list`, `usage`, `history`, `logs`, `results`, `cache`, `admin`, `cleanup`, plus `--json` output where it matters. Brokered `doctor` checks provider secret readiness before users discover missing Worker config through a failed lease.
 
 ## Machine classes
 
@@ -319,6 +319,11 @@ configured env var. `exitNode` is opt-in per lease for routing outbound internet
 through an approved tailnet exit node. See [Tailscale](docs/features/tailscale.md).
 
 Forwarded environment is intentionally narrow: `NODE_OPTIONS` and `CI`. Do not pass secrets as command-line arguments. Full env-var reference and per-command flags are in [docs/cli.md](docs/cli.md) and [docs/commands/](docs/commands/README.md).
+
+For binary or terminal-hostile output, use `crabbox run --capture-stdout <path>`
+so stdout is written directly to a local file and omitted from retained run-log
+previews. If the command writes a remote artifact, add `--download remote=local`
+to copy it back after a successful run.
 
 ## OpenClaw plugin
 

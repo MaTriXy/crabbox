@@ -19,6 +19,12 @@ Durable Object storage limits.
 Output beyond the cap is truncated with an `output.truncated` marker on the
 last event so the consumer knows the tail is missing.
 
+Runs started with `--capture-stdout <path>` intentionally omit stdout from
+retained logs and output events. Stderr is still streamed and retained. Use this
+mode for binary stdout, Sixel frames, archives, or any output that should not be
+stored as text in the coordinator. Files copied with `run --download
+remote=local` are local artifacts and are not stored in coordinator logs.
+
 ## Output
 
 The plain form writes the log text to stdout. `--json` returns run metadata

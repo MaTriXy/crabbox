@@ -82,26 +82,33 @@ func BootstrapWaitTimeout(cfg Config) time.Duration {
 func waitForSSHReady(ctx context.Context, target *SSHTarget, stderr io.Writer, phase string, timeout time.Duration) error {
 	start := time.Now()
 	deadline := time.Now().Add(timeout)
+	lastPorts := ""
 	for {
 		if ctx.Err() != nil {
 			return context.Cause(ctx)
 		}
 		if time.Now().After(deadline) {
+			if lastPorts != "" {
+				return exit(5, "timed out waiting for SSH on %s during %s ports=%s", target.Host, phase, lastPorts)
+			}
 			return exit(5, "timed out waiting for SSH on %s during %s", target.Host, phase)
 		}
 		if target.SSHConfigProxy {
 			if runSSHQuietWithOptions(ctx, *target, sshReadyCommand(*target), "5", "1") == nil {
 				return nil
 			}
-			fmt.Fprintln(stderr, sshWaitProgressMessage(target, phase, target.Port, "", time.Since(start), time.Until(deadline)))
+			lastPorts = "proxy"
+			fmt.Fprintln(stderr, sshWaitProgressMessage(target, phase, target.Port, "", lastPorts, time.Since(start), time.Until(deadline)))
 		} else {
 			reachablePort := ""
 			transportPort := ""
+			probes := make([]string, 0, len(sshPortCandidates(target.Port, target.FallbackPorts)))
 			for _, port := range sshPortCandidates(target.Port, target.FallbackPorts) {
 				probe := *target
 				probe.Port = port
 				conn, err := net.DialTimeout("tcp", net.JoinHostPort(probe.Host, probe.Port), 5*time.Second)
 				if err != nil {
+					probes = append(probes, port+":closed")
 					continue
 				}
 				_ = conn.Close()
@@ -109,6 +116,7 @@ func waitForSSHReady(ctx context.Context, target *SSHTarget, stderr io.Writer, p
 					reachablePort = probe.Port
 				}
 				if runSSHQuietWithOptions(ctx, probe, sshTransportProbeCommand(probe), "5", "1") != nil {
+					probes = append(probes, port+":tcp")
 					continue
 				}
 				if transportPort == "" {
@@ -121,8 +129,10 @@ func waitForSSHReady(ctx context.Context, target *SSHTarget, stderr io.Writer, p
 					}
 					return nil
 				}
+				probes = append(probes, port+":auth")
 			}
-			fmt.Fprintln(stderr, sshWaitProgressMessage(target, phase, reachablePort, transportPort, time.Since(start), time.Until(deadline)))
+			lastPorts = strings.Join(probes, ",")
+			fmt.Fprintln(stderr, sshWaitProgressMessage(target, phase, reachablePort, transportPort, lastPorts, time.Since(start), time.Until(deadline)))
 		}
 		time.Sleep(10 * time.Second)
 	}
@@ -132,19 +142,23 @@ func WaitForSSHReady(ctx context.Context, target *SSHTarget, stderr io.Writer, p
 	return waitForSSHReady(ctx, target, stderr, phase, timeout)
 }
 
-func sshWaitProgressMessage(target *SSHTarget, phase, reachablePort, transportPort string, elapsed, remaining time.Duration) string {
+func sshWaitProgressMessage(target *SSHTarget, phase, reachablePort, transportPort, portStatus string, elapsed, remaining time.Duration) string {
 	if remaining < 0 {
 		remaining = 0
 	}
 	elapsed = elapsed.Round(time.Second)
 	remaining = remaining.Round(time.Second)
+	suffix := ""
+	if portStatus != "" {
+		suffix = " ports=" + portStatus
+	}
 	if transportPort != "" {
-		return fmt.Sprintf("waiting for %s:%s %s ready-check... elapsed=%s remaining=%s", target.Host, transportPort, phase, elapsed, remaining)
+		return fmt.Sprintf("waiting for %s:%s %s ready-check... elapsed=%s remaining=%s%s", target.Host, transportPort, phase, elapsed, remaining, suffix)
 	}
 	if reachablePort != "" {
-		return fmt.Sprintf("waiting for %s:%s %s ssh-auth... elapsed=%s remaining=%s", target.Host, reachablePort, phase, elapsed, remaining)
+		return fmt.Sprintf("waiting for %s:%s %s ssh-auth... elapsed=%s remaining=%s%s", target.Host, reachablePort, phase, elapsed, remaining, suffix)
 	}
-	return fmt.Sprintf("waiting for %s:%s %s... elapsed=%s remaining=%s", target.Host, target.Port, phase, elapsed, remaining)
+	return fmt.Sprintf("waiting for %s:%s %s... elapsed=%s remaining=%s%s", target.Host, target.Port, phase, elapsed, remaining, suffix)
 }
 
 func probeSSHReady(ctx context.Context, target *SSHTarget, timeout time.Duration) bool {
@@ -343,8 +357,14 @@ func runSSHInput(ctx context.Context, target SSHTarget, remote string, input io.
 }
 
 func runSSHStream(ctx context.Context, target SSHTarget, remote string, stdout, stderr io.Writer) int {
+	code, _ := runSSHStreamResult(ctx, target, remote, stdout, stderr)
+	return code
+}
+
+func runSSHStreamResult(ctx context.Context, target SSHTarget, remote string, stdout, stderr io.Writer) (int, error) {
 	remote = wrapRemoteForTarget(target, remote)
 	lastCode := 7
+	var lastErr error
 	for _, port := range sshPortCandidates(target.Port, target.FallbackPorts) {
 		probe := target
 		probe.Port = port
@@ -353,14 +373,20 @@ func runSSHStream(ctx context.Context, target SSHTarget, remote string, stdout, 
 		cmd.Stderr = stderr
 		err := cmd.Run()
 		if err == nil {
-			return 0
+			return 0, nil
 		}
+		lastErr = err
 		lastCode = exitCode(err)
 		if !shouldRetrySSHPort(err) {
-			return lastCode
+			return lastCode, err
 		}
 	}
-	return lastCode
+	return lastCode, lastErr
+}
+
+func isSSHCommandExitError(err error) bool {
+	var exitErr *exec.ExitError
+	return asExitError(err, &exitErr)
 }
 
 func sshArgs(target SSHTarget, remote string) []string {

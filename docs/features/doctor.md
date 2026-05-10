@@ -6,12 +6,14 @@ Read when:
 - debugging an unexpected `doctor` failure;
 - deciding whether a check belongs in `doctor` or somewhere else.
 
-`crabbox doctor` is the local preflight. It validates the things that have
+`crabbox doctor` is the preflight. It validates the things that have
 silently broken commands in the past so users get an answer before they
 spend ten minutes on a failed lease.
 
-The command is fast (under a second on a healthy machine), local-only,
-non-destructive, and never talks to provider APIs that might cost money.
+The command is fast (under a second on a healthy machine), non-destructive,
+and never calls billable provider create APIs. When a coordinator is configured
+it performs cheap broker checks such as health, identity, and provider secret
+readiness.
 
 ## Categories
 
@@ -51,6 +53,9 @@ diffable across runs.
   `git config user.email`.
 - `whoami` succeeds against the configured coordinator with the stored
   token.
+- Provider readiness succeeds for the selected brokered provider. Missing
+  Worker secret names are reported without exposing values, for example
+  `AZURE_TENANT_ID` or `AZURE_SUBSCRIPTION_ID`.
 
 When auth is missing, doctor prints `crabbox login` as the next step.
 
@@ -147,21 +152,20 @@ the exit code.
 
 ## Adding A Check
 
-Doctor checks live in `internal/cli/doctor.go`. Each check returns a
-`doctorResult{ Status, Category, Subject, Detail, Remediation }`. The CLI
-sorts results by category, then by subject, so output stays stable.
+Doctor checks live in `internal/cli/doctor.go`. Keep each check explicit and
+cheap, and print stable `ok`, `failed`, `missing`, `skip`, or `warning` lines
+that remain easy to scan in terminal logs.
 
 Rules for new checks:
 
 - they must run in under ~100ms;
-- they must not call out to a paid API or write any state;
-- they must produce a `Remediation` string when they fail;
+- they must not call paid create/delete APIs or write any state;
+- they must name the concrete missing tool, config key, or provider secret;
 - they should `skip` (not `fail`) when the configuration genuinely does
   not apply (e.g. SSH key check when `ssh.key` is unset).
 
-Tests in `doctor_test.go` exercise the result struct and ordering. Add a
-test for the new check that asserts the failure message and remediation
-text so future refactors do not silently regress the user-facing output.
+Add focused tests for new helpers or response parsing so future refactors do
+not silently regress the user-facing output.
 
 Related docs:
 

@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"archive/zip"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -224,8 +226,8 @@ func (a App) artifactsCollect(ctx context.Context, args []string) error {
 		addFile("run", runPath)
 	}
 	if *video {
-		if target.TargetOS != targetLinux {
-			err := exit(2, "artifacts collect --video currently requires target=linux with ffmpeg/x11grab")
+		if target.TargetOS != targetLinux && !isWindowsNativeTarget(target) {
+			err := exit(2, "artifacts collect --video currently requires target=linux with ffmpeg/x11grab or native Windows desktop capture")
 			return fail(err, artifactWarning{
 				Problem: rescueArtifactCaptureFailed,
 				Detail:  err.Error(),
@@ -333,9 +335,6 @@ func (a App) artifactsVideo(ctx context.Context, args []string) error {
 	}
 	if fps <= 0 {
 		return exit(2, "artifacts video --fps must be positive")
-	}
-	if target.TargetOS != targetLinux {
-		return exit(2, "artifacts video currently requires target=linux with ffmpeg/x11grab")
 	}
 	if err := captureDesktopVideo(ctx, target, output, duration, fps); err != nil {
 		printRescue(a.Stdout, classifyDesktopFailure(err.Error()), err.Error(), desktopDoctorCommand(rescueContext{Cfg: cfg, Target: target, LeaseID: leaseID}))
@@ -566,6 +565,12 @@ func writeArtifactRunLogs(ctx context.Context, runID, dir string) (string, strin
 }
 
 func captureDesktopVideo(ctx context.Context, target SSHTarget, outputPath string, duration time.Duration, fps float64) error {
+	if isWindowsNativeTarget(target) {
+		return captureWindowsDesktopVideo(ctx, target, outputPath, duration, fps)
+	}
+	if target.TargetOS != targetLinux {
+		return exit(2, "artifacts video currently requires target=linux or native Windows desktop capture")
+	}
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil && filepath.Dir(outputPath) != "." {
 		return exit(2, "create video directory: %v", err)
 	}
@@ -604,4 +609,219 @@ fi
 if [ -z "$size" ]; then size="1920x1080"; fi
 ffmpeg -hide_banner -loglevel error -y -f x11grab -video_size "$size" -framerate %s -i "$DISPLAY" -t %s -pix_fmt yuv420p -an -movflags frag_keyframe+empty_moov -f mp4 -
 `, frameRate, seconds)
+}
+
+func captureWindowsDesktopVideo(ctx context.Context, target SSHTarget, outputPath string, duration time.Duration, fps float64) error {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		return exit(2, "ffmpeg is required to encode Windows desktop video locally: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil && filepath.Dir(outputPath) != "." {
+		return exit(2, "create video directory: %v", err)
+	}
+	tempDir, err := os.MkdirTemp("", "crabbox-windows-video-*")
+	if err != nil {
+		return exit(2, "create temp video dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tempDir) }()
+
+	zipPath := filepath.Join(tempDir, "frames.zip")
+	zipFile, err := os.Create(zipPath)
+	if err != nil {
+		return exit(2, "create frame archive: %v", err)
+	}
+	token := strconv.FormatInt(time.Now().UnixNano(), 36)
+	remoteBase := "C:/ProgramData/crabbox"
+	remoteScript := remoteBase + "/cv-" + token + ".ps1"
+	remoteOutDir := remoteBase + "/cv-" + token + "-frames"
+	remoteZip := remoteBase + "/cv-" + token + ".zip"
+	frames, intervalMS := windowsDesktopVideoFrameTiming(duration, fps)
+	localScript := filepath.Join(tempDir, "capture-windows-video.ps1")
+	if err := os.WriteFile(localScript, []byte(windowsDesktopVideoCaptureScript(
+		strings.ReplaceAll(remoteOutDir, "/", `\`),
+		strings.ReplaceAll(remoteZip, "/", `\`),
+		frames,
+		intervalMS,
+	)), 0o644); err != nil {
+		_ = zipFile.Close()
+		return exit(2, "write Windows capture script: %v", err)
+	}
+	if out, err := runSSHCombinedOutput(ctx, target, `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "New-Item -ItemType Directory -Force -Path C:\ProgramData\crabbox | Out-Null"`); err != nil {
+		_ = zipFile.Close()
+		return exit(5, "prepare Windows capture script dir: %v: %s", err, trimFailureDetail(out))
+	}
+	if err := copyLocalFileToTarget(ctx, target, localScript, remoteScript); err != nil {
+		_ = zipFile.Close()
+		return err
+	}
+	if err := runSSHToWriter(ctx, target, windowsDesktopVideoRemoteCommand(
+		strings.ReplaceAll(remoteScript, "/", `\`),
+		strings.ReplaceAll(remoteOutDir, "/", `\`),
+		strings.ReplaceAll(remoteZip, "/", `\`),
+		duration,
+	), zipFile); err != nil {
+		_ = zipFile.Close()
+		return exit(5, "capture Windows video frames: %v", err)
+	}
+	if err := zipFile.Close(); err != nil {
+		return exit(2, "close frame archive: %v", err)
+	}
+	framesDir := filepath.Join(tempDir, "frames")
+	if err := os.MkdirAll(framesDir, 0o755); err != nil {
+		return exit(2, "create frames dir: %v", err)
+	}
+	if err := extractFrameArchive(zipPath, framesDir); err != nil {
+		return err
+	}
+	pattern := filepath.Join(framesDir, "frame-%06d.jpg")
+	args := []string{
+		"-hide_banner", "-loglevel", "error", "-y",
+		"-framerate", strconv.FormatFloat(fps, 'f', 3, 64),
+		"-start_number", "0",
+		"-i", pattern,
+		"-pix_fmt", "yuv420p",
+		"-an",
+		"-movflags", "+faststart",
+		outputPath,
+	}
+	if out, err := exec.CommandContext(ctx, "ffmpeg", args...).CombinedOutput(); err != nil {
+		_ = os.Remove(outputPath)
+		return exit(5, "encode Windows video: %v: %s", err, tailForError(string(out)))
+	}
+	return nil
+}
+
+func copyLocalFileToTarget(ctx context.Context, target SSHTarget, localPath, remotePath string) error {
+	args := append(scpBaseArgs(target), localPath, target.User+"@"+target.Host+":"+remotePath)
+	cmd := exec.CommandContext(ctx, "scp", args...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return exit(5, "copy %s to target: %v: %s", filepath.Base(localPath), err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func extractFrameArchive(zipPath, framesDir string) error {
+	reader, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return exit(5, "read frame archive: %v", err)
+	}
+	defer func() { _ = reader.Close() }()
+	count := 0
+	for _, file := range reader.File {
+		name := filepath.Base(file.Name)
+		if !strings.HasPrefix(name, "frame-") || !strings.HasSuffix(strings.ToLower(name), ".jpg") {
+			continue
+		}
+		src, err := file.Open()
+		if err != nil {
+			return exit(5, "open frame %s: %v", name, err)
+		}
+		dstPath := filepath.Join(framesDir, name)
+		dst, err := os.Create(dstPath)
+		if err != nil {
+			_ = src.Close()
+			return exit(2, "create frame %s: %v", name, err)
+		}
+		_, copyErr := io.Copy(dst, src)
+		closeErr := dst.Close()
+		_ = src.Close()
+		if copyErr != nil {
+			return exit(2, "write frame %s: %v", name, copyErr)
+		}
+		if closeErr != nil {
+			return exit(2, "close frame %s: %v", name, closeErr)
+		}
+		count++
+	}
+	if count == 0 {
+		return exit(5, "frame archive contained no frames")
+	}
+	return nil
+}
+
+func windowsDesktopVideoFrameTiming(duration time.Duration, fps float64) (int, int) {
+	frames := int(duration.Seconds()*fps + 0.999)
+	if frames < 1 {
+		frames = 1
+	}
+	intervalMS := int(1000 / fps)
+	if intervalMS < 1 {
+		intervalMS = 1
+	}
+	return frames, intervalMS
+}
+
+func windowsDesktopVideoCaptureScript(outDir, zipPath string, frames, intervalMS int) string {
+	return fmt.Sprintf(`$OutDir = %s
+$Zip = %s
+$Frames = %d
+$IntervalMS = %d
+$ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+$bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+$start = [DateTime]::UtcNow
+for ($i = 0; $i -lt $Frames; $i++) {
+  $bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+  $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+  $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+  $path = Join-Path $OutDir ("frame-{0:D6}.jpg" -f $i)
+  $bitmap.Save($path, [System.Drawing.Imaging.ImageFormat]::Jpeg)
+  $graphics.Dispose()
+  $bitmap.Dispose()
+  $target = $start.AddMilliseconds(($i + 1) * $IntervalMS)
+  $remaining = [int](($target - [DateTime]::UtcNow).TotalMilliseconds)
+  if ($remaining -gt 0) { Start-Sleep -Milliseconds $remaining }
+}
+Compress-Archive -Path (Join-Path $OutDir "frame-*.jpg") -DestinationPath $Zip -Force
+Set-Content -LiteralPath ($Zip + ".done") -Value "ok"
+`, psQuote(outDir), psQuote(zipPath), frames, intervalMS)
+}
+
+func windowsDesktopVideoRemoteCommand(remoteScript, remoteOutDir, remoteZip string, duration time.Duration) string {
+	return fmt.Sprintf(`$ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"
+$base = "C:\ProgramData\crabbox"
+$password = ""
+$passwordPath = Join-Path $base "windows.password"
+if (Test-Path -LiteralPath $passwordPath) { $password = (Get-Content -Raw -LiteralPath $passwordPath).Trim() }
+$taskName = "CrabboxVideo-" + [Guid]::NewGuid().ToString("N")
+$outDir = %s
+$zip = %s
+$done = $zip + ".done"
+$script = %s
+cmd.exe /c "schtasks.exe /Delete /TN $taskName /F 2>NUL" | Out-Null
+$startTime = (Get-Date).AddMinutes(1).ToString("HH:mm")
+$taskRun = "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File $script"
+$createArgs = @("/Create", "/TN", $taskName, "/SC", "ONCE", "/ST", $startTime, "/TR", $taskRun, "/RU", $env:USERNAME, "/IT", "/F")
+& schtasks.exe @createArgs | Out-Null
+if ($LASTEXITCODE -ne 0 -and $password -ne "") {
+  & schtasks.exe @($createArgs + @("/RP", $password)) | Out-Null
+}
+if ($LASTEXITCODE -ne 0) { throw "failed to create interactive video task" }
+schtasks.exe /Run /TN $taskName | Out-Null
+$deadline = (Get-Date).AddSeconds(%d)
+while ((Get-Date) -lt $deadline) {
+  if ((Test-Path -LiteralPath $done) -and (Test-Path -LiteralPath $zip)) {
+    $stream = [IO.File]::Open($zip, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try {
+      $buffer = New-Object byte[] 1048576
+      while (($read = $stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+        [Console]::OpenStandardOutput().Write($buffer, 0, $read)
+      }
+    } finally {
+      $stream.Dispose()
+    }
+    schtasks.exe /Delete /TN $taskName /F | Out-Null
+    Remove-Item -Recurse -Force -LiteralPath $outDir -ErrorAction SilentlyContinue
+    Remove-Item -Force -LiteralPath $zip, $done, $script -ErrorAction SilentlyContinue
+    exit 0
+  }
+  Start-Sleep -Milliseconds 250
+}
+schtasks.exe /Delete /TN $taskName /F | Out-Null
+Remove-Item -Recurse -Force -LiteralPath $outDir -ErrorAction SilentlyContinue
+Remove-Item -Force -LiteralPath $done, $script -ErrorAction SilentlyContinue
+throw "scheduled interactive video did not produce output"`, psQuote(remoteOutDir), psQuote(remoteZip), psQuote(remoteScript), int(duration.Seconds())+30)
 }

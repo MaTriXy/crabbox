@@ -224,6 +224,42 @@ func TestArtifactKindClassifiesBeforeAfterVideosAsVideo(t *testing.T) {
 	}
 }
 
+func TestWindowsDesktopVideoRemoteCommandCapturesInteractiveFrames(t *testing.T) {
+	frames, intervalMS := windowsDesktopVideoFrameTiming(2*time.Second, 4)
+	if frames != 8 || intervalMS != 250 {
+		t.Fatalf("frames=%d intervalMS=%d", frames, intervalMS)
+	}
+	script := windowsDesktopVideoCaptureScript(`C:\ProgramData\crabbox\cv-1-frames`, `C:\ProgramData\crabbox\cv-1.zip`, frames, intervalMS)
+	for _, want := range []string{
+		`$Frames = 8`,
+		`$IntervalMS = 250`,
+		"CopyFromScreen",
+		"frame-{0:D6}.jpg",
+		"Compress-Archive",
+		`$Zip + ".done"`,
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("windows video script missing %q:\n%s", want, script)
+		}
+	}
+
+	got := windowsDesktopVideoRemoteCommand(`C:\ProgramData\crabbox\cv-1.ps1`, `C:\ProgramData\crabbox\cv-1-frames`, `C:\ProgramData\crabbox\cv-1.zip`, 2*time.Second)
+	for _, want := range []string{
+		"CrabboxVideo-",
+		`$outDir = 'C:\ProgramData\crabbox\cv-1-frames'`,
+		`$zip = 'C:\ProgramData\crabbox\cv-1.zip'`,
+		`$done = $zip + ".done"`,
+		`$script = 'C:\ProgramData\crabbox\cv-1.ps1'`,
+		"-File $script",
+		"[Console]::OpenStandardOutput().Write",
+		"scheduled interactive video did not produce output",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("windows video command missing %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestListArtifactBundleFilesSkipsPublishedMarkdown(t *testing.T) {
 	dir := t.TempDir()
 	mustWriteFile(t, filepath.Join(dir, "screenshot.png"), "png")

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 func (a App) doctor(ctx context.Context, args []string) error {
@@ -78,6 +79,20 @@ func (a App) doctor(ctx context.Context, args []string) error {
 			} else {
 				fmt.Fprintf(a.Stdout, "ok      broker   auth=%s owner=%s org=%s default_type=%s\n", whoami.Auth, whoami.Owner, whoami.Org, cfg.ServerType)
 			}
+			if coordinatorProviderReadinessSupported(cfg.Provider) {
+				readiness, err := coord.ProviderReadiness(ctx, cfg.Provider)
+				if err == nil {
+					if readiness.Configured {
+						fmt.Fprintf(a.Stdout, "ok      provider provider=%s coordinator_secrets=ready\n", readiness.Provider)
+					} else {
+						fmt.Fprintf(a.Stdout, "failed  provider provider=%s missing=%s\n", readiness.Provider, strings.Join(readiness.Missing, ","))
+						ok = false
+					}
+				} else if !isCoordinatorNotFoundError(err) {
+					fmt.Fprintf(a.Stdout, "failed  provider %v\n", err)
+					ok = false
+				}
+			}
 			if cfg.CoordAdminToken != "" {
 				adminCfg := cfg
 				adminCfg.CoordToken = cfg.CoordAdminToken
@@ -86,8 +101,12 @@ func (a App) doctor(ctx context.Context, args []string) error {
 					return err
 				}
 				if machines, err := adminCoord.Pool(ctx, cfg); err != nil {
-					fmt.Fprintf(a.Stdout, "failed  admin    %v\n", err)
-					ok = false
+					if isCoordinatorUnauthorized(err) {
+						fmt.Fprintf(a.Stdout, "warning admin    pool list unauthorized; user broker checks still passed\n")
+					} else {
+						fmt.Fprintf(a.Stdout, "failed  admin    %v\n", err)
+						ok = false
+					}
 				} else {
 					fmt.Fprintf(a.Stdout, "ok      admin    provider=%s machines=%d\n", cfg.Provider, len(machines))
 				}
@@ -172,4 +191,9 @@ func (a App) doctor(ctx context.Context, args []string) error {
 		return exit(1, "doctor found problems")
 	}
 	return nil
+}
+
+func coordinatorProviderReadinessSupported(provider string) bool {
+	p, err := ProviderFor(provider)
+	return err == nil && p.Spec().Coordinator == CoordinatorSupported
 }

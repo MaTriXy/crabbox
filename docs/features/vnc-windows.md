@@ -30,6 +30,11 @@ Bootstrap flow:
 - Windows auto-logon starts a visible console session for that user.
 - TightVNC runs in that logged-in user session, with its HKCU password values
   copied from the service configuration during startup.
+- The TightVNC service is also left startable and running as a fallback so
+  screenshots and WebVNC can connect even if the user-session startup task is
+  delayed.
+- The Windows first-network-discovery flyout is disabled during bootstrap so it
+  does not cover screenshots.
 - The generated password is stored at
   `C:\ProgramData\crabbox\vnc.password`.
 - VNC remains reachable only through the SSH tunnel.

@@ -271,7 +271,7 @@ func (testDaytonaProvider) ApplyFlags(cfg *Config, fs *flag.FlagSet, values any)
 	return nil
 }
 func (p testDaytonaProvider) Configure(cfg Config, rt Runtime) (Backend, error) {
-	return testSSHBackend{spec: p.Spec()}, nil
+	return testDaytonaBackend{testSSHBackend: testSSHBackend{spec: p.Spec()}}, nil
 }
 
 type testIsloProvider struct{}
@@ -439,6 +439,23 @@ func (b testDelegatedBackend) Status(context.Context, StatusRequest) (StatusView
 	return StatusView{}, nil
 }
 func (b testDelegatedBackend) Stop(context.Context, StopRequest) error {
+	return nil
+}
+
+type testDaytonaBackend struct {
+	testSSHBackend
+}
+
+func (b testDaytonaBackend) Warmup(context.Context, WarmupRequest) error {
+	return nil
+}
+func (b testDaytonaBackend) Run(context.Context, RunRequest) (RunResult, error) {
+	return RunResult{}, nil
+}
+func (b testDaytonaBackend) Status(context.Context, StatusRequest) (StatusView, error) {
+	return StatusView{}, nil
+}
+func (b testDaytonaBackend) Stop(context.Context, StopRequest) error {
 	return nil
 }
 

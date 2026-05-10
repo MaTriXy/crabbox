@@ -91,6 +91,8 @@ Fixes:
 
 Symptoms:
 
+- `provider_not_configured`;
+- `crabbox doctor --provider azure` reports `missing=AZURE_TENANT_ID,...`;
 - class falls back from dedicated machines to smaller machines;
 - AWS Spot request cannot be fulfilled;
 - AWS reports `VcpuLimitExceeded` for large On-Demand instances;
@@ -107,6 +109,7 @@ CRABBOX_CAPACITY_REGIONS=eu-west-1,eu-west-2,eu-central-1,us-east-1,us-west-2 \
 
 Fixes:
 
+- set the named Worker provider secrets before retrying brokered leases;
 - choose a smaller class;
 - use `--market on-demand` or `--market spot` for a one-off AWS capacity-market override;
 - set `CRABBOX_CAPACITY_REGIONS` so brokered and direct AWS launches can try multiple regions;

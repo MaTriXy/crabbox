@@ -34,7 +34,7 @@ crabbox config show [--json]
 crabbox config path
 crabbox config set-broker --url <url> --token-stdin [--provider hetzner|aws|azure]
 crabbox warmup [--provider hetzner|aws|azure|ssh|blacksmith-testbox|namespace-devbox|semaphore|sprites|daytona|islo|e2b] [--target linux|macos|windows] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--profile <name>] [--idle-timeout <duration>] [--timing-json]
-crabbox run [--id <lease-id-or-slug>] [--provider hetzner|aws|azure|ssh|blacksmith-testbox|namespace-devbox|semaphore|sprites|daytona|islo|e2b] [--target linux|macos|windows] [--windows-mode normal|wsl2] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--shell] [--checksum] [--debug] [--force-sync-large] [--timing-json] [--blacksmith-workflow <workflow>] -- <command...>
+crabbox run [--id <lease-id-or-slug>] [--provider hetzner|aws|azure|ssh|blacksmith-testbox|namespace-devbox|semaphore|sprites|daytona|islo|e2b] [--target linux|macos|windows] [--windows-mode normal|wsl2] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--shell] [--checksum] [--debug] [--force-sync-large] [--capture-stdout <path>] [--download remote=local] [--timing-json] [--blacksmith-workflow <workflow>] -- <command...>
 crabbox desktop launch --id <lease-id-or-slug> [--browser] [--url <url>] [--egress <profile>] [--webvnc] [--open] [-- <command...>]
 crabbox desktop doctor --id <lease-id-or-slug> [--network auto|tailscale|public]
 crabbox desktop click --id <lease-id-or-slug> --x <n> --y <n> [--network auto|tailscale|public]
@@ -51,6 +51,7 @@ crabbox egress stop --id <lease-id-or-slug>
 crabbox media preview --input <video> --output <preview.gif> [--trimmed-video-output <change.mp4>]
 crabbox artifacts collect --id <lease-id-or-slug> [--output <dir>] [--run <run-id>] [--all] [--screenshot] [--video] [--gif] [--doctor] [--webvnc-status] [--metadata] [--duration <duration>] [--fps <n>] [--gif-width <px>] [--network auto|tailscale|public] [--json]
 crabbox artifacts video --id <lease-id-or-slug> [--output <path>] [--duration <duration>] [--fps <n>]
+crabbox desktop record --id <lease-id-or-slug> [--output <path>] [--duration <duration>] [--fps <n>]
 crabbox artifacts gif --input <video> --output <preview.gif> [--trimmed-video-output <change.mp4>]
 crabbox artifacts template openclaw|mantis [--summary <text>|--summary-file <path>] [--before <path>] [--after <path>] [--output <path>]
 crabbox artifacts publish --dir <dir> [--pr <n>] [--repo owner/name] [--storage auto|broker|s3|cloudflare|r2|local] [--bucket <name>] [--prefix <path>] [--base-url <url>] [--region <region>] [--profile <profile>] [--endpoint-url <url>] [--acl <acl>] [--presign] [--expires <duration>] [--dry-run] [--no-comment]

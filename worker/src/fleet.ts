@@ -292,6 +292,15 @@ export class FleetDurableObject implements DurableObject {
       if (method === "GET" && parts.join("/") === "v1/whoami") {
         return this.whoami(request);
       }
+      if (
+        method === "GET" &&
+        parts[0] === "v1" &&
+        parts[1] === "providers" &&
+        parts[2] &&
+        parts[3] === "readiness"
+      ) {
+        return this.providerReadiness(parts[2]);
+      }
       if (method === "GET" && parts.join("/") === "v1/control") {
         return await this.controlSocket(request);
       }
@@ -812,6 +821,18 @@ export class FleetDurableObject implements DurableObject {
     if (config.provider === "azure" && !config.azureLocation) {
       config.azureLocation = azureLocationFor(this.env, "");
     }
+    const readiness = this.providerConfigurationReadiness(config.provider);
+    if (!readiness.configured) {
+      return json(
+        {
+          error: "provider_not_configured",
+          provider: readiness.provider,
+          missing: readiness.missing,
+          message: readiness.message,
+        },
+        { status: 424 },
+      );
+    }
     const leaseID = validLeaseID(input.leaseID) ? input.leaseID : newLeaseID();
     const leases = await this.leaseRecords();
     const slug = allocateLeaseSlug(
@@ -1125,6 +1146,28 @@ export class FleetDurableObject implements DurableObject {
       org: requestOrg(request, this.env),
       auth: request.headers.get("x-crabbox-auth") || "bearer",
     });
+  }
+
+  private providerReadiness(provider: string): Response {
+    if (!isManagedProvider(provider)) {
+      return json(
+        { error: "invalid_provider", message: `unsupported provider: ${provider}` },
+        { status: 400 },
+      );
+    }
+    return json(this.providerConfigurationReadiness(provider));
+  }
+
+  private providerConfigurationReadiness(provider: Provider): ProviderReadiness {
+    if (this.testProviders[provider]) {
+      return {
+        provider,
+        configured: true,
+        missing: [],
+        message: `${provider} test provider is configured`,
+      };
+    }
+    return providerReadiness(provider, this.env);
   }
 
   private async portalRoute(request: Request, parts: string[]): Promise<Response> {
@@ -3174,6 +3217,41 @@ export class FleetDurableObject implements DurableObject {
     await this.putLease(lease);
     return lease;
   }
+}
+
+interface ProviderReadiness {
+  provider: Provider;
+  configured: boolean;
+  missing: string[];
+  message: string;
+}
+
+function providerReadiness(provider: Provider, env: Env): ProviderReadiness {
+  const missing = providerRequiredSecrets(provider).filter((name) => !nonSecretString(env[name]));
+  return {
+    provider,
+    configured: missing.length === 0,
+    missing,
+    message:
+      missing.length === 0
+        ? `${provider} coordinator secrets are configured`
+        : `${provider} coordinator secrets missing: ${missing.join(", ")}`,
+  };
+}
+
+function providerRequiredSecrets(provider: Provider): Array<keyof Env> {
+  switch (provider) {
+    case "aws":
+      return ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"];
+    case "azure":
+      return ["AZURE_TENANT_ID", "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_SUBSCRIPTION_ID"];
+    case "hetzner":
+      return ["HETZNER_TOKEN"];
+  }
+}
+
+function isManagedProvider(provider: string): provider is Provider {
+  return provider === "aws" || provider === "azure" || provider === "hetzner";
 }
 
 function leaseKey(leaseID: string): string {

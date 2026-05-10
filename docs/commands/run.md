@@ -97,6 +97,16 @@ Before rsync starts, Crabbox prints the candidate file count and byte estimate. 
 
 At the end of every command, `run` prints a one-line summary with sync duration, command duration, total duration, whether sync was skipped by fingerprint, and the remote exit code.
 
+Use `--capture-stdout <path>` when stdout is binary or terminal-hostile. Crabbox
+writes the remote stdout bytes directly to the local file, leaves stderr on the
+terminal, and skips stdout run-log/event capture. This is useful for Windows
+native probes that emit images, Sixel frames, ZIPs, or other byte streams.
+
+Use repeatable `--download remote=local` when the command writes proof files on
+the box. Downloads run only after a successful remote command, paths are
+resolved relative to the remote workdir unless absolute, and Windows paths use
+`=` instead of `:` so drive letters remain unambiguous.
+
 Use `--timing-json` to emit a final JSON timing record with provider, lease ID, sync phases, command duration, total duration, exit code, and Actions run URL when available. In `blacksmith-testbox` mode, sync is reported as delegated in the same schema.
 
 Before the first rsync into a Git checkout, Crabbox tries to seed the remote worktree from the local `origin` remote so the first sync is a dirty-tree overlay instead of a full source upload. Project-specific excludes can live in `.crabboxignore` or `sync.exclude` in `crabbox.yaml` / `.crabbox.yaml`; env forwarding and base ref belong in config.
@@ -144,6 +154,8 @@ Flags:
 --checksum
 --debug
 --junit <comma-separated remote XML paths>
+--capture-stdout <local path>
+--download <remote=local>
 --reclaim
 --timing-json
 --blacksmith-org <org>

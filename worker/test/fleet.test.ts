@@ -2979,6 +2979,57 @@ describe("fleet identity", () => {
       login: "friend",
     });
   });
+
+  it("reports provider secret readiness without exposing secret values", async () => {
+    const fleet = testFleet(undefined, {}, { HETZNER_TOKEN: "hcloud-token" });
+    const hetzner = await fleet.fetch(request("GET", "/v1/providers/hetzner/readiness"));
+    expect(hetzner.status).toBe(200);
+    await expect(hetzner.json()).resolves.toMatchObject({
+      provider: "hetzner",
+      configured: true,
+      missing: [],
+    });
+
+    const azure = await fleet.fetch(request("GET", "/v1/providers/azure/readiness"));
+    expect(azure.status).toBe(200);
+    await expect(azure.json()).resolves.toMatchObject({
+      provider: "azure",
+      configured: false,
+      missing: [
+        "AZURE_TENANT_ID",
+        "AZURE_CLIENT_ID",
+        "AZURE_CLIENT_SECRET",
+        "AZURE_SUBSCRIPTION_ID",
+      ],
+    });
+  });
+
+  it("fails brokered Azure leases with provider_not_configured before constructing Azure", async () => {
+    const fleet = testFleet();
+    const response = await fleet.fetch(
+      request("POST", "/v1/leases", {
+        headers: {
+          "x-crabbox-owner": "peter@example.com",
+          "x-crabbox-org": "openclaw",
+        },
+        body: {
+          leaseID: "cbx_abcdef123456",
+          provider: "azure",
+          target: "windows",
+          windowsMode: "normal",
+          class: "standard",
+          serverType: "Standard_D16ads_v6",
+          sshPublicKey: "ssh-ed25519 test",
+        },
+      }),
+    );
+    expect(response.status).toBe(424);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "provider_not_configured",
+      provider: "azure",
+      missing: expect.arrayContaining(["AZURE_TENANT_ID"]),
+    });
+  });
 });
 
 async function startGitHubLogin(env: Partial<Env> = {}): Promise<{

@@ -9,6 +9,9 @@ crabbox desktop launch --id blue-lobster --browser --url https://example.com
 crabbox desktop launch --id blue-lobster --browser --url https://example.com --webvnc --open
 crabbox desktop launch --id blue-lobster --browser --url https://discord.com/login --egress discord --webvnc --open
 crabbox desktop launch --id blue-lobster -- xterm
+crabbox desktop terminal --id blue-lobster --sixel -- ./scripts/visual-smoke.sh
+crabbox desktop terminal --id blue-lobster --record terminal.mp4 --record-duration 6s -- ./scripts/visual-smoke.sh
+crabbox desktop record --id blue-lobster --duration 6s --fps 8 --output desktop.mp4
 crabbox desktop doctor --id blue-lobster
 crabbox desktop click --id blue-lobster --x 640 --y 420
 crabbox desktop paste --id blue-lobster --text "peter@example.com"
@@ -40,6 +43,17 @@ runs it as an interactive scheduled task for the logged-in `crabbox` user. The
 launcher minimizes existing windows, starts the app, and tries to foreground
 the new process. On Linux and macOS, the command is detached with `setsid` or
 `nohup`.
+
+`crabbox desktop terminal` starts a visible terminal with predictable sizing.
+On native Windows it uses Git-for-Windows `mintty`, which is already present
+after bootstrap and can render Sixel inline images when `--sixel` is set. That
+keeps visual terminal smokes from needing hand-written batch launchers.
+Add `--screenshot <path>` or `--record <path>` to capture proof after launch;
+`--wait-visible` controls the settle delay before capture.
+
+`crabbox desktop record` records the active desktop to MP4. Linux uses remote
+`ffmpeg`/X11 capture. Native Windows captures a frame sequence inside the
+interactive console session and encodes the MP4 locally with `ffmpeg`.
 
 `crabbox desktop doctor` checks the selected lease without syncing the repo.
 For Linux desktop leases it reports VM/session health separately from portal

@@ -16,7 +16,7 @@ This page maps user-facing behavior back to implementation files. Keep docs desc
 - Network target resolution and Tailscale metadata: `internal/cli/network.go`
 - `crabbox init` generated repo files: `internal/cli/init.go`
 - Login/logout/whoami/config commands: `internal/cli/auth.go`, `internal/cli/config_cmd.go`
-- Doctor checks: `internal/cli/doctor.go`
+- Doctor checks and broker provider-readiness output: `internal/cli/doctor.go`
 - AWS image bake/promote commands: `internal/cli/image.go`, `internal/cli/coordinator.go`
 
 ## Leases, Slugs, Claims, And Expiry
@@ -119,7 +119,8 @@ repository-owned setup, usually through Actions hydration or repo scripts.
 
 - Configuration precedence and YAML schema: `docs/features/configuration.md` (config code in `internal/cli/config.go`, `internal/cli/config_cmd.go`)
 - Identifiers (lease IDs, slugs, claims, run IDs): `docs/features/identifiers.md` (code in `internal/cli/lease.go`, `internal/cli/slug.go`, `internal/cli/claim.go`)
-- Doctor checks: `docs/features/doctor.md` (code in `internal/cli/doctor.go`)
+- Doctor checks: `docs/features/doctor.md` (code in `internal/cli/doctor.go`;
+  coordinator readiness API in `worker/src/fleet.ts`)
 - Network and reachability: `docs/features/network.md` (code in `internal/cli/network.go`)
 - Lease capabilities: `docs/features/capabilities.md` (code in `internal/cli/capabilities.go`)
 - Environment forwarding: `docs/features/env-forwarding.md` (forwarding logic in `internal/cli/run.go`)
