@@ -54,6 +54,7 @@ Implemented endpoints:
 ```text
 GET  /v1/health
 GET  /v1/pool
+GET  /v1/providers/{provider}/readiness
 GET  /v1/whoami
 POST /v1/leases
 GET  /v1/leases

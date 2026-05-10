@@ -53,9 +53,10 @@ diffable across runs.
   `git config user.email`.
 - `whoami` succeeds against the configured coordinator with the stored
   token.
-- Provider readiness succeeds for the selected brokered provider. Missing
-  Worker secret names are reported without exposing values, for example
-  `AZURE_TENANT_ID` or `AZURE_SUBSCRIPTION_ID`.
+- Provider readiness succeeds for managed brokered providers that need Worker
+  secrets. Missing names are reported without exposing values, for example
+  `AZURE_TENANT_ID` or `AZURE_SUBSCRIPTION_ID`. Delegated and static providers
+  skip this check.
 
 When auth is missing, doctor prints `crabbox login` as the next step.
 

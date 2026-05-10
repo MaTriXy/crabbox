@@ -46,8 +46,10 @@ the new process. On Linux and macOS, the command is detached with `setsid` or
 
 `crabbox desktop terminal` starts a visible terminal with predictable sizing.
 On native Windows it uses Git-for-Windows `mintty`, which is already present
-after bootstrap and can render Sixel inline images when `--sixel` is set. That
-keeps visual terminal smokes from needing hand-written batch launchers.
+after bootstrap and can render Sixel inline images when `--sixel` is set. The
+launcher starts `mintty.exe` directly through the interactive PowerShell task so
+paths under `Program Files` and shell arguments keep normal Windows quoting.
+That keeps visual terminal smokes from needing hand-written batch launchers.
 Add `--screenshot <path>` or `--record <path>` to capture proof after launch;
 `--wait-visible` controls the settle delay before capture.
 
@@ -107,6 +109,9 @@ Flags:
 Input helper flags:
 
 ```text
+desktop terminal --id <lease-id-or-slug> [--font-size <n>] [--cols <n>] [--rows <n>] [--sixel]
+desktop terminal --id <lease-id-or-slug> [--screenshot <path>] [--record <path>] [--record-duration <duration>] [--record-fps <n>] [--wait-visible <duration>] -- <command...>
+desktop record --id <lease-id-or-slug> [--output <path>] [--duration <duration>] [--fps <n>]
 desktop doctor --id <lease-id-or-slug>
 desktop click --id <lease-id-or-slug> --x <n> --y <n>
 desktop paste --id <lease-id-or-slug> --text <text>

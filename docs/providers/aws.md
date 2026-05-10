@@ -82,7 +82,7 @@ Brokered AWS credentials belong in the Worker, not on developer machines.
 | Target | Notes |
 | --- | --- |
 | Linux | Ubuntu bootstrap, SSH, rsync, optional desktop/browser/code. |
-| Windows native | EC2Launch, OpenSSH, Git for Windows, TightVNC, archive sync. |
+| Windows native | EC2Launch, OpenSSH, Git for Windows, TightVNC, archive sync, first-network flyout suppression. |
 | Windows WSL2 | Nested virtualization families; POSIX sync and commands through WSL. |
 | macOS | Requires `CRABBOX_AWS_MAC_HOST_ID` or `aws.macHostId`; On-Demand only. |
 

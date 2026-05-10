@@ -8,6 +8,10 @@
 - Added `crabbox desktop terminal` for visible terminal smokes, including Sixel-friendly Git-for-Windows `mintty` launch defaults on native Windows.
 - Added `crabbox desktop record` plus `desktop terminal --screenshot/--record` for one-command visual proof capture, including native Windows MP4 recording through interactive desktop frames.
 
+### Changed
+
+- Updated docs for output capture, desktop terminal proof capture, Windows desktop bootstrap, and managed-provider readiness checks.
+
 ### Fixed
 
 - Fixed delegated run providers so unsupported `--capture-stdout` and `--download` requests fail instead of streaming stdout and skipping downloads.

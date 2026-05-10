@@ -65,7 +65,8 @@ e2b        E2B sandboxes with delegated command execution
 - creates or reuses the `crabbox-runners` security group with SSH ingress limited to configured CIDRs or the request source IP;
 - launches one-time Linux Spot or On-Demand instances;
 - launches AWS Windows Server desktop leases with EC2Launch PowerShell user
-  data, OpenSSH, Git for Windows, and TightVNC when `target=windows`;
+  data, OpenSSH, Git for Windows, TightVNC, and first-network flyout
+  suppression when `target=windows`;
 - launches EC2 Mac leases only with an explicit Dedicated Host id
   (`CRABBOX_AWS_MAC_HOST_ID` or `aws.macHostId`) and On-Demand capacity;
 - tags instances, volumes, and Spot requests;

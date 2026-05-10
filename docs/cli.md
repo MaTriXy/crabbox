@@ -36,6 +36,7 @@ crabbox config set-broker --url <url> --token-stdin [--provider hetzner|aws|azur
 crabbox warmup [--provider hetzner|aws|azure|ssh|blacksmith-testbox|namespace-devbox|semaphore|sprites|daytona|islo|e2b] [--target linux|macos|windows] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--profile <name>] [--idle-timeout <duration>] [--timing-json]
 crabbox run [--id <lease-id-or-slug>] [--provider hetzner|aws|azure|ssh|blacksmith-testbox|namespace-devbox|semaphore|sprites|daytona|islo|e2b] [--target linux|macos|windows] [--windows-mode normal|wsl2] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--shell] [--checksum] [--debug] [--force-sync-large] [--capture-stdout <path>] [--download remote=local] [--timing-json] [--blacksmith-workflow <workflow>] -- <command...>
 crabbox desktop launch --id <lease-id-or-slug> [--browser] [--url <url>] [--egress <profile>] [--webvnc] [--open] [-- <command...>]
+crabbox desktop terminal --id <lease-id-or-slug> [--font-size <n>] [--cols <n>] [--rows <n>] [--sixel] [--screenshot <path>] [--record <path>] [-- <command...>]
 crabbox desktop doctor --id <lease-id-or-slug> [--network auto|tailscale|public]
 crabbox desktop click --id <lease-id-or-slug> --x <n> --y <n> [--network auto|tailscale|public]
 crabbox desktop paste --id <lease-id-or-slug> --text <text> [--network auto|tailscale|public]
@@ -116,6 +117,7 @@ crabbox webvnc status --id blue-lobster
 crabbox webvnc daemon start --id blue-lobster --open
 crabbox code --id blue-lobster --open
 crabbox desktop launch --id blue-lobster --browser --url https://example.com --webvnc --open
+crabbox desktop terminal --id blue-lobster --sixel --record terminal.mp4 -- ./scripts/visual-smoke.sh
 crabbox desktop doctor --id blue-lobster
 crabbox desktop paste --id blue-lobster --text "peter@example.com"
 crabbox desktop key --id blue-lobster ctrl+l
@@ -318,6 +320,8 @@ Flags:
 --checksum              use checksum rsync instead of size/time
 --debug                 print sync timing and itemized rsync output
 --junit <paths>         comma-separated remote JUnit XML paths to attach to run history
+--capture-stdout <path> write remote stdout to a local file, skipping stdout run-log capture
+--download remote=local copy a remote file back after a successful command; repeatable
 --reclaim              claim an existing lease for the current repo
 --timing-json          print a final JSON timing record
 --blacksmith-org <org>  Blacksmith organization

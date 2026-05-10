@@ -12,7 +12,8 @@ Crabbox has two Windows execution contracts:
 - WSL2: POSIX commands through WSL, Linux-style sync, no separate managed VNC
   contract beyond the underlying Windows host.
 
-Managed Windows desktop support is AWS-only.
+Managed Windows desktop support is AWS-only. Direct CLI provisioning and
+brokered coordinator provisioning use the same bootstrap contract.
 
 ## Managed AWS Windows
 

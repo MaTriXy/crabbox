@@ -30,9 +30,10 @@ When `CRABBOX_SSH_KEY` is explicitly set, doctor validates the private key
 and the matching `.pub` file. When unset, it skips that check because
 per-lease keys do not need a global key.
 
-When a coordinator is configured, doctor also asks the broker for the selected
-provider's secret readiness. It reports missing Worker secret names such as
-`AZURE_TENANT_ID` without exposing secret values.
+When a coordinator is configured, doctor also asks the broker for secret
+readiness for managed brokered providers such as AWS, Azure, and Hetzner. It
+reports missing Worker secret names such as `AZURE_TENANT_ID` without exposing
+secret values. Static and delegated providers skip this broker-secret check.
 
 For the full list of checks, including how each one decides between
 `fail`, `skip`, and `ok`, see
