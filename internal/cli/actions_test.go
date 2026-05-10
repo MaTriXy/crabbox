@@ -126,12 +126,46 @@ func TestGitHubActionsRunnerInstallScriptUsesOfficialRunner(t *testing.T) {
 	for _, want := range []string{
 		"https://api.github.com/repos/actions/runner/releases/latest",
 		"https://github.com/actions/runner/releases/download/",
+		"RUNNER_ALLOW_RUNASROOT=1",
 		"./config.sh --unattended --replace --ephemeral",
 		"crabbox-actions-runner.service",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("install script missing %q", want)
 		}
+	}
+}
+
+func TestSupportsActionsRunnerTargetAllowsLinuxAndWSL2(t *testing.T) {
+	tests := map[string]struct {
+		target SSHTarget
+		want   bool
+	}{
+		"default":        {target: SSHTarget{}, want: true},
+		"linux":          {target: SSHTarget{TargetOS: targetLinux}, want: true},
+		"windows wsl2":   {target: SSHTarget{TargetOS: targetWindows, WindowsMode: windowsModeWSL2}, want: true},
+		"windows native": {target: SSHTarget{TargetOS: targetWindows, WindowsMode: windowsModeNormal}, want: false},
+		"macos":          {target: SSHTarget{TargetOS: targetMacOS}, want: false},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := supportsActionsRunnerTarget(tt.target); got != tt.want {
+				t.Fatalf("supportsActionsRunnerTarget(%#v)=%t want %t", tt.target, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateActionsRunnerCapabilityAllowsWSL2(t *testing.T) {
+	backend := testSSHBackend{}
+	if err := validateActionsRunnerCapability(backend, Config{TargetOS: targetLinux}); err != nil {
+		t.Fatalf("linux actions runner rejected: %v", err)
+	}
+	if err := validateActionsRunnerCapability(backend, Config{TargetOS: targetWindows, WindowsMode: windowsModeWSL2}); err != nil {
+		t.Fatalf("wsl2 actions runner rejected: %v", err)
+	}
+	if err := validateActionsRunnerCapability(backend, Config{TargetOS: targetWindows, WindowsMode: windowsModeNormal}); err == nil {
+		t.Fatal("native windows actions runner accepted")
 	}
 }
 

@@ -12,14 +12,16 @@ For `actions hydrate`, Crabbox inspects the selected workflow's `workflow_dispat
 
 Runner names and extra labels use the friendly slug when available, but workflow inputs and state-file paths keep using the canonical `cbx_...` ID.
 
-Runner registration currently supports Linux targets only. Static macOS and
-Windows hosts can run commands through `provider=ssh`, but `actions hydrate` and
-`actions register` still install the Linux GitHub Actions runner package.
+Runner registration supports Linux and Windows WSL2 targets. Static macOS and
+native Windows hosts can run commands through `provider=ssh`, but `actions
+hydrate` and `actions register` still install the Linux GitHub Actions runner
+package.
 
 On success, `actions hydrate` prints a concise total duration line. Add `--timing-json` to emit a final JSON timing record with provider, lease ID, slug, total duration, exit code, and the GitHub Actions run URL when the workflow marker reports a run ID.
 
 ```sh
 crabbox warmup --actions-runner
+crabbox warmup --provider aws --target windows --windows-mode wsl2
 crabbox actions hydrate --id blue-lobster
 crabbox actions register --id blue-lobster
 crabbox actions dispatch -f testbox_id=cbx_abcdef123456

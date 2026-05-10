@@ -297,6 +297,13 @@ static:
   workRoot: C:\crabbox
 ```
 
+OpenClaw WSL2 test helper:
+
+```sh
+CRABBOX_LIVE=1 scripts/openclaw-wsl2-tests.sh
+CRABBOX_LIVE=1 CRABBOX_OPENCLAW_WSL2_ID=blue-lobster scripts/openclaw-wsl2-tests.sh
+```
+
 Optional Tailscale reachability for managed Linux leases:
 
 ```yaml
