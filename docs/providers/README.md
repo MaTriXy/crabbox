@@ -18,6 +18,7 @@ static SSH provider for existing machines.
 | [Blacksmith Testbox](blacksmith-testbox.md) | delegated run | Linux | existing Blacksmith Testbox workflows |
 | [Namespace Devbox](namespace-devbox.md) | SSH lease | Linux | Namespace-managed dev environments with Crabbox sync |
 | [Semaphore](semaphore.md) | SSH lease | Linux | Semaphore CI environments with project secrets and cache |
+| [Sprites](sprites.md) | SSH lease | Linux | fast Sprites microVMs through `sprite proxy` |
 | [Daytona](daytona.md) | hybrid delegated run + SSH | Linux | Daytona snapshot sandboxes |
 | [Islo](islo.md) | delegated run | Linux | Islo-owned sandbox execution |
 | [E2B](e2b.md) | delegated run | Linux | E2B-owned sandbox execution |
@@ -57,10 +58,12 @@ Delegated providers do not use the Crabbox coordinator:
 - Daytona uses Daytona API and SDK/toolbox APIs.
 - Islo uses the Islo API and SDK auth.
 - E2B uses E2B's sandbox REST and envd APIs.
+- Sprites uses the authenticated `sprite` CLI plus Sprites API.
 
 Namespace Devbox and Semaphore are SSH lease providers that do not use the
 Crabbox coordinator. Namespace provisions through the authenticated `devbox`
-CLI; Semaphore provisions through the Semaphore REST API.
+CLI; Semaphore provisions through the Semaphore REST API; Sprites provisions
+through the Sprites API and reaches SSH through `sprite proxy`.
 
 ## Feature Matrix
 
@@ -73,12 +76,14 @@ CLI; Semaphore provisions through the Semaphore REST API.
 | Blacksmith Testbox | yes | yes | no | no | no | yes |
 | Namespace Devbox | yes | yes | yes | no | yes | no |
 | Semaphore | yes | yes | yes | no | yes | no |
+| Sprites | yes | yes | yes | no | yes | no |
 | Daytona | yes | yes | yes | no | archive via Daytona toolbox | no |
 | Islo | yes | yes | no | no | no | yes |
 | E2B | yes | yes | no | no | archive via E2B envd | no |
 
 Actions runner hydration requires a normal SSH lease on Linux and is core-over-SSH.
-Use AWS, Hetzner, Static SSH, Namespace Devbox, or Semaphore for that path.
+Use AWS, Hetzner, Static SSH, Namespace Devbox, Semaphore, or Sprites for that
+path.
 
 ## Implementation
 

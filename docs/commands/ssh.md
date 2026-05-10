@@ -7,6 +7,7 @@ crabbox ssh --id blue-lobster
 crabbox ssh --id blue-lobster --network tailscale
 crabbox ssh --provider namespace-devbox --id blue-lobster
 crabbox ssh --provider semaphore --id blue-lobster
+crabbox ssh --provider sprites --id blue-lobster
 crabbox ssh --provider daytona --id blue-lobster
 crabbox ssh --provider ssh --target macos --static-host mac-studio.local
 ```
@@ -17,6 +18,8 @@ manual use. In `provider=ssh` mode it resolves the configured static target. In
 `provider=namespace-devbox` mode it calls `devbox configure-ssh` and prints the
 generated SSH endpoint/key. In
 `provider=semaphore` mode it resolves the Semaphore debug SSH endpoint. In
+`provider=sprites` mode it prints a normal SSH command with
+`ProxyCommand=sprite proxy -s %h -W 22`. In
 `provider=daytona` mode the short-lived SSH token is redacted by default; pass
 `--show-secret` only when you need a pasteable command in a trusted terminal.
 
@@ -24,7 +27,7 @@ Flags:
 
 ```text
 --id <lease-id-or-slug>
---provider hetzner|aws|azure|ssh|namespace-devbox|semaphore|daytona
+--provider hetzner|aws|azure|ssh|namespace-devbox|semaphore|sprites|daytona
 --target linux|macos|windows
 --windows-mode normal|wsl2
 --static-host <host>

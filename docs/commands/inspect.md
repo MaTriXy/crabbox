@@ -10,6 +10,7 @@ crabbox inspect --id blue-lobster --network tailscale
 crabbox inspect --id blue-lobster --json
 crabbox inspect --provider namespace-devbox --id blue-lobster
 crabbox inspect --provider semaphore --id blue-lobster
+crabbox inspect --provider sprites --id blue-lobster
 crabbox inspect --provider ssh --target windows --windows-mode wsl2 --static-host win-dev.local
 ```
 
@@ -39,7 +40,7 @@ included.
 
 ```text
 --id <lease-id-or-slug>      lease to inspect; required for managed providers
---provider hetzner|aws|azure|ssh|namespace-devbox|semaphore|daytona   override the configured provider
+--provider hetzner|aws|azure|ssh|namespace-devbox|semaphore|sprites|daytona   override the configured provider
 --target linux|macos|windows
 --windows-mode normal|wsl2
 --static-host <host>         static SSH host for provider=ssh

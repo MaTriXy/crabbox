@@ -15,6 +15,7 @@ crabbox run --id cbx_abcdef123456 --junit junit.xml -- go test ./...
 crabbox run --provider blacksmith-testbox --blacksmith-workflow .github/workflows/ci-check-testbox.yml --blacksmith-job test -- pnpm test
 crabbox run --provider namespace-devbox --namespace-image builtin:base -- pnpm test
 crabbox run --provider semaphore --semaphore-project my-app -- pnpm test
+crabbox run --provider sprites -- pnpm test
 crabbox run --provider daytona --daytona-snapshot crabbox-ready -- pnpm test
 crabbox run --provider islo --islo-image docker.io/library/ubuntu:24.04 -- pnpm test
 crabbox run --provider e2b --e2b-template base -- pnpm test
@@ -36,6 +37,11 @@ standard SSH executor.
 With `--provider semaphore`, `--id` accepts a Semaphore-backed Crabbox
 `cbx_...` ID or local slug. Semaphore owns the CI job and debug SSH endpoint;
 Crabbox syncs over SSH and runs the command through the standard SSH executor.
+
+With `--provider sprites`, `--id` accepts a Sprites-backed Crabbox `cbx_...` ID,
+local slug, `spr_<sprite-name>` ID, or raw sprite name with `--reclaim`.
+Sprites owns the microVM lifecycle and `sprite proxy`; Crabbox bootstraps SSH,
+syncs over SSH, and runs the command through the standard SSH executor.
 
 With `--provider daytona`, `--id` accepts a Daytona-backed Crabbox `cbx_...` ID
 or local slug. Crabbox uploads the sync archive through Daytona toolbox file
@@ -107,7 +113,7 @@ Flags:
 
 ```text
 --id <lease-id-or-slug>
---provider hetzner|aws|azure|ssh|blacksmith-testbox|namespace-devbox|semaphore|daytona|islo|e2b
+--provider hetzner|aws|azure|ssh|blacksmith-testbox|namespace-devbox|semaphore|sprites|daytona|islo|e2b
 --target linux|macos|windows
 --windows-mode normal|wsl2
 --static-host <host>
@@ -157,6 +163,8 @@ Flags:
 --semaphore-machine <type>
 --semaphore-os-image <image>
 --semaphore-idle-timeout <duration>
+--sprites-api-url <url>
+--sprites-work-root <path>
 --e2b-api-url <url>
 --e2b-domain <domain>
 --e2b-template <template-id>

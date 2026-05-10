@@ -36,6 +36,8 @@ Supported providers:
   (`provider: namespace-devbox`): Namespace-managed Devboxes over SSH.
 - [Semaphore CI testbox](docs/providers/semaphore.md) (`provider: semaphore`):
   Semaphore jobs leased as SSH testboxes.
+- [Sprites](docs/providers/sprites.md) (`provider: sprites`): Sprites
+  microVMs exposed as SSH leases through `sprite proxy`.
 - [Daytona](docs/providers/daytona.md) (`provider: daytona`): Daytona
   SDK/toolbox sandbox execution.
 - [Islo](docs/providers/islo.md) (`provider: islo`): delegated Islo sandbox
@@ -108,6 +110,7 @@ For the full mental model, see [How Crabbox Works](docs/how-it-works.md). For th
 - **Blacksmith Testbox wrapper.** Set `provider: blacksmith-testbox` to delegate warmup/run/list/status/stop to the Blacksmith CLI while Crabbox keeps local slugs, repo claims, timing summaries, config conventions, and portal visibility for active external runners.
 - **Namespace Devbox SSH leases.** Set `provider: namespace-devbox` to create or reuse Namespace Devboxes through the `devbox` CLI, then let Crabbox sync the dirty checkout and run commands over SSH.
 - **Semaphore CI testbox.** Set `provider: semaphore` to lease a Semaphore CI job as a testbox. Same environment as your real pipelines.
+- **Sprites SSH leases.** Set `provider: sprites` to create a Sprites microVM, bootstrap OpenSSH inside it, and let Crabbox sync/run through `sprite proxy` with `crabbox ssh` support.
 - **Daytona, Islo, and E2B sandboxes.** Set `provider: daytona` for Daytona SDK/toolbox execution from a snapshot with explicit SSH access when needed, `provider: islo` for delegated Islo sandbox execution through the Islo Go SDK, or `provider: e2b` for delegated E2B sandbox execution through E2B sandbox APIs.
 - **Trusted AWS images.** Operators can create AMIs from active brokered AWS leases and promote a known-good image as the coordinator default.
 - **Cost guardrails.** Per-lease and monthly spend caps. Live pricing from EC2 Spot history or Hetzner server-type prices, with static fallbacks. `crabbox usage` summarizes spend by user, org, provider, and type.
@@ -268,6 +271,17 @@ semaphore:
 
 Keep the token in `CRABBOX_SEMAPHORE_TOKEN` or `SEMAPHORE_API_TOKEN`, not in
 repo config.
+
+Optional Sprites microVM:
+
+```yaml
+provider: sprites
+sprites:
+  workRoot: /home/sprite/crabbox
+```
+
+Keep the token in `CRABBOX_SPRITES_TOKEN`, `SPRITES_TOKEN`, `SPRITE_TOKEN`, or
+`SETUP_SPRITE_TOKEN`; the authenticated `sprite` CLI must also be on `PATH`.
 
 Optional static macOS or Windows target:
 

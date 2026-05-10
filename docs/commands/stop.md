@@ -6,6 +6,7 @@
 crabbox stop blue-lobster
 crabbox stop --provider namespace-devbox blue-lobster
 crabbox stop --provider semaphore blue-lobster
+crabbox stop --provider sprites blue-lobster
 crabbox stop --provider daytona blue-lobster
 crabbox stop --provider islo blue-lobster
 crabbox stop --provider e2b blue-lobster
@@ -18,7 +19,8 @@ The argument accepts the stable `cbx_...` ID or an active friendly slug. In
 to `blacksmith testbox stop`. In `namespace-devbox` mode it shuts down the
 Namespace Devbox by default and removes the local claim; set
 `namespace.deleteOnRelease` to delete the Devbox instead. In `semaphore` mode it
-stops the Semaphore CI job and removes the local claim. In `daytona` mode it
+stops the Semaphore CI job and removes the local claim. In `sprites` mode it
+deletes the Sprites sprite and removes the local claim. In `daytona` mode it
 deletes the Daytona sandbox.
 In `islo` mode it accepts an `isb_...` ID, Crabbox-created sandbox name, or
 local slug and deletes the Islo sandbox. In `e2b` mode it accepts a Crabbox
@@ -30,7 +32,7 @@ host.
 Flags:
 
 ```text
---provider hetzner|aws|azure|ssh|blacksmith-testbox|namespace-devbox|semaphore|daytona|islo|e2b
+--provider hetzner|aws|azure|ssh|blacksmith-testbox|namespace-devbox|semaphore|sprites|daytona|islo|e2b
 --target linux|macos|windows
 --windows-mode normal|wsl2
 --static-host <host>
@@ -38,6 +40,7 @@ Flags:
 --static-port <port>
 --static-work-root <path>
 --namespace-delete-on-release
+--sprites-api-url <url>
 --e2b-api-url <url>
 --e2b-domain <domain>
 ```

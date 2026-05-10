@@ -41,6 +41,7 @@ Read when:
 - [Namespace Devbox](namespace-devbox.md): Namespace Devbox SSH leases with Crabbox sync/run.
 - [Namespace Devbox setup](namespace-devbox-setup.md): CLI install, auth token profile, and live checks.
 - [Semaphore](semaphore.md): Semaphore CI job leases with Crabbox SSH sync/run.
+- [Sprites](sprites.md): Sprites microVM SSH leases through `sprite proxy`.
 - [Daytona](daytona.md): Daytona SDK/toolbox sandbox leases with optional short-lived SSH access.
 - [Islo](islo.md): delegated Islo sandbox runs using the Islo Go SDK.
 - [E2B](e2b.md): delegated E2B sandbox runs using E2B sandbox APIs.

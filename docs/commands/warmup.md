@@ -15,6 +15,7 @@ crabbox warmup --actions-runner
 crabbox warmup --provider blacksmith-testbox --blacksmith-workflow .github/workflows/ci-check-testbox.yml --blacksmith-job test
 crabbox warmup --provider namespace-devbox --namespace-image builtin:base --namespace-size M
 crabbox warmup --provider semaphore --semaphore-host myorg.semaphoreci.com --semaphore-project my-app
+crabbox warmup --provider sprites
 crabbox warmup --provider daytona --daytona-snapshot crabbox-ready
 crabbox warmup --provider islo --islo-image docker.io/library/ubuntu:24.04
 crabbox warmup --provider e2b --e2b-template base
@@ -34,6 +35,10 @@ later uses normal SSH sync/run.
 With `--provider semaphore`, the canonical ID is a Crabbox `cbx_...` lease
 backed by a Semaphore CI job. Crabbox stores a local slug, retrieves the debug
 SSH endpoint/key from Semaphore, and later uses normal SSH sync/run.
+
+With `--provider sprites`, the canonical ID is a Crabbox `cbx_...` lease backed
+by a Sprites microVM. Crabbox stores a local slug, bootstraps OpenSSH/rsync, and
+later uses normal SSH sync/run through `sprite proxy`.
 
 With `--provider daytona`, the canonical ID is a Crabbox `cbx_...` lease backed
 by a Daytona sandbox created from `daytona.snapshot`. `run` uses Daytona
@@ -93,7 +98,7 @@ On success, `warmup` prints a concise total duration line. Add `--timing-json` t
 Flags:
 
 ```text
---provider hetzner|aws|azure|ssh|blacksmith-testbox|namespace-devbox|semaphore|daytona|islo|e2b
+--provider hetzner|aws|azure|ssh|blacksmith-testbox|namespace-devbox|semaphore|sprites|daytona|islo|e2b
 --target linux|macos|windows
 --windows-mode normal|wsl2
 --static-host <host>
@@ -137,6 +142,8 @@ Flags:
 --semaphore-machine <type>
 --semaphore-os-image <image>
 --semaphore-idle-timeout <duration>
+--sprites-api-url <url>
+--sprites-work-root <path>
 --e2b-api-url <url>
 --e2b-domain <domain>
 --e2b-template <template-id>

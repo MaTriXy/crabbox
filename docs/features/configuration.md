@@ -199,6 +199,20 @@ credential manager. User config may set host/project defaults; repo config
 should only pin Semaphore when the repo intentionally depends on that CI
 environment.
 
+### Sprites
+
+```yaml
+provider: sprites
+sprites:
+  apiUrl: https://api.sprites.dev
+  workRoot: /home/sprite/crabbox
+```
+
+Keep `CRABBOX_SPRITES_TOKEN`, `SPRITES_TOKEN`, `SPRITE_TOKEN`, or
+`SETUP_SPRITE_TOKEN` in the shell or credential manager. Repo config should
+select the work root only when the repo intentionally depends on a Sprites
+layout. The authenticated `sprite` CLI must also be on `PATH`.
+
 ### Sync
 
 ```yaml

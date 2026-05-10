@@ -28,6 +28,7 @@ Direct provider backends can also run without the Crabbox coordinator:
 ```text
 semaphore  Semaphore CI jobs exposed as SSH leases
 namespace  Namespace Devboxes exposed as SSH leases
+sprites    Sprites microVMs exposed as SSH leases through sprite proxy
 daytona    Daytona sandboxes with SDK/toolbox run and short-lived SSH access
 islo       Islo sandboxes with delegated command execution
 e2b        E2B sandboxes with delegated command execution
@@ -43,6 +44,7 @@ e2b        E2B sandboxes with delegated command execution
 - [Blacksmith Testbox](../providers/blacksmith-testbox.md): delegated Testbox backend behavior.
 - [Namespace Devbox](../providers/namespace-devbox.md): Namespace Devbox SSH leases with Crabbox sync/run.
 - [Semaphore](../providers/semaphore.md): Semaphore CI job leases with Crabbox SSH sync/run.
+- [Sprites](../providers/sprites.md): Sprites microVM SSH leases through `sprite proxy`.
 - [Daytona](../providers/daytona.md): Daytona SDK/toolbox sandbox leases.
 - [Islo](../providers/islo.md): delegated Islo sandbox execution.
 - [E2B](../providers/e2b.md): delegated E2B sandbox execution.
@@ -156,6 +158,12 @@ normal SSH sync and command execution. Use it when the test should run in the
 same machine image, project secret context, and cache plane as Semaphore CI. It
 does not use the Crabbox coordinator. See [Semaphore](semaphore.md).
 
+Crabbox can use Sprites microVMs with `provider: sprites`. Sprites is an SSH
+lease backend: Crabbox creates a sprite, installs OpenSSH and rsync inside it,
+then reaches SSH through `sprite proxy`. Use it when you want a fast Linux
+microVM while keeping Crabbox's standard SSH sync/run path and `crabbox ssh`.
+It does not use the Crabbox coordinator. See [Sprites](sprites.md).
+
 Crabbox can use Daytona sandboxes with `provider: daytona`. Crabbox creates a
 sandbox from `daytona.snapshot`, syncs and executes `run` through Daytona's
 SDK/toolbox APIs, and mints short-lived SSH tokens only for explicit `ssh`
@@ -213,6 +221,7 @@ Related docs:
 - [Blacksmith Testbox](../providers/blacksmith-testbox.md)
 - [Namespace Devbox](../providers/namespace-devbox.md)
 - [Semaphore](../providers/semaphore.md)
+- [Sprites](../providers/sprites.md)
 - [Daytona](../providers/daytona.md)
 - [Islo](../providers/islo.md)
 - [E2B](../providers/e2b.md)
