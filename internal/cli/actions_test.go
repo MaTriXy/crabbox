@@ -127,6 +127,9 @@ func TestGitHubActionsRunnerInstallScriptUsesOfficialRunner(t *testing.T) {
 		"https://api.github.com/repos/actions/runner/releases/latest",
 		"https://github.com/actions/runner/releases/download/",
 		"RUNNER_ALLOW_RUNASROOT=1",
+		"grep -qi microsoft /proc/version",
+		"sudo rm -rf /var/lib/apt/lists/*",
+		"sudo apt-get update >/tmp/crabbox-actions-runner-apt-update.log",
 		"./config.sh --unattended --replace --ephemeral",
 		"crabbox-actions-runner.service",
 	} {

@@ -877,6 +877,18 @@ pathlib.Path(sys.argv[2]).write_bytes(deleted)
 	return "bash -lc " + shellQuote(script)
 }
 
+func remoteSeedSyncManifestFromGit(workdir string) string {
+	script := "set -e\ncd " + shellQuote(workdir) + `
+` + remoteSyncMetaDirScript() + `
+old="$meta_dir/sync-manifest"
+if [ ! -f "$old" ] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  mkdir -p "$meta_dir"
+  git ls-files -z > "$old"
+fi
+`
+	return "bash -lc " + shellQuote(script)
+}
+
 func remotePruneSyncManifest(workdir string) string {
 	script := "set -e\ncd " + shellQuote(workdir) + `
 ` + remoteSyncMetaDirScript() + `

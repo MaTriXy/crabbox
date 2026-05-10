@@ -16,7 +16,7 @@ idle_timeout="${CRABBOX_OPENCLAW_WSL2_IDLE_TIMEOUT:-240m}"
 hydrate_wait="${CRABBOX_OPENCLAW_WSL2_HYDRATE_WAIT:-45m}"
 keep_alive="${CRABBOX_OPENCLAW_WSL2_KEEP_ALIVE_MINUTES:-240}"
 stop_after="${CRABBOX_OPENCLAW_WSL2_STOP:-0}"
-test_command="${CRABBOX_OPENCLAW_TEST_COMMAND:-CI=1 NODE_OPTIONS=--max-old-space-size=4096 OPENCLAW_TEST_PROJECTS_PARALLEL=6 OPENCLAW_VITEST_MAX_WORKERS=1 pnpm test}"
+test_command="${CRABBOX_OPENCLAW_TEST_COMMAND:-corepack enable && pnpm install --frozen-lockfile && CI=1 NODE_OPTIONS=--max-old-space-size=4096 OPENCLAW_TEST_PROJECTS_PARALLEL=6 OPENCLAW_VITEST_MAX_WORKERS=1 pnpm test}"
 crabbox_target_args=(
   --provider aws
   --target windows
@@ -31,6 +31,13 @@ fi
 
 run_in_repo() {
   (cd "$repo" && "$@")
+}
+
+run_crabbox_wsl2() {
+  (
+    cd "$repo"
+    CRABBOX_PROVIDER=aws CRABBOX_TARGET=windows CRABBOX_WINDOWS_MODE=wsl2 "$cb" "$@"
+  )
 }
 
 extract_lease_or_slug() {
@@ -59,16 +66,15 @@ fi
 
 cleanup() {
   if [[ "$stop_after" == "1" && -n "$lease" ]]; then
-    run_in_repo "$cb" stop "${crabbox_target_args[@]}" "$lease" || true
+    run_crabbox_wsl2 stop "$lease" || true
   fi
 }
 trap cleanup EXIT
 
-run_in_repo "$cb" actions hydrate \
-  "${crabbox_target_args[@]}" \
+run_crabbox_wsl2 actions hydrate \
   --id "$lease" \
   --wait-timeout "$hydrate_wait" \
   --keep-alive-minutes "$keep_alive" \
   --timing-json
 
-run_in_repo "$cb" run "${crabbox_target_args[@]}" --id "$lease" --shell -- "$test_command"
+run_crabbox_wsl2 run --id "$lease" --shell -- "$test_command"

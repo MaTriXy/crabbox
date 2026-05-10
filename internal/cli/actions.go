@@ -622,6 +622,10 @@ fi
 if [ -f .runner ]; then
   ./config.sh remove --unattended --token "$RUNNER_TOKEN" || true
 fi
+if command -v apt-get >/dev/null 2>&1 && grep -qi microsoft /proc/version 2>/dev/null; then
+  sudo rm -rf /var/lib/apt/lists/*
+  sudo apt-get update >/tmp/crabbox-actions-runner-apt-update.log 2>&1
+fi
 sudo ./bin/installdependencies.sh >/tmp/crabbox-actions-runner-deps.log 2>&1 || true
 ./config.sh --unattended --replace %s --url "https://github.com/${RUNNER_REPO}" --token "$RUNNER_TOKEN" --name "$RUNNER_NAME" --labels "$RUNNER_LABELS"
 cat >"$HOME/actions-runner/run-crabbox.sh" <<'RUNNER'

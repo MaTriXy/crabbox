@@ -503,6 +503,35 @@ func TestRemotePruneSyncManifestUsesDeletedListBeforeOldManifestDiff(t *testing.
 	}
 }
 
+func TestRemoteSeedSyncManifestFromGitWritesInitialTrackedManifest(t *testing.T) {
+	workdir := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = workdir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+	}
+	run("git", "init", "-q")
+	mustWriteTestFile(t, filepath.Join(workdir, "keep.txt"), "keep")
+	mustWriteTestFile(t, filepath.Join(workdir, "stale.txt"), "stale")
+	run("git", "add", "keep.txt", "stale.txt")
+
+	cmd := exec.Command("bash", "-lc", remoteSeedSyncManifestFromGit(workdir))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("remote seed failed: %v\n%s", err, out)
+	}
+
+	got, err := os.ReadFile(filepath.Join(workdir, ".git", "crabbox", "sync-manifest"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "keep.txt\x00stale.txt\x00" {
+		t.Fatalf("unexpected seeded manifest: %q", got)
+	}
+}
+
 func TestRemotePruneSyncManifestPrunesManagedFiles(t *testing.T) {
 	workdir := t.TempDir()
 	mustWriteTestFile(t, filepath.Join(workdir, ".crabbox", "sync-manifest"), "keep.txt\x00kept-dir/keep.txt\x00stale.txt\x00old-empty/remove.txt\x00non-empty/remove.txt\x00")

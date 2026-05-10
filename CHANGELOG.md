@@ -15,6 +15,9 @@
 ### Fixed
 
 - Fixed `crabbox actions hydrate/register` so AWS Windows WSL2 leases can use Linux GitHub Actions hydration instead of being rejected as Windows targets, including root-runner and stale apt-list handling.
+- Fixed `scripts/openclaw-wsl2-tests.sh` so follow-up hydrate/run/cleanup commands keep the AWS Windows WSL2 target configuration and warmup failures print captured output.
+- Fixed `scripts/openclaw-wsl2-tests.sh` so dirty-sync package graph changes refresh workspace dependencies before the full OpenClaw test command runs.
+- Fixed first `crabbox run` syncs after GitHub Actions hydration so tracked checkout files are not treated as stale remote files before the initial dirty-worktree sync.
 - Fixed `crabbox run` history finish recording to allow large final log payloads enough time to reach the coordinator.
 - Fixed Namespace Devbox release-only resolution so `crabbox stop --provider namespace-devbox --namespace-delete-on-release <name>` deletes without re-preparing SSH.
 - Fixed Namespace Devbox release cleanup so stopping a Crabbox Devbox removes its local `~/.namespace/ssh/crabbox-*` snippet and key files.
