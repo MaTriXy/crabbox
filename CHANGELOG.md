@@ -9,6 +9,8 @@
 
 ### Changed
 
+- Improved `crabbox media preview` and `artifacts collect --gif` defaults to generate higher-quality 1000px/24fps GIFs with Floyd-Steinberg palette dithering and optional gifsicle optimization. Thanks @obviyus.
+
 ### Fixed
 
 - Fixed Namespace Devbox release-only resolution so `crabbox stop --provider namespace-devbox --namespace-delete-on-release <name>` deletes without re-preparing SSH.
