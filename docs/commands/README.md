@@ -11,6 +11,7 @@ Command docs live here, one file per top-level command. Keep `docs/cli.md` as th
 - [doctor](doctor.md)
 - [warmup](warmup.md)
 - [run](run.md)
+- [job](job.md)
 - [desktop](desktop.md)
 - [media](media.md)
 - [artifacts](artifacts.md)

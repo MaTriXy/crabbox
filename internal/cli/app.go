@@ -63,6 +63,8 @@ func (a App) directCommandHelp(ctx context.Context, args []string) (error, bool)
 		return a.warmup(ctx, helpArgs), true
 	case "run":
 		return a.runCommand(ctx, helpArgs), true
+	case "job":
+		return nil, false
 	case "sync-plan":
 		return a.syncPlan(ctx, helpArgs), true
 	case "history":
@@ -139,6 +141,7 @@ Commands:
   doctor      Check local and broker/provider readiness
   warmup      Lease a box and wait until it is ready
   run         Sync the repo, run a remote command, stream output
+  job         Run named repo-local Crabbox jobs
   desktop     Launch apps into a visible desktop session
   media       Create preview artifacts from recorded desktop videos
   artifacts   Collect, transform, and publish QA artifacts
@@ -170,6 +173,7 @@ Commands:
 
 Common Flows:
   crabbox run --class beast -- pnpm check
+  crabbox job run openclaw-wsl2
   crabbox warmup
   crabbox status --id blue-lobster --wait
   crabbox run --id blue-lobster --shell 'pnpm install --frozen-lockfile && pnpm test'

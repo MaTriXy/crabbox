@@ -71,6 +71,7 @@ type Config struct {
 	Static             StaticConfig
 	Results            ResultsConfig
 	Cache              CacheConfig
+	Jobs               map[string]JobConfig
 }
 
 type SyncConfig struct {
@@ -197,6 +198,47 @@ type CacheConfig struct {
 	Git            bool
 	MaxGB          int
 	PurgeOnRelease bool
+}
+
+type JobConfig struct {
+	Provider       string
+	Target         string
+	WindowsMode    string
+	Profile        string
+	Class          string
+	ServerType     string
+	Market         string
+	TTL            time.Duration
+	IdleTimeout    time.Duration
+	Desktop        *bool
+	Browser        *bool
+	Code           *bool
+	Network        string
+	Hydrate        JobHydrateConfig
+	Actions        JobActionsConfig
+	Shell          bool
+	Command        string
+	NoSync         bool
+	SyncOnly       bool
+	Checksum       *bool
+	ForceSyncLarge bool
+	JUnit          []string
+	Downloads      []string
+	Stop           string
+}
+
+type JobHydrateConfig struct {
+	Actions          bool
+	WaitTimeout      time.Duration
+	KeepAliveMinutes int
+}
+
+type JobActionsConfig struct {
+	Repo     string
+	Workflow string
+	Job      string
+	Ref      string
+	Fields   []string
 }
 
 type AccessConfig struct {
@@ -337,43 +379,44 @@ func baseConfig() Config {
 }
 
 type fileConfig struct {
-	Profile          string                `yaml:"profile,omitempty"`
-	Provider         string                `yaml:"provider,omitempty"`
-	Target           string                `yaml:"target,omitempty"`
-	TargetOS         string                `yaml:"targetOS,omitempty"`
-	Windows          *fileWindowsConfig    `yaml:"windows,omitempty"`
-	Desktop          *bool                 `yaml:"desktop,omitempty"`
-	Browser          *bool                 `yaml:"browser,omitempty"`
-	Code             *bool                 `yaml:"code,omitempty"`
-	Network          string                `yaml:"network,omitempty"`
-	Class            string                `yaml:"class,omitempty"`
-	ServerType       string                `yaml:"serverType,omitempty"`
-	Coordinator      string                `yaml:"coordinator,omitempty"`
-	CoordinatorToken string                `yaml:"coordinatorToken,omitempty"`
-	Broker           *fileBrokerConfig     `yaml:"broker,omitempty"`
-	Hetzner          *fileHetznerConfig    `yaml:"hetzner,omitempty"`
-	AWS              *fileAWSConfig        `yaml:"aws,omitempty"`
-	Azure            *fileAzureConfig      `yaml:"azure,omitempty"`
-	SSH              *fileSSHConfig        `yaml:"ssh,omitempty"`
-	Sync             *fileSyncConfig       `yaml:"sync,omitempty"`
-	Env              *fileEnvConfig        `yaml:"env,omitempty"`
-	Capacity         *fileCapacityConfig   `yaml:"capacity,omitempty"`
-	Actions          *fileActionsConfig    `yaml:"actions,omitempty"`
-	Blacksmith       *fileBlacksmithConfig `yaml:"blacksmith,omitempty"`
-	Namespace        *fileNamespaceConfig  `yaml:"namespace,omitempty"`
-	Daytona          *fileDaytonaConfig    `yaml:"daytona,omitempty"`
-	E2B              *fileE2BConfig        `yaml:"e2b,omitempty"`
-	Islo             *fileIsloConfig       `yaml:"islo,omitempty"`
-	Semaphore        *fileSemaphoreConfig  `yaml:"semaphore,omitempty"`
-	Sprites          *fileSpritesConfig    `yaml:"sprites,omitempty"`
-	Tailscale        *fileTailscaleConfig  `yaml:"tailscale,omitempty"`
-	Static           *fileStaticConfig     `yaml:"static,omitempty"`
-	Results          *fileResultsConfig    `yaml:"results,omitempty"`
-	Cache            *fileCacheConfig      `yaml:"cache,omitempty"`
-	Lease            *fileLeaseConfig      `yaml:"lease,omitempty"`
-	TTL              string                `yaml:"ttl,omitempty"`
-	IdleTimeout      string                `yaml:"idleTimeout,omitempty"`
-	WorkRoot         string                `yaml:"workRoot,omitempty"`
+	Profile          string                   `yaml:"profile,omitempty"`
+	Provider         string                   `yaml:"provider,omitempty"`
+	Target           string                   `yaml:"target,omitempty"`
+	TargetOS         string                   `yaml:"targetOS,omitempty"`
+	Windows          *fileWindowsConfig       `yaml:"windows,omitempty"`
+	Desktop          *bool                    `yaml:"desktop,omitempty"`
+	Browser          *bool                    `yaml:"browser,omitempty"`
+	Code             *bool                    `yaml:"code,omitempty"`
+	Network          string                   `yaml:"network,omitempty"`
+	Class            string                   `yaml:"class,omitempty"`
+	ServerType       string                   `yaml:"serverType,omitempty"`
+	Coordinator      string                   `yaml:"coordinator,omitempty"`
+	CoordinatorToken string                   `yaml:"coordinatorToken,omitempty"`
+	Broker           *fileBrokerConfig        `yaml:"broker,omitempty"`
+	Hetzner          *fileHetznerConfig       `yaml:"hetzner,omitempty"`
+	AWS              *fileAWSConfig           `yaml:"aws,omitempty"`
+	Azure            *fileAzureConfig         `yaml:"azure,omitempty"`
+	SSH              *fileSSHConfig           `yaml:"ssh,omitempty"`
+	Sync             *fileSyncConfig          `yaml:"sync,omitempty"`
+	Env              *fileEnvConfig           `yaml:"env,omitempty"`
+	Capacity         *fileCapacityConfig      `yaml:"capacity,omitempty"`
+	Actions          *fileActionsConfig       `yaml:"actions,omitempty"`
+	Blacksmith       *fileBlacksmithConfig    `yaml:"blacksmith,omitempty"`
+	Namespace        *fileNamespaceConfig     `yaml:"namespace,omitempty"`
+	Daytona          *fileDaytonaConfig       `yaml:"daytona,omitempty"`
+	E2B              *fileE2BConfig           `yaml:"e2b,omitempty"`
+	Islo             *fileIsloConfig          `yaml:"islo,omitempty"`
+	Semaphore        *fileSemaphoreConfig     `yaml:"semaphore,omitempty"`
+	Sprites          *fileSpritesConfig       `yaml:"sprites,omitempty"`
+	Tailscale        *fileTailscaleConfig     `yaml:"tailscale,omitempty"`
+	Static           *fileStaticConfig        `yaml:"static,omitempty"`
+	Results          *fileResultsConfig       `yaml:"results,omitempty"`
+	Cache            *fileCacheConfig         `yaml:"cache,omitempty"`
+	Lease            *fileLeaseConfig         `yaml:"lease,omitempty"`
+	Jobs             map[string]fileJobConfig `yaml:"jobs,omitempty"`
+	TTL              string                   `yaml:"ttl,omitempty"`
+	IdleTimeout      string                   `yaml:"idleTimeout,omitempty"`
+	WorkRoot         string                   `yaml:"workRoot,omitempty"`
 }
 
 type fileWindowsConfig struct {
@@ -569,6 +612,50 @@ type fileCacheConfig struct {
 type fileLeaseConfig struct {
 	TTL         string `yaml:"ttl,omitempty"`
 	IdleTimeout string `yaml:"idleTimeout,omitempty"`
+}
+
+type fileJobConfig struct {
+	Provider       string                `yaml:"provider,omitempty"`
+	Target         string                `yaml:"target,omitempty"`
+	TargetOS       string                `yaml:"targetOS,omitempty"`
+	Windows        *fileWindowsConfig    `yaml:"windows,omitempty"`
+	Profile        string                `yaml:"profile,omitempty"`
+	Class          string                `yaml:"class,omitempty"`
+	ServerType     string                `yaml:"serverType,omitempty"`
+	Type           string                `yaml:"type,omitempty"`
+	Capacity       *fileCapacityConfig   `yaml:"capacity,omitempty"`
+	Market         string                `yaml:"market,omitempty"`
+	TTL            string                `yaml:"ttl,omitempty"`
+	IdleTimeout    string                `yaml:"idleTimeout,omitempty"`
+	Desktop        *bool                 `yaml:"desktop,omitempty"`
+	Browser        *bool                 `yaml:"browser,omitempty"`
+	Code           *bool                 `yaml:"code,omitempty"`
+	Network        string                `yaml:"network,omitempty"`
+	Hydrate        *fileJobHydrateConfig `yaml:"hydrate,omitempty"`
+	Actions        *fileJobActionsConfig `yaml:"actions,omitempty"`
+	Shell          *bool                 `yaml:"shell,omitempty"`
+	Command        string                `yaml:"command,omitempty"`
+	NoSync         *bool                 `yaml:"noSync,omitempty"`
+	SyncOnly       *bool                 `yaml:"syncOnly,omitempty"`
+	Checksum       *bool                 `yaml:"checksum,omitempty"`
+	ForceSyncLarge *bool                 `yaml:"forceSyncLarge,omitempty"`
+	JUnit          []string              `yaml:"junit,omitempty"`
+	Downloads      []string              `yaml:"downloads,omitempty"`
+	Stop           string                `yaml:"stop,omitempty"`
+}
+
+type fileJobHydrateConfig struct {
+	Actions          *bool  `yaml:"actions,omitempty"`
+	WaitTimeout      string `yaml:"waitTimeout,omitempty"`
+	KeepAliveMinutes int    `yaml:"keepAliveMinutes,omitempty"`
+}
+
+type fileJobActionsConfig struct {
+	Repo     string   `yaml:"repo,omitempty"`
+	Workflow string   `yaml:"workflow,omitempty"`
+	Job      string   `yaml:"job,omitempty"`
+	Ref      string   `yaml:"ref,omitempty"`
+	Fields   []string `yaml:"fields,omitempty"`
 }
 
 func configPaths() []string {
@@ -1114,6 +1201,127 @@ func applyFileConfig(cfg *Config, file fileConfig) {
 			cfg.Cache.PurgeOnRelease = *file.Cache.PurgeOnRelease
 		}
 	}
+	if len(file.Jobs) > 0 {
+		if cfg.Jobs == nil {
+			cfg.Jobs = map[string]JobConfig{}
+		}
+		for name, job := range file.Jobs {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			cfg.Jobs[name] = applyFileJobConfig(cfg.Jobs[name], job)
+		}
+	}
+}
+
+func applyFileJobConfig(job JobConfig, file fileJobConfig) JobConfig {
+	if file.Provider != "" {
+		job.Provider = file.Provider
+	}
+	if file.Target != "" {
+		job.Target = file.Target
+	}
+	if file.TargetOS != "" {
+		job.Target = file.TargetOS
+	}
+	if file.Windows != nil && file.Windows.Mode != "" {
+		job.WindowsMode = file.Windows.Mode
+	}
+	if file.Profile != "" {
+		job.Profile = file.Profile
+	}
+	if file.Class != "" {
+		job.Class = file.Class
+	}
+	if file.ServerType != "" {
+		job.ServerType = file.ServerType
+	}
+	if file.Type != "" {
+		job.ServerType = file.Type
+	}
+	if file.Capacity != nil && file.Capacity.Market != "" {
+		job.Market = file.Capacity.Market
+	}
+	if file.Market != "" {
+		job.Market = file.Market
+	}
+	applyLeaseDuration(&job.TTL, file.TTL)
+	applyLeaseDuration(&job.IdleTimeout, file.IdleTimeout)
+	if file.Desktop != nil {
+		value := *file.Desktop
+		job.Desktop = &value
+	}
+	if file.Browser != nil {
+		value := *file.Browser
+		job.Browser = &value
+	}
+	if file.Code != nil {
+		value := *file.Code
+		job.Code = &value
+	}
+	if file.Network != "" {
+		job.Network = file.Network
+	}
+	if file.Hydrate != nil {
+		if file.Hydrate.Actions != nil {
+			job.Hydrate.Actions = *file.Hydrate.Actions
+		}
+		if file.Hydrate.WaitTimeout != "" {
+			if duration, err := time.ParseDuration(file.Hydrate.WaitTimeout); err == nil {
+				job.Hydrate.WaitTimeout = duration
+			}
+		}
+		if file.Hydrate.KeepAliveMinutes > 0 {
+			job.Hydrate.KeepAliveMinutes = file.Hydrate.KeepAliveMinutes
+		}
+	}
+	if file.Actions != nil {
+		if file.Actions.Repo != "" {
+			job.Actions.Repo = file.Actions.Repo
+		}
+		if file.Actions.Workflow != "" {
+			job.Actions.Workflow = file.Actions.Workflow
+		}
+		if file.Actions.Job != "" {
+			job.Actions.Job = file.Actions.Job
+		}
+		if file.Actions.Ref != "" {
+			job.Actions.Ref = file.Actions.Ref
+		}
+		if len(file.Actions.Fields) > 0 {
+			job.Actions.Fields = appendUniqueStrings(nil, file.Actions.Fields...)
+		}
+	}
+	if file.Shell != nil {
+		job.Shell = *file.Shell
+	}
+	if file.Command != "" {
+		job.Command = file.Command
+	}
+	if file.NoSync != nil {
+		job.NoSync = *file.NoSync
+	}
+	if file.SyncOnly != nil {
+		job.SyncOnly = *file.SyncOnly
+	}
+	if file.Checksum != nil {
+		value := *file.Checksum
+		job.Checksum = &value
+	}
+	if file.ForceSyncLarge != nil {
+		job.ForceSyncLarge = *file.ForceSyncLarge
+	}
+	if len(file.JUnit) > 0 {
+		job.JUnit = appendUniqueStrings(nil, file.JUnit...)
+	}
+	if len(file.Downloads) > 0 {
+		job.Downloads = appendUniqueStrings(nil, file.Downloads...)
+	}
+	if file.Stop != "" {
+		job.Stop = file.Stop
+	}
+	return job
 }
 
 func applyLeaseDuration(target *time.Duration, value string) {

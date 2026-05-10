@@ -4,6 +4,7 @@
 
 ### Added
 
+- Added `crabbox job list/run` and repo-local `jobs:` config for named warmup → Actions hydrate → run → cleanup workflows.
 - Added Daytona and Namespace Devbox lanes to `scripts/live-smoke.sh` so delegated live smoke coverage can run through the shared harness.
 - Added `crabbox cleanup --provider namespace-devbox` to remove Crabbox-owned Namespace SSH snippets and keys.
 - Added `scripts/openclaw-wsl2-tests.sh` for one-command OpenClaw full-suite runs on AWS Windows WSL2 Crabbox leases.

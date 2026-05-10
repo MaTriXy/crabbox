@@ -29,10 +29,16 @@ func (r GitHubRepo) Slug() string {
 
 func (a App) actionsHydrate(ctx context.Context, args []string) error {
 	started := time.Now()
+	defaults := defaultConfig()
 	fs := newFlagSet("actions hydrate", a.Stderr)
+	provider := fs.String("provider", defaults.Provider, providerHelpAll())
+	providerFlags := registerProviderFlags(fs, defaults)
+	targetFlags := registerTargetFlags(fs, defaults)
+	networkFlags := registerNetworkModeFlag(fs, defaults)
 	leaseIDFlag := fs.String("id", "", "existing lease id or slug")
 	repoFlag := fs.String("repo", "", "GitHub repository owner/name")
 	workflowFlag := fs.String("workflow", "", "workflow file/name/id")
+	jobFlag := fs.String("job", "", "expected hydrate workflow job/input name")
 	refFlag := fs.String("ref", "", "workflow ref")
 	waitTimeout := fs.Duration("wait-timeout", 20*time.Minute, "time to wait for Actions hydration")
 	keepAliveMinutes := fs.Int("keep-alive-minutes", 90, "minutes for workflow to keep the job alive")
@@ -47,8 +53,11 @@ func (a App) actionsHydrate(ctx context.Context, args []string) error {
 	if *leaseIDFlag == "" {
 		return exit(2, "actions hydrate requires --id")
 	}
-	cfg, err := loadConfig()
+	cfg, err := loadLeaseTargetConfig(fs, *provider, targetFlags, networkFlags, leaseTargetConfigOptions{})
 	if err != nil {
+		return err
+	}
+	if err := applyProviderFlags(&cfg, fs, providerFlags); err != nil {
 		return err
 	}
 	repo, err := findRepo()
@@ -60,6 +69,9 @@ func (a App) actionsHydrate(ctx context.Context, args []string) error {
 	}
 	if *workflowFlag != "" {
 		cfg.Actions.Workflow = *workflowFlag
+	}
+	if *jobFlag != "" {
+		cfg.Actions.Job = *jobFlag
 	}
 	if *refFlag != "" {
 		cfg.Actions.Ref = *refFlag
@@ -155,7 +167,12 @@ func (a App) actionsHydrate(ctx context.Context, args []string) error {
 }
 
 func (a App) actionsRegister(ctx context.Context, args []string) error {
+	defaults := defaultConfig()
 	fs := newFlagSet("actions register", a.Stderr)
+	provider := fs.String("provider", defaults.Provider, providerHelpAll())
+	providerFlags := registerProviderFlags(fs, defaults)
+	targetFlags := registerTargetFlags(fs, defaults)
+	networkFlags := registerNetworkModeFlag(fs, defaults)
 	leaseIDFlag := fs.String("id", "", "existing lease id or slug")
 	repoFlag := fs.String("repo", "", "GitHub repository owner/name")
 	nameFlag := fs.String("name", "", "runner name")
@@ -169,8 +186,11 @@ func (a App) actionsRegister(ctx context.Context, args []string) error {
 	if *leaseIDFlag == "" {
 		return exit(2, "actions register requires --id")
 	}
-	cfg, err := loadConfig()
+	cfg, err := loadLeaseTargetConfig(fs, *provider, targetFlags, networkFlags, leaseTargetConfigOptions{})
 	if err != nil {
+		return err
+	}
+	if err := applyProviderFlags(&cfg, fs, providerFlags); err != nil {
 		return err
 	}
 	repo, err := findRepo()

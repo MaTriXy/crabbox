@@ -22,7 +22,7 @@ On success, `actions hydrate` prints a concise total duration line. Add `--timin
 ```sh
 crabbox warmup --actions-runner
 crabbox warmup --provider aws --target windows --windows-mode wsl2
-crabbox actions hydrate --id blue-lobster
+crabbox actions hydrate --provider aws --target windows --windows-mode wsl2 --id blue-lobster
 crabbox actions register --id blue-lobster
 crabbox actions dispatch -f testbox_id=cbx_abcdef123456
 crabbox run --id blue-lobster -- pnpm test
@@ -31,12 +31,13 @@ crabbox run --id blue-lobster -- pnpm test
 Subcommands:
 
 ```text
-hydrate --id <lease-id-or-slug> [--repo owner/name] [--workflow <file|name|id>] [--ref <ref>] [--wait-timeout 20m] [--keep-alive-minutes 90] [--reclaim] [--timing-json] [-f key=value] [--field key=value]
-register --id <lease-id-or-slug> [--repo owner/name] [--name <runner-name>] [--labels <csv>] [--version latest] [--ephemeral=true] [--reclaim]
+hydrate --id <lease-id-or-slug> [--provider <provider>] [--target linux|macos|windows] [--windows-mode normal|wsl2] [--repo owner/name] [--workflow <file|name|id>] [--job <name>] [--ref <ref>] [--wait-timeout 20m] [--keep-alive-minutes 90] [--reclaim] [--timing-json] [-f key=value] [--field key=value]
+register --id <lease-id-or-slug> [--provider <provider>] [--target linux|macos|windows] [--windows-mode normal|wsl2] [--repo owner/name] [--name <runner-name>] [--labels <csv>] [--version latest] [--ephemeral=true] [--reclaim]
 dispatch [--repo owner/name] [--workflow <file|name|id>] [--ref <ref>] [-f key=value] [--field key=value]
 ```
 
 Hydrate/register validate the local repo claim before touching the lease. Use `--reclaim` when intentionally moving a lease to the current repo.
+Pass the same provider/target routing flags used to create the lease when local defaults point at another backend.
 
 Config:
 
