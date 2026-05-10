@@ -70,6 +70,8 @@ type e2bBackend struct {
 	rt   Runtime
 }
 
+const e2bMaxSandboxTimeout = time.Hour
+
 func (b *e2bBackend) Spec() ProviderSpec { return b.spec }
 
 func (b *e2bBackend) Warmup(ctx context.Context, req WarmupRequest) error {
@@ -143,7 +145,7 @@ func (b *e2bBackend) Run(ctx context.Context, req RunRequest) (RunResult, error)
 		}()
 	}
 
-	session, err := client.ConnectSandbox(ctx, sandboxID, durationSecondsCeil(b.cfg.TTL))
+	session, err := client.ConnectSandbox(ctx, sandboxID, e2bTimeoutSeconds(b.cfg.TTL))
 	if err != nil {
 		return RunResult{}, e2bError("connect sandbox", err)
 	}
@@ -189,7 +191,7 @@ func (b *e2bBackend) Run(ctx context.Context, req RunRequest) (RunResult, error)
 		CWD:     workspace,
 		Env:     allowedEnv(req.Options.EnvAllow),
 		User:    processUser,
-		Timeout: b.cfg.TTL,
+		Timeout: e2bTimeoutDuration(b.cfg.TTL),
 		Stdout:  b.rt.Stdout,
 		Stderr:  b.rt.Stderr,
 	})
@@ -306,6 +308,7 @@ func (b *e2bBackend) createSandbox(ctx context.Context, client e2bAPI, repo Repo
 	if err != nil {
 		return "", e2bSandbox{}, "", err
 	}
+	cfg.TTL = e2bTimeoutDuration(cfg.TTL)
 	cfg.ServerType = template
 	labels := directLeaseLabels(cfg, leaseID, slug, e2bProvider, "", keep, b.now().UTC())
 	labels["state"] = "ready"
@@ -314,10 +317,7 @@ func (b *e2bBackend) createSandbox(ctx context.Context, client e2bAPI, repo Repo
 	if repo.Name != "" {
 		labels["repo"] = repo.Name
 	}
-	timeoutSeconds := durationSecondsCeil(b.cfg.TTL)
-	if timeoutSeconds <= 0 {
-		timeoutSeconds = 300
-	}
+	timeoutSeconds := e2bTimeoutSeconds(cfg.TTL)
 	fmt.Fprintf(b.rt.Stderr, "provisioning provider=e2b lease=%s slug=%s template=%s timeout=%ds\n", leaseID, slug, template, timeoutSeconds)
 	sandbox, err := client.CreateSandbox(ctx, e2bCreateSandboxRequest{
 		TemplateID:          template,
@@ -472,6 +472,20 @@ func isE2BSyntheticID(id string) bool {
 
 func isCrabboxE2BSandbox(sandbox e2bSandbox) bool {
 	return sandbox.Metadata["provider"] == e2bProvider && sandbox.Metadata["crabbox"] == "true"
+}
+
+func e2bTimeoutDuration(ttl time.Duration) time.Duration {
+	if ttl <= 0 {
+		return 5 * time.Minute
+	}
+	if ttl > e2bMaxSandboxTimeout {
+		return e2bMaxSandboxTimeout
+	}
+	return ttl
+}
+
+func e2bTimeoutSeconds(ttl time.Duration) int {
+	return durationSecondsCeil(e2bTimeoutDuration(ttl))
 }
 
 func e2bWorkspacePath(cfg Config) string {

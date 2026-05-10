@@ -52,6 +52,8 @@ after bootstrap and can render Sixel inline images when `--sixel` is set. The
 launcher starts `mintty.exe` directly through the interactive PowerShell task so
 paths under `Program Files` and shell arguments keep normal Windows quoting.
 That keeps visual terminal smokes from needing hand-written batch launchers.
+On macOS targets it launches Ghostty through `open -na Ghostty.app`, preserving
+normal shell quoting while giving visual smokes a real terminal window.
 Add `--screenshot <path>` or `--record <path>` to capture proof after launch;
 `--wait-visible` controls the settle delay before capture. `--record` also
 writes a sampled `*.contact.png` contact sheet by default. A contact sheet is a
@@ -80,11 +82,12 @@ bundle:
 
 Use `--publish-pr <n>` to publish that bundle directly through the same
 artifact backend as `crabbox artifacts publish`. The default storage is
-`auto`, so a logged-in coordinator uploads through broker-owned artifact
-storage; otherwise pass `--publish-storage`, `--publish-bucket`,
-`--publish-base-url`, or use `crabbox artifacts publish` for advanced storage
-flags. `desktop terminal --record` supports the same `--publish-pr` flow when
-the record path lives inside an artifact directory, for example
+`auto`, so `CRABBOX_ARTIFACTS_STORAGE`/bucket/base-url env defaults still apply
+and a logged-in coordinator uploads through broker-owned artifact storage when
+no explicit storage is configured. Otherwise pass `--publish-storage`,
+`--publish-bucket`, `--publish-base-url`, or use `crabbox artifacts publish`
+for advanced storage flags. `desktop terminal --record` supports the same
+`--publish-pr` flow when the record path lives inside an artifact directory, for example
 `--record artifacts/proof/screen.mp4 --screenshot artifacts/proof/screenshot.png`.
 
 Recorder diagnostics are written by `desktop proof` and can also be requested
@@ -150,6 +153,8 @@ desktop terminal --id <lease-id-or-slug> [--font-size <n>] [--cols <n>] [--rows 
 desktop terminal --id <lease-id-or-slug> [--screenshot <path>] [--record <path>] [--record-duration <duration>] [--record-fps <n>] [--wait-visible <duration>] [--diagnostics <path>] [--publish-pr <n>] -- <command...>
 desktop record --id <lease-id-or-slug> [--output <path>] [--duration <duration>] [--fps <n>] [--no-contact-sheet]
 desktop proof --id <lease-id-or-slug> [--output <dir>] [--record-duration <duration>] [--record-fps <n>] [--publish-pr <n>] -- <command...>
+desktop terminal|proof [--contact-sheet=false|--no-contact-sheet] [--contact-sheet-output <path>] [--contact-sheet-frames <n>] [--contact-sheet-cols <n>] [--contact-sheet-width <px>]
+desktop terminal|proof --publish-pr <n> [--publish-storage auto|broker|local|s3|cloudflare|r2] [--publish-bucket <name>] [--publish-prefix <path>] [--publish-base-url <url>] [--publish-repo owner/name] [--publish-summary <text>|--publish-summary-file <path>] [--publish-dry-run] [--publish-no-comment]
 desktop doctor --id <lease-id-or-slug>
 desktop click --id <lease-id-or-slug> --x <n> --y <n>
 desktop paste --id <lease-id-or-slug> --text <text>

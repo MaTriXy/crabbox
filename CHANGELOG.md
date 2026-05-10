@@ -16,6 +16,7 @@
 ### Fixed
 
 - Fixed delegated run providers so unsupported `--capture-stdout` and `--download` requests fail instead of streaming stdout and skipping downloads.
+- Fixed E2B sandbox creation so Crabbox caps default lease timeouts to E2B's one-hour API limit instead of failing live smoke warmups.
 - Fixed `crabbox run` output capture validation so malformed `--download` specs, bad download destinations, and bad `--capture-stdout` paths fail before leasing, syncing, or running remotely.
 - Fixed interrupt handling so a second `Ctrl-C` can terminate slow cleanup after the first signal starts graceful cancellation.
 - Fixed `crabbox doctor --provider ...` so coordinator secret readiness checks only run for managed brokered providers.

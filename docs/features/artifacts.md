@@ -41,10 +41,12 @@ Video capture is intentionally desktop-session scoped. Linux leases record the
 X11 desktop with remote `ffmpeg` and stream the MP4 back over SSH. Native
 Windows leases capture a frame sequence inside the interactive console session,
 stream that archive back, and encode the MP4 locally with `ffmpeg`. MP4 capture
-also writes a contact sheet by default: one PNG grid sampled across the video
-for quick PR review. GIF generation reuses the local motion-trimming logic from
-`crabbox media preview`: leading/trailing static regions are removed and an
-optional trimmed MP4 can be emitted beside the GIF.
+currently supports Linux and native Windows desktop targets; macOS desktop
+flows still support launch, screenshot, VNC, and input capture paths, but not
+recording. MP4 capture also writes a contact sheet by default: one PNG grid
+sampled across the video for quick PR review. GIF generation reuses the local
+motion-trimming logic from `crabbox media preview`: leading/trailing static
+regions are removed and an optional trimmed MP4 can be emitted beside the GIF.
 
 `crabbox desktop proof` produces the same bundle shape for visual terminal
 smokes without a separate collect step: metadata, screenshot, recorder

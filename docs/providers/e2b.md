@@ -43,7 +43,6 @@ lease=<slug-or-cbx_id-from-warmup-output>
 
 bin/crabbox status --provider e2b --id "$lease" --wait
 bin/crabbox run --provider e2b --id "$lease" --no-sync -- echo crabbox-e2b-ok
-bin/crabbox run --provider e2b --id "$lease" --sync-only
 bin/crabbox stop --provider e2b "$lease"
 ```
 
@@ -53,8 +52,10 @@ Expected results:
   ID.
 - `status --wait` reports the sandbox as ready.
 - The no-sync run prints `crabbox-e2b-ok`.
-- `--sync-only` prints the remote workdir it synced.
 - `stop` deletes the sandbox and removes the local lease claim.
+
+E2B currently caps sandbox timeouts at one hour. Crabbox clamps longer local
+lease TTLs to that provider limit when creating or connecting to an E2B sandbox.
 
 ## Auth
 

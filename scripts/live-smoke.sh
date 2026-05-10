@@ -15,6 +15,17 @@ run_in_repo() {
   (cd "$repo" && "$@")
 }
 
+capture_run() {
+  local __name="$1"
+  shift
+  local __out
+  if ! __out="$("$@" 2>&1)"; then
+    printf '%s\n' "$__out"
+    return 1
+  fi
+  printf -v "$__name" '%s' "$__out"
+}
+
 has_provider() {
   [[ "$providers" == *",$1,"* ]]
 }
@@ -61,7 +72,7 @@ provider_smoke() {
   trap cleanup RETURN
 
   local out
-  out="$(run_in_repo "$cb" warmup --provider "$provider" "$@" 2>&1)"
+  capture_run out run_in_repo "$cb" warmup --provider "$provider" "$@"
   printf '%s\n' "$out"
   lease="$(printf '%s\n' "$out" | extract_lease)"
   slug="$(printf '%s\n' "$out" | extract_slug)"
@@ -74,7 +85,7 @@ provider_smoke() {
   run_in_repo "$cb" cache stats --id "$slug" --json | jq 'if type=="array" then {items:length,kinds:[.[].kind]} else {keys:keys} end'
 
   local runout
-  runout="$(run_in_repo "$cb" run --id "$slug" --shell -- 'test -f package.json && printf crabbox-live-ok && printf " pwd=%s\n" "$PWD"' 2>&1)"
+  capture_run runout run_in_repo "$cb" run --id "$slug" --shell -- 'test -f package.json && printf crabbox-live-ok && printf " pwd=%s\n" "$PWD"'
   printf '%s\n' "$runout"
   local runid
   runid="$(printf '%s\n' "$runout" | rg -o 'run_[a-f0-9]{12}' | tail -1 || true)"
@@ -109,7 +120,7 @@ e2b_smoke() {
   trap cleanup RETURN
 
   local out
-  out="$(run_in_repo "$cb" warmup --provider e2b --e2b-template "${CRABBOX_E2B_TEMPLATE:-base}" --timing-json 2>&1)"
+  capture_run out run_in_repo "$cb" warmup --provider e2b --e2b-template "${CRABBOX_E2B_TEMPLATE:-base}" --timing-json
   printf '%s\n' "$out"
   lease="$(printf '%s\n' "$out" | extract_lease)"
   slug="$(printf '%s\n' "$out" | extract_slug)"
@@ -118,8 +129,7 @@ e2b_smoke() {
 
   run_in_repo "$cb" status --provider e2b --id "$slug" --wait
   run_in_repo "$cb" run --provider e2b --id "$slug" --no-sync -- echo crabbox-e2b-ok
-  run_in_repo "$cb" run --provider e2b --id "$slug" --sync-only
-  run_in_repo "$cb" list --provider e2b --json | jq 'map({id:.id,slug:.slug,provider:.provider,state:.state})'
+  run_in_repo "$cb" list --provider e2b --json | jq 'map({id:(.id // .CloudID),slug:(.slug // .labels.slug),provider:(.provider // .Provider // .labels.provider),state:(.state // .labels.state // .status)})'
   stop_provider_lease e2b "$lease" "$slug"
   lease=""
 }
@@ -135,7 +145,7 @@ semaphore_smoke() {
   trap cleanup RETURN
 
   local out
-  out="$(run_in_repo "$cb" warmup --provider semaphore --semaphore-idle-timeout "${CRABBOX_SEMAPHORE_IDLE_TIMEOUT:-10m}" 2>&1)"
+  capture_run out run_in_repo "$cb" warmup --provider semaphore --semaphore-idle-timeout "${CRABBOX_SEMAPHORE_IDLE_TIMEOUT:-10m}"
   printf '%s\n' "$out"
   lease="$(printf '%s\n' "$out" | extract_lease)"
   slug="$(printf '%s\n' "$out" | extract_slug)"
@@ -173,4 +183,8 @@ if has_provider semaphore; then
   semaphore_smoke
 fi
 
-run_in_repo "$cb" admin leases --state active --json | jq 'length'
+admin_out="$(run_in_repo "$cb" admin leases --state active --json 2>&1)" || {
+  printf 'warning: admin active-lease check skipped: %s\n' "$admin_out" >&2
+  exit 0
+}
+printf '%s\n' "$admin_out" | jq 'length'

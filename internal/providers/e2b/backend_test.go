@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseE2BProcessStream(t *testing.T) {
@@ -348,6 +349,40 @@ func TestE2BStatusReady(t *testing.T) {
 	}
 }
 
+func TestE2BTimeoutCapsAtOneHour(t *testing.T) {
+	if got := e2bTimeoutSeconds(90 * time.Minute); got != 3600 {
+		t.Fatalf("timeout=%d want 3600", got)
+	}
+	if got := e2bTimeoutSeconds(0); got != 300 {
+		t.Fatalf("default timeout=%d want 300", got)
+	}
+	if got := e2bTimeoutSeconds(42 * time.Minute); got != 2520 {
+		t.Fatalf("custom timeout=%d want 2520", got)
+	}
+}
+
+func TestE2BCreateSandboxCapsDefaultTTL(t *testing.T) {
+	client := &fakeE2BSyncClient{}
+	backend := &e2bBackend{
+		cfg: Config{
+			TTL:         90 * time.Minute,
+			IdleTimeout: 30 * time.Minute,
+			E2B:         E2BConfig{Template: "base"},
+		},
+		rt: Runtime{Stdout: io.Discard, Stderr: io.Discard},
+	}
+	_, _, _, err := backend.createSandbox(context.Background(), client, Repo{Root: t.TempDir(), Name: "repo"}, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client.createReq.TimeoutSeconds != 3600 {
+		t.Fatalf("timeout=%d want 3600", client.createReq.TimeoutSeconds)
+	}
+	if client.createReq.Metadata["ttl_secs"] != "3600" {
+		t.Fatalf("metadata=%#v want capped ttl", client.createReq.Metadata)
+	}
+}
+
 func TestE2BSandboxToServerUsesMetadata(t *testing.T) {
 	server := e2bSandboxToServer(e2bSandbox{
 		SandboxID:  "sbx_1",
@@ -400,15 +435,20 @@ type fakeE2BSyncClient struct {
 	commands    []string
 	users       []string
 	sandbox     e2bSandbox
+	createReq   e2bCreateSandboxRequest
 	createCalls int
 	getErr      error
 	uploadPath  string
 	uploaded    bytes.Buffer
 }
 
-func (f *fakeE2BSyncClient) CreateSandbox(context.Context, e2bCreateSandboxRequest) (e2bSandbox, error) {
+func (f *fakeE2BSyncClient) CreateSandbox(_ context.Context, req e2bCreateSandboxRequest) (e2bSandbox, error) {
+	f.createReq = req
 	f.createCalls++
-	return e2bSandbox{}, nil
+	if f.sandbox.SandboxID != "" {
+		return f.sandbox, nil
+	}
+	return e2bSandbox{SandboxID: "sbx_1", Metadata: req.Metadata}, nil
 }
 
 func (f *fakeE2BSyncClient) ConnectSandbox(context.Context, string, int) (e2bSession, error) {
