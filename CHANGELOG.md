@@ -8,6 +8,8 @@
 
 ### Fixed
 
+- Fixed `crabbox webvnc daemon start` so it starts with a fresh bridge log and waits briefly for the bridge-ready marker before returning.
+
 ## 0.10.0 - 2026-05-10
 
 ### Added
