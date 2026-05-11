@@ -885,3 +885,83 @@ func TestEnvHelperBranches(t *testing.T) {
 		t.Fatalf("getenvList=%v ok=%t", list, ok)
 	}
 }
+
+func TestNamespaceDevboxSizeForConfig(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		cfg  Config
+		want string
+	}{
+		{name: "explicit namespace size", cfg: Config{Namespace: NamespaceConfig{Size: " xl "}, Class: "standard"}, want: "XL"},
+		{name: "explicit server type", cfg: Config{ServerType: " l ", ServerTypeExplicit: true, Class: "standard"}, want: "L"},
+		{name: "class default", cfg: Config{Class: "large"}, want: "L"},
+		{name: "empty default", cfg: Config{}, want: "M"},
+		{name: "custom class", cfg: Config{Class: "gpu"}, want: "GPU"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := namespaceDevboxSizeForConfig(tc.cfg); got != tc.want {
+				t.Fatalf("size=%q want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestApplyFileJobConfigCoversJobOptions(t *testing.T) {
+	enabled := true
+	disabled := false
+	job := applyFileJobConfig(JobConfig{}, fileJobConfig{
+		Provider:    "aws",
+		TargetOS:    targetLinux,
+		Windows:     &fileWindowsConfig{Mode: windowsModeWSL2},
+		Profile:     "ci",
+		Class:       "large",
+		Type:        "m8i.large",
+		Capacity:    &fileCapacityConfig{Market: "spot"},
+		Market:      "on-demand",
+		TTL:         "45m",
+		IdleTimeout: "5m",
+		Desktop:     &enabled,
+		Browser:     &disabled,
+		Code:        &enabled,
+		Network:     "tailscale",
+		Hydrate: &fileJobHydrateConfig{
+			Actions:          &enabled,
+			WaitTimeout:      "12m",
+			KeepAliveMinutes: 3,
+		},
+		Actions: &fileJobActionsConfig{
+			Repo:     "openclaw/crabbox",
+			Workflow: ".github/workflows/ci.yml",
+			Job:      "test",
+			Ref:      "main",
+			Fields:   []string{"a=1", "a=1", "b=2"},
+		},
+		Shell:          &enabled,
+		Command:        "pnpm test",
+		NoSync:         &enabled,
+		SyncOnly:       &disabled,
+		Checksum:       &enabled,
+		ForceSyncLarge: &enabled,
+		JUnit:          []string{"junit.xml", "junit.xml"},
+		Downloads:      []string{"out=out", "out=out"},
+		Stop:           "always",
+	})
+	if job.Provider != "aws" || job.Target != targetLinux || job.WindowsMode != windowsModeWSL2 || job.Profile != "ci" || job.Class != "large" || job.ServerType != "m8i.large" || job.Market != "on-demand" {
+		t.Fatalf("basic job fields not applied: %#v", job)
+	}
+	if job.TTL != 45*time.Minute || job.IdleTimeout != 5*time.Minute {
+		t.Fatalf("job durations ttl=%s idle=%s", job.TTL, job.IdleTimeout)
+	}
+	if job.Desktop == nil || !*job.Desktop || job.Browser == nil || *job.Browser || job.Code == nil || !*job.Code || job.Network != "tailscale" {
+		t.Fatalf("job UI/network fields not applied: %#v", job)
+	}
+	if !job.Hydrate.Actions || job.Hydrate.WaitTimeout != 12*time.Minute || job.Hydrate.KeepAliveMinutes != 3 {
+		t.Fatalf("hydrate not applied: %#v", job.Hydrate)
+	}
+	if job.Actions.Repo != "openclaw/crabbox" || job.Actions.Workflow != ".github/workflows/ci.yml" || job.Actions.Job != "test" || job.Actions.Ref != "main" || len(job.Actions.Fields) != 2 {
+		t.Fatalf("actions not applied: %#v", job.Actions)
+	}
+	if !job.Shell || job.Command != "pnpm test" || !job.NoSync || job.SyncOnly || job.Checksum == nil || !*job.Checksum || !job.ForceSyncLarge || len(job.JUnit) != 1 || len(job.Downloads) != 1 || job.Stop != "always" {
+		t.Fatalf("command/sync fields not applied: %#v", job)
+	}
+}
