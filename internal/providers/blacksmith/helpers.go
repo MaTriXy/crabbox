@@ -14,11 +14,12 @@ import (
 const blacksmithTestboxProvider = "blacksmith-testbox"
 
 var (
-	blacksmithIDPattern       = regexp.MustCompile(`\btbx_[A-Za-z0-9_-]+\b`)
-	blacksmithPostSyncPattern = regexp.MustCompile(`(?i)\b(running|executing|command|pnpm|npm|yarn|bun)\b`)
-	blacksmithCleanupAttempts = 36
-	blacksmithCleanupDelay    = 5 * time.Second
-	blacksmithCleanupQuiet    = 12
+	blacksmithIDPattern        = regexp.MustCompile(`\btbx_[A-Za-z0-9_-]+\b`)
+	blacksmithSyncStartPattern = regexp.MustCompile(`(?i)^\s*Syncing(?:\.\.\.| from repo root:)`)
+	blacksmithSyncDonePattern  = regexp.MustCompile(`(?i)^\s*(Changes synced in|No changes to sync|Sync complete)\b`)
+	blacksmithCleanupAttempts  = 36
+	blacksmithCleanupDelay     = 5 * time.Second
+	blacksmithCleanupQuiet     = 12
 )
 
 type blacksmithFlagValues struct {

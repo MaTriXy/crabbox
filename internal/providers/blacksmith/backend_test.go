@@ -34,7 +34,7 @@ type blockingSyncRunner struct{}
 
 func (blockingSyncRunner) Run(ctx context.Context, req LocalCommandRequest) (LocalCommandResult, error) {
 	if req.Stdout != nil {
-		_, _ = req.Stdout.Write([]byte("Syncing... waiting for remote workspace\n"))
+		_, _ = req.Stdout.Write([]byte("Syncing from repo root: /repo\n"))
 	}
 	<-ctx.Done()
 	return LocalCommandResult{ExitCode: 1}, ctx.Err()
@@ -319,8 +319,40 @@ func TestBlacksmithRunTerminatesSyncStall(t *testing.T) {
 	if code != 124 {
 		t.Fatalf("exit=%d want 124", code)
 	}
-	if !strings.Contains(stderr.String(), "Blacksmith Testbox sync produced no post-sync output") {
+	if !strings.Contains(stderr.String(), "Blacksmith Testbox sync did not print a completion marker") {
 		t.Fatalf("stderr=%q", stderr.String())
+	}
+}
+
+func TestBlacksmithSyncTrackerMatchesCurrentMarkers(t *testing.T) {
+	start := time.Unix(100, 0)
+	tracker := &blacksmithSyncTracker{}
+
+	tracker.observe("Syncing from repo root: /repo\n", start)
+	if !tracker.syncStalled(time.Second, start.Add(2*time.Second)) {
+		t.Fatal("sync start marker did not arm stall guard")
+	}
+
+	tracker.observe("Changes synced in 2.4s\n", start.Add(500*time.Millisecond))
+	if tracker.syncStalled(time.Second, start.Add(3*time.Second)) {
+		t.Fatal("sync completion marker did not clear stall guard")
+	}
+}
+
+func TestBlacksmithSyncTrackerHandlesSplitMarkers(t *testing.T) {
+	start := time.Unix(100, 0)
+	tracker := &blacksmithSyncTracker{}
+
+	tracker.observe("Syncing from repo", start)
+	tracker.observe(" root: /repo\n", start)
+	if !tracker.syncStalled(time.Second, start.Add(2*time.Second)) {
+		t.Fatal("split sync start marker did not arm stall guard")
+	}
+
+	tracker.observe("Changes synced", start.Add(500*time.Millisecond))
+	tracker.observe(" in 2.4s\n", start.Add(500*time.Millisecond))
+	if tracker.syncStalled(time.Second, start.Add(3*time.Second)) {
+		t.Fatal("split sync completion marker did not clear stall guard")
 	}
 }
 

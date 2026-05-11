@@ -271,7 +271,7 @@ func (b *blacksmithBackend) runTestbox(ctx context.Context, leaseID string, comm
 	if timedOut {
 		fmt.Fprintf(
 			b.rt.Stderr,
-			"Blacksmith Testbox sync produced no post-sync output for %s; terminating local runner. "+
+			"Blacksmith Testbox sync did not print a completion marker for %s; terminating local runner. "+
 				"Rerun with CRABBOX_BLACKSMITH_SYNC_TIMEOUT_MS=0 to disable this guard.\n",
 			blacksmithSyncTimeout(os.Getenv),
 		)
@@ -344,18 +344,37 @@ func (b *blacksmithBackend) runCommandWithSyncGuard(ctx context.Context, args []
 type blacksmithSyncTracker struct {
 	mu           sync.Mutex
 	syncingSince time.Time
+	pending      string
 }
 
 func (t *blacksmithSyncTracker) observe(text string, now time.Time) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if strings.Contains(text, "Syncing...") {
+	t.pending += text
+	if len(t.pending) > 4096 {
+		t.pending = t.pending[len(t.pending)-4096:]
+	}
+	for {
+		i := strings.IndexByte(t.pending, '\n')
+		if i < 0 {
+			break
+		}
+		t.observeLineLocked(t.pending[:i+1], now)
+		t.pending = t.pending[i+1:]
+	}
+	if t.pending != "" {
+		t.observeLineLocked(t.pending, now)
+	}
+}
+
+func (t *blacksmithSyncTracker) observeLineLocked(line string, now time.Time) {
+	if blacksmithSyncStartPattern.MatchString(line) {
 		if t.syncingSince.IsZero() {
 			t.syncingSince = now
 		}
 		return
 	}
-	if !t.syncingSince.IsZero() && blacksmithPostSyncPattern.MatchString(text) {
+	if !t.syncingSince.IsZero() && blacksmithSyncDonePattern.MatchString(line) {
 		t.syncingSince = time.Time{}
 	}
 }

@@ -18,6 +18,7 @@
 
 ### Fixed
 
+- Fixed the Blacksmith Testbox sync-stall guard to match current `blacksmith` CLI sync start and completion messages.
 - Fixed GCP leases so exact `--type` requests still use configured zone and Spot-to-on-demand fallback, aliases derive GCP class defaults, explicit brokered tags replace Worker default tags, custom networks and ingress policies get separate SSH firewall rules, and brokered pool views include instances outside the Worker's default zone.
 - Fixed `crabbox actions hydrate/register` so AWS Windows WSL2 leases can use Linux GitHub Actions hydration instead of being rejected as Windows targets, including root-runner and stale apt-list handling.
 - Fixed `scripts/openclaw-wsl2-tests.sh` so follow-up hydrate/run/cleanup commands keep the AWS Windows WSL2 target configuration and warmup failures print captured output.
