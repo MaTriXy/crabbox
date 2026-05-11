@@ -48,6 +48,21 @@ type Config struct {
 	AzureSubnet        string
 	AzureNSG           string
 	AzureSSHCIDRs      []string
+	GCPProject         string
+	gcpProjectExplicit bool
+	GCPZone            string
+	gcpZoneExplicit    bool
+	GCPImage           string
+	gcpImageExplicit   bool
+	GCPNetwork         string
+	gcpNetworkExplicit bool
+	GCPSubnet          string
+	GCPTags            []string
+	gcpTagsExplicit    bool
+	GCPSSHCIDRs        []string
+	GCPRootGB          int64
+	gcpRootGBExplicit  bool
+	GCPServiceAccount  string
 	SSHUser            string
 	SSHKey             string
 	SSHPort            string
@@ -263,6 +278,7 @@ func loadConfig() (Config, error) {
 		}
 	}
 	applyEnv(&cfg)
+	canonicalizeConfigProvider(&cfg)
 	normalizeTargetConfig(&cfg)
 	if err := validateTargetConfig(cfg); err != nil {
 		return Config{}, err
@@ -274,6 +290,13 @@ func loadConfig() (Config, error) {
 		cfg.ServerType = serverTypeForConfig(cfg)
 	}
 	return cfg, nil
+}
+
+func canonicalizeConfigProvider(cfg *Config) {
+	provider, err := ProviderFor(cfg.Provider)
+	if err == nil {
+		cfg.Provider = provider.Name()
+	}
 }
 
 func baseConfig() Config {
@@ -303,6 +326,11 @@ func baseConfig() Config {
 		AzureVNet:          "crabbox-vnet",
 		AzureSubnet:        "crabbox-subnet",
 		AzureNSG:           "crabbox-nsg",
+		GCPZone:            "europe-west2-a",
+		GCPImage:           defaultGCPLinuxImage,
+		GCPNetwork:         "default",
+		GCPTags:            []string{"crabbox-ssh"},
+		GCPRootGB:          400,
 		SSHUser:            "crabbox",
 		SSHKey:             sshKey,
 		SSHPort:            "2222",
@@ -396,6 +424,7 @@ type fileConfig struct {
 	Hetzner          *fileHetznerConfig       `yaml:"hetzner,omitempty"`
 	AWS              *fileAWSConfig           `yaml:"aws,omitempty"`
 	Azure            *fileAzureConfig         `yaml:"azure,omitempty"`
+	GCP              *fileGCPConfig           `yaml:"gcp,omitempty"`
 	SSH              *fileSSHConfig           `yaml:"ssh,omitempty"`
 	Sync             *fileSyncConfig          `yaml:"sync,omitempty"`
 	Env              *fileEnvConfig           `yaml:"env,omitempty"`
@@ -465,6 +494,18 @@ type fileAzureConfig struct {
 	Subnet         string   `yaml:"subnet,omitempty"`
 	NSG            string   `yaml:"nsg,omitempty"`
 	SSHCIDRs       []string `yaml:"sshCIDRs,omitempty"`
+}
+
+type fileGCPConfig struct {
+	Project        string   `yaml:"project,omitempty"`
+	Zone           string   `yaml:"zone,omitempty"`
+	Image          string   `yaml:"image,omitempty"`
+	Network        string   `yaml:"network,omitempty"`
+	Subnet         string   `yaml:"subnet,omitempty"`
+	Tags           []string `yaml:"tags,omitempty"`
+	SSHCIDRs       []string `yaml:"sshCIDRs,omitempty"`
+	RootGB         int64    `yaml:"rootGB,omitempty"`
+	ServiceAccount string   `yaml:"serviceAccount,omitempty"`
 }
 
 type fileSSHConfig struct {
@@ -886,6 +927,41 @@ func applyFileConfig(cfg *Config, file fileConfig) {
 		}
 		if len(file.Azure.SSHCIDRs) > 0 {
 			cfg.AzureSSHCIDRs = file.Azure.SSHCIDRs
+		}
+	}
+	if file.GCP != nil {
+		if file.GCP.Project != "" {
+			cfg.GCPProject = file.GCP.Project
+			cfg.gcpProjectExplicit = true
+		}
+		if file.GCP.Zone != "" {
+			cfg.GCPZone = file.GCP.Zone
+			cfg.gcpZoneExplicit = true
+		}
+		if file.GCP.Image != "" {
+			cfg.GCPImage = file.GCP.Image
+			cfg.gcpImageExplicit = true
+		}
+		if file.GCP.Network != "" {
+			cfg.GCPNetwork = file.GCP.Network
+			cfg.gcpNetworkExplicit = true
+		}
+		if file.GCP.Subnet != "" {
+			cfg.GCPSubnet = file.GCP.Subnet
+		}
+		if len(file.GCP.Tags) > 0 {
+			cfg.GCPTags = file.GCP.Tags
+			cfg.gcpTagsExplicit = true
+		}
+		if len(file.GCP.SSHCIDRs) > 0 {
+			cfg.GCPSSHCIDRs = file.GCP.SSHCIDRs
+		}
+		if file.GCP.RootGB > 0 {
+			cfg.GCPRootGB = file.GCP.RootGB
+			cfg.gcpRootGBExplicit = true
+		}
+		if file.GCP.ServiceAccount != "" {
+			cfg.GCPServiceAccount = file.GCP.ServiceAccount
 		}
 	}
 	if file.SSH != nil {
@@ -1385,6 +1461,43 @@ func applyEnv(cfg *Config) {
 	if cidrs := os.Getenv("CRABBOX_AZURE_SSH_CIDRS"); cidrs != "" {
 		cfg.AzureSSHCIDRs = splitCommaList(cidrs)
 	}
+	if project := os.Getenv("CRABBOX_GCP_PROJECT"); project != "" {
+		cfg.GCPProject = project
+		cfg.gcpProjectExplicit = true
+	} else if cfg.GCPProject == "" {
+		if project := os.Getenv("GOOGLE_CLOUD_PROJECT"); project != "" {
+			cfg.GCPProject = project
+			cfg.gcpProjectExplicit = false
+		} else if project := os.Getenv("GCP_PROJECT_ID"); project != "" {
+			cfg.GCPProject = project
+			cfg.gcpProjectExplicit = false
+		}
+	}
+	if zone := os.Getenv("CRABBOX_GCP_ZONE"); zone != "" {
+		cfg.GCPZone = zone
+		cfg.gcpZoneExplicit = true
+	}
+	if image := os.Getenv("CRABBOX_GCP_IMAGE"); image != "" {
+		cfg.GCPImage = image
+		cfg.gcpImageExplicit = true
+	}
+	if network := os.Getenv("CRABBOX_GCP_NETWORK"); network != "" {
+		cfg.GCPNetwork = network
+		cfg.gcpNetworkExplicit = true
+	}
+	cfg.GCPSubnet = getenv("CRABBOX_GCP_SUBNET", cfg.GCPSubnet)
+	if rootGB := os.Getenv("CRABBOX_GCP_ROOT_GB"); rootGB != "" {
+		cfg.GCPRootGB = int64(getenvInt("CRABBOX_GCP_ROOT_GB", int(cfg.GCPRootGB)))
+		cfg.gcpRootGBExplicit = true
+	}
+	cfg.GCPServiceAccount = getenv("CRABBOX_GCP_SERVICE_ACCOUNT", cfg.GCPServiceAccount)
+	if tags := os.Getenv("CRABBOX_GCP_TAGS"); tags != "" {
+		cfg.GCPTags = splitCommaList(tags)
+		cfg.gcpTagsExplicit = true
+	}
+	if cidrs := os.Getenv("CRABBOX_GCP_SSH_CIDRS"); cidrs != "" {
+		cfg.GCPSSHCIDRs = splitCommaList(cidrs)
+	}
 	cfg.SSHUser = getenv("CRABBOX_SSH_USER", cfg.SSHUser)
 	cfg.SSHKey = getenv("CRABBOX_SSH_KEY", cfg.SSHKey)
 	cfg.SSHPort = getenv("CRABBOX_SSH_PORT", cfg.SSHPort)
@@ -1569,6 +1682,9 @@ func serverTypeForClass(class string) string {
 }
 
 func serverTypeForConfig(cfg Config) string {
+	if resolved, err := ProviderFor(cfg.Provider); err == nil {
+		cfg.Provider = resolved.Name()
+	}
 	if isBlacksmithProvider(cfg.Provider) || isStaticProvider(cfg.Provider) || cfg.Provider == "islo" || cfg.Provider == "sprites" {
 		return ""
 	}
@@ -1587,10 +1703,16 @@ func serverTypeForConfig(cfg Config) string {
 	if cfg.Provider == "azure" {
 		return azureVMSizeCandidatesForConfig(cfg)[0]
 	}
+	if cfg.Provider == "gcp" {
+		return gcpMachineTypeCandidatesForClass(cfg.Class)[0]
+	}
 	return serverTypeForClass(cfg.Class)
 }
 
 func serverTypeForProviderClass(provider, class string) string {
+	if resolved, err := ProviderFor(provider); err == nil {
+		provider = resolved.Name()
+	}
 	if isBlacksmithProvider(provider) || isStaticProvider(provider) || provider == "islo" || provider == "sprites" {
 		return ""
 	}
@@ -1608,6 +1730,9 @@ func serverTypeForProviderClass(provider, class string) string {
 	}
 	if provider == "azure" {
 		return azureVMSizeCandidatesForClass(class)[0]
+	}
+	if provider == "gcp" {
+		return gcpMachineTypeCandidatesForClass(class)[0]
 	}
 	return serverTypeForClass(class)
 }

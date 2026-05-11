@@ -130,6 +130,17 @@ func (a App) configShow(args []string) error {
 			"rootGB":          cfg.AWSRootGB,
 			"sshCIDRs":        cfg.AWSSSHCIDRs,
 		},
+		"gcp": map[string]any{
+			"project":        cfg.GCPProject,
+			"zone":           cfg.GCPZone,
+			"image":          cfg.GCPImage,
+			"network":        cfg.GCPNetwork,
+			"subnet":         cfg.GCPSubnet,
+			"tags":           cfg.GCPTags,
+			"rootGB":         cfg.GCPRootGB,
+			"sshCIDRs":       cfg.GCPSSHCIDRs,
+			"serviceAccount": cfg.GCPServiceAccount,
+		},
 	}
 	if *jsonOut {
 		return json.NewEncoder(a.Stdout).Encode(view)
@@ -158,6 +169,7 @@ func (a App) configShow(args []string) error {
 		fmt.Fprintf(a.Stdout, "jobs=%s\n", strings.Join(names, ","))
 	}
 	fmt.Fprintf(a.Stdout, "aws region=%s root_gb=%d ssh_cidrs=%s\n", cfg.AWSRegion, cfg.AWSRootGB, blank(strings.Join(cfg.AWSSSHCIDRs, ","), "-"))
+	fmt.Fprintf(a.Stdout, "gcp project=%s zone=%s image=%s network=%s subnet=%s root_gb=%d ssh_cidrs=%s\n", blank(cfg.GCPProject, "-"), cfg.GCPZone, cfg.GCPImage, cfg.GCPNetwork, blank(cfg.GCPSubnet, "-"), cfg.GCPRootGB, blank(strings.Join(cfg.GCPSSHCIDRs, ","), "-"))
 	return nil
 }
 
@@ -222,7 +234,7 @@ func durationString(d time.Duration) string {
 func (a App) configSetBroker(args []string) error {
 	fs := newFlagSet("config set-broker", a.Stderr)
 	url := fs.String("url", "", "broker URL")
-	provider := fs.String("provider", "", "default provider: hetzner, aws, or azure")
+	provider := fs.String("provider", "", "default provider: hetzner, aws, azure, or gcp")
 	tokenStdin := fs.Bool("token-stdin", false, "read broker token from stdin")
 	adminTokenStdin := fs.Bool("admin-token-stdin", false, "read broker admin token from stdin")
 	if err := parseFlags(fs, args); err != nil {

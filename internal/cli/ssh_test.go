@@ -857,6 +857,8 @@ func TestServerTypeForProviderClassDirectProviders(t *testing.T) {
 		{provider: "e2b", class: "beast", want: "base"},
 		{provider: "daytona", class: "beast", want: "snapshot"},
 		{provider: "azure", class: "standard", want: "Standard_D32ads_v6"},
+		{provider: "google", class: "standard", want: "c4-standard-32"},
+		{provider: "google-cloud", class: "standard", want: "c4-standard-32"},
 		{provider: "hetzner", class: "fast", want: "ccx43"},
 	}
 	for _, tt := range tests {

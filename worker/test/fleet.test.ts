@@ -2,6 +2,7 @@ import { Script, createContext } from "node:vm";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { LeaseConfig } from "../src/config";
 import {
   FleetDurableObject,
   bridgeTicketFromRequest,
@@ -488,6 +489,49 @@ describe("fleet lease identity and idle", () => {
     );
     expect(create.status).toBe(201);
     expect(awsCIDRs).toEqual(["198.51.100.0/24"]);
+  });
+
+  it("records per-request GCP project without filling Worker-owned defaults", async () => {
+    let seenConfig: LeaseConfig | undefined;
+    const fleet = testFleet(new MemoryStorage(), {
+      gcp: fakeProvider(
+        (config) => {
+          seenConfig = config;
+        },
+        {
+          provider: "gcp",
+          serverType: "c4-standard-192",
+          cloudID: "crabbox-gcp-test",
+        },
+      ),
+    });
+    const create = await fleet.fetch(
+      request("POST", "/v1/leases", {
+        headers: {
+          "x-crabbox-owner": "peter@example.com",
+          "x-crabbox-org": "openclaw",
+        },
+        body: {
+          leaseID: "cbx_abcdef123456",
+          provider: "gcp",
+          gcpProject: "request-project",
+          class: "beast",
+          serverType: "c4-standard-192",
+          ttlSeconds: 1200,
+          sshPublicKey: "ssh-ed25519 test",
+        },
+      }),
+    );
+    expect(create.status).toBe(201);
+    expect(seenConfig?.gcpProject).toBe("request-project");
+    expect(seenConfig?.gcpZone).toBe("");
+    expect(seenConfig?.gcpImage).toBe("");
+    expect(seenConfig?.gcpNetwork).toBe("");
+    expect(seenConfig?.gcpTags).toEqual([]);
+    expect(seenConfig?.gcpRootGB).toBe(0);
+    const { lease } = (await create.json()) as { lease: LeaseRecord };
+    expect(lease.providerProject).toBe("request-project");
+    expect(lease.region).toBe("us-central1-a");
   });
 
   it("records requested type and provider fallback attempts on resolved leases", async () => {
@@ -3177,17 +3221,9 @@ function testFleet(
 }
 
 function fakeProvider(
-  onCreate?: (config: {
-    awsSSHCIDRs: string[];
-    tailscale?: boolean;
-    tailscaleAuthKey?: string;
-    tailscaleHostname?: string;
-    tailscaleTags?: string[];
-    tailscaleExitNode?: string;
-    tailscaleExitNodeAllowLanAccess?: boolean;
-  }) => void,
+  onCreate?: (config: LeaseConfig) => void,
   result: {
-    provider?: "hetzner" | "aws";
+    provider?: "hetzner" | "aws" | "gcp";
     serverType?: string;
     cloudID?: string;
     market?: string;
@@ -3198,11 +3234,7 @@ function fakeProvider(
     async listCrabboxServers() {
       return [];
     },
-    async createServerWithFallback(
-      config: { awsSSHCIDRs: string[] },
-      _leaseID: string,
-      slug: string,
-    ) {
+    async createServerWithFallback(config: LeaseConfig, _leaseID: string, slug: string) {
       onCreate?.(config);
       return {
         server: {
@@ -3213,7 +3245,12 @@ function fakeProvider(
           status: "running",
           serverType: result.serverType ?? "cpx62",
           host: "192.0.2.10",
-          region: result.provider === "aws" ? "eu-west-2" : undefined,
+          region:
+            result.provider === "aws"
+              ? "eu-west-2"
+              : result.provider === "gcp"
+                ? "us-central1-a"
+                : undefined,
           labels: {},
         },
         serverType: result.serverType ?? "cpx62",

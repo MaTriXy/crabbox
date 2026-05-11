@@ -28,6 +28,17 @@ func clearConfigEnv(t *testing.T) {
 		"CF_ACCESS_CLIENT_ID",
 		"CF_ACCESS_CLIENT_SECRET",
 		"CF_ACCESS_TOKEN",
+		"CRABBOX_GCP_PROJECT",
+		"GOOGLE_CLOUD_PROJECT",
+		"GCP_PROJECT_ID",
+		"CRABBOX_GCP_ZONE",
+		"CRABBOX_GCP_IMAGE",
+		"CRABBOX_GCP_NETWORK",
+		"CRABBOX_GCP_SUBNET",
+		"CRABBOX_GCP_TAGS",
+		"CRABBOX_GCP_SSH_CIDRS",
+		"CRABBOX_GCP_ROOT_GB",
+		"CRABBOX_GCP_SERVICE_ACCOUNT",
 		"CRABBOX_DAYTONA_API_KEY",
 		"DAYTONA_API_KEY",
 		"CRABBOX_DAYTONA_JWT_TOKEN",
@@ -386,6 +397,15 @@ func TestEnvOverridesConfig(t *testing.T) {
 	t.Setenv("CRABBOX_IDLE_TIMEOUT", "20m")
 	t.Setenv("CRABBOX_AWS_SSH_CIDRS", "198.51.100.7/32,203.0.113.8/32")
 	t.Setenv("CRABBOX_AZURE_SSH_CIDRS", "198.51.100.9/32,203.0.113.10/32")
+	t.Setenv("CRABBOX_GCP_PROJECT", "crabbox-project")
+	t.Setenv("CRABBOX_GCP_ZONE", "europe-west2-b")
+	t.Setenv("CRABBOX_GCP_IMAGE", "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64")
+	t.Setenv("CRABBOX_GCP_NETWORK", "crabbox-net")
+	t.Setenv("CRABBOX_GCP_SUBNET", "crabbox-subnet")
+	t.Setenv("CRABBOX_GCP_TAGS", "crabbox-ssh,crabbox-ci")
+	t.Setenv("CRABBOX_GCP_SSH_CIDRS", "198.51.100.11/32,203.0.113.12/32")
+	t.Setenv("CRABBOX_GCP_ROOT_GB", "900")
+	t.Setenv("CRABBOX_GCP_SERVICE_ACCOUNT", "runner@crabbox-project.iam.gserviceaccount.com")
 	t.Setenv("CRABBOX_SSH_FALLBACK_PORTS", "none")
 	t.Setenv("CRABBOX_ACCESS_CLIENT_ID", "env-access-client")
 	t.Setenv("CRABBOX_ACCESS_CLIENT_SECRET", "env-access-secret")
@@ -499,6 +519,12 @@ func TestEnvOverridesConfig(t *testing.T) {
 	if len(cfg.AzureSSHCIDRs) != 2 || cfg.AzureSSHCIDRs[0] != "198.51.100.9/32" || cfg.AzureSSHCIDRs[1] != "203.0.113.10/32" {
 		t.Fatalf("AzureSSHCIDRs=%v", cfg.AzureSSHCIDRs)
 	}
+	if cfg.GCPProject != "crabbox-project" || cfg.GCPZone != "europe-west2-b" || cfg.GCPNetwork != "crabbox-net" || cfg.GCPSubnet != "crabbox-subnet" || cfg.GCPRootGB != 900 || cfg.GCPServiceAccount != "runner@crabbox-project.iam.gserviceaccount.com" {
+		t.Fatalf("unexpected gcp env: project=%s zone=%s network=%s subnet=%s root=%d service=%s", cfg.GCPProject, cfg.GCPZone, cfg.GCPNetwork, cfg.GCPSubnet, cfg.GCPRootGB, cfg.GCPServiceAccount)
+	}
+	if len(cfg.GCPTags) != 2 || cfg.GCPTags[1] != "crabbox-ci" || len(cfg.GCPSSHCIDRs) != 2 || cfg.GCPSSHCIDRs[1] != "203.0.113.12/32" {
+		t.Fatalf("unexpected gcp tags/cidrs: tags=%v cidrs=%v", cfg.GCPTags, cfg.GCPSSHCIDRs)
+	}
 	if len(cfg.SSHFallbackPorts) != 0 {
 		t.Fatalf("SSHFallbackPorts=%v want disabled fallback", cfg.SSHFallbackPorts)
 	}
@@ -582,6 +608,24 @@ func TestTailscaleEnvOverrides(t *testing.T) {
 	}
 	if len(cfg.Tailscale.Tags) != 2 || cfg.Tailscale.Tags[1] != "tag:ci" {
 		t.Fatalf("unexpected tailscale tags: %#v", cfg.Tailscale.Tags)
+	}
+}
+
+func TestProviderAliasCanonicalizedBeforeDefaults(t *testing.T) {
+	clearConfigEnv(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("CRABBOX_CONFIG", "")
+	t.Setenv("CRABBOX_PROVIDER", "google")
+	t.Setenv("GOOGLE_CLOUD_PROJECT", "crabbox-project")
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Provider != "gcp" || cfg.ServerType != "c4-standard-192" {
+		t.Fatalf("provider=%q type=%q want gcp c4-standard-192", cfg.Provider, cfg.ServerType)
 	}
 }
 
