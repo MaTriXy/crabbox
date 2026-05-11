@@ -43,13 +43,22 @@ func defaultExcludes() []string {
 		".git",
 		"._*",
 		"node_modules",
+		".ignored",
 		".turbo",
 		".next",
+		".vite",
+		".parcel-cache",
+		".rollup.cache",
 		"dist",
 		"dist-runtime",
 		"coverage",
+		"playwright-report",
+		"test-results",
 		".cache",
+		".tmp",
 		".local",
+		".crabbox/logs",
+		".crabbox/captures",
 		".swiftpm",
 		".build",
 		"apps/*/.build",
@@ -192,10 +201,6 @@ func syncFingerprintForManifest(repo Repo, cfg Config, manifest SyncManifest, ex
 	if repo.Head == "" {
 		return "", nil
 	}
-	paths, err := changedSyncPaths(repo.Root, excludes)
-	if err != nil {
-		return "", err
-	}
 	h := sha256.New()
 	fmt.Fprintf(h, "v3\nhead=%s\n", repo.Head)
 	fmt.Fprintf(h, "delete=%t\nchecksum=%t\n", cfg.Sync.Delete, cfg.Sync.Checksum)
@@ -204,7 +209,7 @@ func syncFingerprintForManifest(repo Repo, cfg Config, manifest SyncManifest, ex
 	for _, exclude := range excludes {
 		fmt.Fprintf(h, "exclude=%s\n", exclude)
 	}
-	for _, rel := range paths {
+	for _, rel := range manifest.Changed {
 		fmt.Fprintf(h, "path=%s\n", rel)
 		full := filepath.Join(repo.Root, filepath.FromSlash(rel))
 		info, err := os.Lstat(full)
@@ -231,9 +236,11 @@ func syncFingerprintForManifest(repo Repo, cfg Config, manifest SyncManifest, ex
 }
 
 type SyncManifest struct {
-	Files   []string
-	Deleted []string
-	Bytes   int64
+	Files        []string
+	Deleted      []string
+	Changed      []string
+	Bytes        int64
+	ChangedBytes int64
 }
 
 func syncManifest(root string, excludes []string) (SyncManifest, error) {
@@ -265,6 +272,11 @@ func syncManifest(root string, excludes []string) (SyncManifest, error) {
 		return SyncManifest{}, err
 	}
 	manifest.Deleted = filterDeletedPaths(deleted, seen)
+	changed, err := changedSyncPaths(root, excludes)
+	if err != nil {
+		return SyncManifest{}, err
+	}
+	manifest.Changed, manifest.ChangedBytes = changedPathSetBytes(root, changed)
 	return manifest, nil
 }
 
@@ -332,6 +344,25 @@ func filterDeletedPaths(deleted []string, files map[string]bool) []string {
 	return out
 }
 
+func changedPathSetBytes(root string, paths []string) ([]string, int64) {
+	out := make([]string, 0, len(paths))
+	var bytes int64
+	for _, rel := range paths {
+		if !safeRepoRel(rel) {
+			continue
+		}
+		out = append(out, rel)
+		full := filepath.Join(root, filepath.FromSlash(rel))
+		info, err := os.Lstat(full)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		bytes += info.Size()
+	}
+	sort.Strings(out)
+	return out, bytes
+}
+
 func safeRepoRel(rel string) bool {
 	if rel == "" || strings.HasPrefix(rel, "/") {
 		return false
@@ -346,27 +377,86 @@ func safeRepoRel(rel string) bool {
 
 func checkSyncPreflight(manifest SyncManifest, cfg Config, force bool, stderr io.Writer) error {
 	fileCount := len(manifest.Files)
-	fmt.Fprintf(stderr, "sync candidate: %d files, %s\n", fileCount, humanBytes(manifest.Bytes))
+	guardCount, guardBytes, guardScope, guardPaths := syncGuardrailScope(manifest)
+	if len(manifest.Changed) > 0 {
+		fmt.Fprintf(stderr, "sync candidate: %d files, %s dirty_delta=%d files, %s\n", fileCount, humanBytes(manifest.Bytes), len(manifest.Changed), humanBytes(manifest.ChangedBytes))
+	} else {
+		fmt.Fprintf(stderr, "sync candidate: %d files, %s\n", fileCount, humanBytes(manifest.Bytes))
+	}
 	allowLarge := force || cfg.Sync.AllowLarge || os.Getenv("CRABBOX_SYNC_ALLOW_LARGE") == "1"
 	if !allowLarge {
-		if cfg.Sync.FailFiles > 0 && fileCount >= cfg.Sync.FailFiles {
-			return exit(6, "sync candidate too large: %d files >= limit %d; use --force-sync-large or CRABBOX_SYNC_ALLOW_LARGE=1", fileCount, cfg.Sync.FailFiles)
+		if cfg.Sync.FailFiles > 0 && guardCount >= cfg.Sync.FailFiles {
+			printSyncTopDirs(stderr, guardPaths)
+			return exit(6, "sync %s too large: %d files >= limit %d; use --force-sync-large or CRABBOX_SYNC_ALLOW_LARGE=1", guardScope, guardCount, cfg.Sync.FailFiles)
 		}
-		if cfg.Sync.FailBytes > 0 && manifest.Bytes >= cfg.Sync.FailBytes {
-			return exit(6, "sync candidate too large: %s >= limit %s; use --force-sync-large or CRABBOX_SYNC_ALLOW_LARGE=1", humanBytes(manifest.Bytes), humanBytes(cfg.Sync.FailBytes))
+		if cfg.Sync.FailBytes > 0 && guardBytes >= cfg.Sync.FailBytes {
+			printSyncTopDirs(stderr, guardPaths)
+			return exit(6, "sync %s too large: %s >= limit %s; use --force-sync-large or CRABBOX_SYNC_ALLOW_LARGE=1", guardScope, humanBytes(guardBytes), humanBytes(cfg.Sync.FailBytes))
 		}
 	}
-	if cfg.Sync.WarnFiles > 0 && fileCount >= cfg.Sync.WarnFiles {
-		fmt.Fprintf(stderr, "warning: large sync candidate: %d files >= warning threshold %d\n", fileCount, cfg.Sync.WarnFiles)
+	warned := false
+	if cfg.Sync.WarnFiles > 0 && guardCount >= cfg.Sync.WarnFiles {
+		fmt.Fprintf(stderr, "warning: large sync %s: %d files >= warning threshold %d\n", guardScope, guardCount, cfg.Sync.WarnFiles)
+		warned = true
 	}
-	if cfg.Sync.WarnBytes > 0 && manifest.Bytes >= cfg.Sync.WarnBytes {
-		fmt.Fprintf(stderr, "warning: large sync candidate: %s >= warning threshold %s\n", humanBytes(manifest.Bytes), humanBytes(cfg.Sync.WarnBytes))
+	if cfg.Sync.WarnBytes > 0 && guardBytes >= cfg.Sync.WarnBytes {
+		fmt.Fprintf(stderr, "warning: large sync %s: %s >= warning threshold %s\n", guardScope, humanBytes(guardBytes), humanBytes(cfg.Sync.WarnBytes))
+		warned = true
+	}
+	if warned {
+		printSyncTopDirs(stderr, guardPaths)
 	}
 	return nil
 }
 
+func syncGuardrailScope(manifest SyncManifest) (count int, bytes int64, scope string, paths []string) {
+	if len(manifest.Changed) > 0 {
+		return len(manifest.Changed), manifest.ChangedBytes, "dirty_delta", manifest.Changed
+	}
+	return len(manifest.Files), manifest.Bytes, "candidate", manifest.Files
+}
+
 func CheckSyncPreflight(manifest SyncManifest, cfg Config, force bool, stderr io.Writer) error {
 	return checkSyncPreflight(manifest, cfg, force, stderr)
+}
+
+func printSyncTopDirs(stderr io.Writer, paths []string) {
+	if stderr == nil {
+		return
+	}
+	type dirCount struct {
+		Dir   string
+		Count int
+	}
+	counts := map[string]int{}
+	for _, file := range paths {
+		dir := strings.Split(file, "/")[0]
+		if dir == "" {
+			dir = "."
+		}
+		counts[dir]++
+	}
+	dirs := make([]dirCount, 0, len(counts))
+	for dir, count := range counts {
+		dirs = append(dirs, dirCount{Dir: dir, Count: count})
+	}
+	sort.Slice(dirs, func(i, j int) bool {
+		if dirs[i].Count == dirs[j].Count {
+			return dirs[i].Dir < dirs[j].Dir
+		}
+		return dirs[i].Count > dirs[j].Count
+	})
+	if len(dirs) > 5 {
+		dirs = dirs[:5]
+	}
+	parts := make([]string, 0, len(dirs))
+	for _, item := range dirs {
+		parts = append(parts, fmt.Sprintf("%s:%d", item.Dir, item.Count))
+	}
+	if len(parts) > 0 {
+		fmt.Fprintf(stderr, "sync top dirs: %s\n", strings.Join(parts, ","))
+		fmt.Fprintln(stderr, "sync hint: add generated paths to .crabboxignore or sync.exclude, or use --force-sync-large when intentional")
+	}
 }
 
 func humanBytes(n int64) string {

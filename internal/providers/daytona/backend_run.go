@@ -71,8 +71,13 @@ func (b *daytonaLeaseBackend) Run(ctx context.Context, req RunRequest) (RunResul
 			}
 		}
 	}
-	if acquired && !req.Keep {
-		defer b.deleteDaytonaToolboxSandbox(context.Background(), sandbox.ID, leaseID)
+	shouldStop := acquired && !req.Keep
+	if shouldStop {
+		defer func() {
+			if shouldStop {
+				b.deleteDaytonaToolboxSandbox(context.Background(), sandbox.ID, leaseID)
+			}
+		}()
 	}
 	cfg := b.cfg
 	cfg.Provider = daytonaProvider
@@ -118,7 +123,7 @@ func (b *daytonaLeaseBackend) Run(ctx context.Context, req RunRequest) (RunResul
 	commandStarted := time.Now()
 	fmt.Fprintf(b.rt.Stderr, "running on daytona %s\n", strings.Join(req.Command, " "))
 	execOpts := []func(*sdkoptions.ExecuteCommand){sdkoptions.WithCwd(workdir)}
-	if env := allowedEnv(req.Options.EnvAllow); len(env) > 0 {
+	if env := req.Env; len(env) > 0 {
 		execOpts = append(execOpts, sdkoptions.WithCommandEnv(env))
 	}
 	response, err := sandbox.Process.ExecuteCommand(ctx, command, execOpts...)
@@ -152,9 +157,11 @@ func (b *daytonaLeaseBackend) Run(ctx context.Context, req RunRequest) (RunResul
 		}
 	}
 	if err != nil {
+		handleDelegatedRunFailure(b.rt.Stderr, req, daytonaProvider, leaseID, slug, b.cfg.IdleTimeout, b.cfg.TTL, acquired, &shouldStop)
 		return result, ExitError{Code: 1, Message: fmt.Sprintf("daytona run failed: %v", err)}
 	}
 	if result.ExitCode != 0 {
+		handleDelegatedRunFailure(b.rt.Stderr, req, daytonaProvider, leaseID, slug, b.cfg.IdleTimeout, b.cfg.TTL, acquired, &shouldStop)
 		return result, ExitError{Code: result.ExitCode, Message: fmt.Sprintf("daytona run exited %d", result.ExitCode)}
 	}
 	return result, nil

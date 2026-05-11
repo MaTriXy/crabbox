@@ -209,24 +209,31 @@ type ListRequest struct {
 }
 
 type RunRequest struct {
-	Repo           Repo
-	ID             string
-	Options        LeaseOptions
-	Keep           bool
-	Reclaim        bool
-	NoSync         bool
-	SyncOnly       bool
-	DebugSync      bool
-	ShellMode      bool
-	ChecksumSync   bool
-	ForceSyncLarge bool
-	CaptureStdout  string
-	CaptureStderr  string
-	CaptureOnFail  bool
-	Preflight      bool
-	Downloads      []string
-	Command        []string
-	TimingJSON     bool
+	Repo            Repo
+	ID              string
+	Options         LeaseOptions
+	Keep            bool
+	Reclaim         bool
+	NoSync          bool
+	SyncOnly        bool
+	DebugSync       bool
+	ShellMode       bool
+	ChecksumSync    bool
+	ForceSyncLarge  bool
+	CaptureStdout   string
+	CaptureStderr   string
+	CaptureOnFail   bool
+	KeepOnFailure   bool
+	Preflight       bool
+	Downloads       []string
+	Env             map[string]string
+	EnvSummary      bool
+	ScriptRequested bool
+	Script          *RunScriptSpec
+	FreshPR         FreshPRSpec
+	ApplyLocalPatch bool
+	Command         []string
+	TimingJSON      bool
 }
 
 type WarmupRequest struct {
@@ -456,6 +463,12 @@ func rejectDelegatedSyncOptions(provider string, req RunRequest) error {
 	}
 	if len(req.Downloads) > 0 {
 		return exit(2, "%s delegates run execution; --download is not supported", provider)
+	}
+	if req.Script != nil || req.ScriptRequested {
+		return exit(2, "%s delegates run execution; --script is not supported", provider)
+	}
+	if !req.FreshPR.Empty() {
+		return exit(2, "%s delegates sync; --fresh-pr is not supported", provider)
 	}
 	return nil
 }

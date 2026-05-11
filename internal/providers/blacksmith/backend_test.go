@@ -1,7 +1,9 @@
 package blacksmith
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -347,6 +349,96 @@ func TestBlacksmithRunTimingJSONIncludesCommandPhases(t *testing.T) {
 	}
 }
 
+func TestBlacksmithKeepOnFailureKeepsTestboxAndWritesBundle(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(home, ".local", "state"))
+	t.Chdir(t.TempDir())
+	runner := &blacksmithFuncRunner{fn: func(req LocalCommandRequest) (LocalCommandResult, error) {
+		if len(req.Args) >= 3 && req.Args[0] == "testbox" && req.Args[1] == "warmup" {
+			return LocalCommandResult{Stdout: "ready tbx_keepfail\n"}, nil
+		}
+		if len(req.Args) >= 3 && req.Args[0] == "testbox" && req.Args[1] == "run" {
+			if req.Stdout != nil {
+				_, _ = req.Stdout.Write([]byte("delegated stdout\n"))
+			}
+			if req.Stderr != nil {
+				_, _ = req.Stderr.Write([]byte("delegated stderr\n"))
+			}
+			return LocalCommandResult{ExitCode: 7}, errors.New("exit status 7")
+		}
+		return LocalCommandResult{}, nil
+	}}
+	var stderr bytes.Buffer
+	cfg := baseConfig()
+	cfg.Blacksmith.Workflow = ".github/workflows/testbox.yml"
+	backend := &blacksmithBackend{
+		spec: Provider{}.Spec(),
+		cfg:  cfg,
+		rt:   Runtime{Stdout: io.Discard, Stderr: &stderr, Clock: testClock{}, Exec: runner},
+	}
+	_, err := backend.Run(context.Background(), RunRequest{
+		Repo:          Repo{Root: "/repo"},
+		Command:       []string{"false"},
+		KeepOnFailure: true,
+	})
+	var exitErr ExitError
+	if !errors.As(err, &exitErr) || exitErr.Code != 7 {
+		t.Fatalf("err=%v want exit 7", err)
+	}
+	if len(runner.calls) != 3 {
+		t.Fatalf("blacksmith calls=%d want list/warmup/run without stop: %#v", len(runner.calls), runner.calls)
+	}
+	got := stderr.String()
+	if !strings.Contains(got, "failure-bundle local=") || !strings.Contains(got, "keep-on-failure: kept lease=tbx_keepfail") {
+		t.Fatalf("stderr missing bundle/keep hint: %s", got)
+	}
+	bundle := ""
+	for _, field := range strings.Fields(got) {
+		if strings.HasPrefix(field, "local=.crabbox/captures/") {
+			bundle = strings.TrimPrefix(field, "local=")
+			break
+		}
+	}
+	if bundle == "" {
+		t.Fatalf("missing bundle path in stderr: %s", got)
+	}
+	entries := readBlacksmithTarEntries(t, bundle)
+	for _, want := range []string{"crabbox-artifacts/stdout.log", "crabbox-artifacts/stderr.log", "crabbox-artifacts/timings.json"} {
+		if !entries[want] {
+			t.Fatalf("bundle missing %q: %#v", want, entries)
+		}
+	}
+}
+
+func readBlacksmithTarEntries(t *testing.T, path string) map[string]bool {
+	t.Helper()
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	gzipReader, err := gzip.NewReader(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gzipReader.Close()
+	tarReader := tar.NewReader(gzipReader)
+	entries := make(map[string]bool)
+	for {
+		header, err := tarReader.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		entries[header.Name] = true
+	}
+	return entries
+}
+
 func TestBlacksmithRunTerminatesSyncStall(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -366,7 +458,7 @@ func TestBlacksmithRunTerminatesSyncStall(t *testing.T) {
 			Exec:   blockingSyncRunner{},
 		},
 	}
-	code := backend.runTestbox(context.Background(), "tbx_syncstall", []string{"pnpm", "test"}, false, false, nil)
+	code := backend.runTestbox(context.Background(), "tbx_syncstall", []string{"pnpm", "test"}, false, false, nil, nil, nil)
 	if code != 124 {
 		t.Fatalf("exit=%d want 124", code)
 	}

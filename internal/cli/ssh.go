@@ -760,8 +760,12 @@ func remoteCommand(workdir string, env map[string]string, command []string) stri
 }
 
 func remoteCommandWithEnvFile(workdir string, env map[string]string, envFile string, command []string) string {
+	return remoteCommandWithEnvFiles(workdir, env, singleEnvFile(envFile), command)
+}
+
+func remoteCommandWithEnvFiles(workdir string, env map[string]string, envFiles []string, command []string) string {
 	var b strings.Builder
-	writeRemoteCommandPrefix(&b, workdir, env, envFile)
+	writeRemoteCommandPrefix(&b, workdir, env, envFiles)
 	b.WriteString("bash -lc ")
 	b.WriteString(shellQuote(`exec "$@"`))
 	b.WriteString(" bash")
@@ -777,8 +781,12 @@ func remoteShellCommand(workdir string, env map[string]string, script string) st
 }
 
 func remoteShellCommandWithEnvFile(workdir string, env map[string]string, envFile, script string) string {
+	return remoteShellCommandWithEnvFiles(workdir, env, singleEnvFile(envFile), script)
+}
+
+func remoteShellCommandWithEnvFiles(workdir string, env map[string]string, envFiles []string, script string) string {
 	var b strings.Builder
-	writeRemoteCommandPrefix(&b, workdir, env, envFile)
+	writeRemoteCommandPrefix(&b, workdir, env, envFiles)
 	b.WriteString("bash -lc ")
 	b.WriteString(shellQuote(script))
 	return b.String()
@@ -854,11 +862,15 @@ func resetsShellCommandPosition(word string) bool {
 	}
 }
 
-func writeRemoteCommandPrefix(b *strings.Builder, workdir string, env map[string]string, envFile string) {
+func writeRemoteCommandPrefix(b *strings.Builder, workdir string, env map[string]string, envFiles []string) {
 	b.WriteString("cd ")
 	b.WriteString(shellQuote(workdir))
 	b.WriteString(" && ")
-	if envFile != "" {
+	for _, envFile := range envFiles {
+		envFile = strings.TrimSpace(envFile)
+		if envFile == "" {
+			continue
+		}
 		b.WriteString("if [ -f ")
 		b.WriteString(shellQuote(envFile))
 		b.WriteString(" ]; then . ")
@@ -871,6 +883,13 @@ func writeRemoteCommandPrefix(b *strings.Builder, workdir string, env map[string
 		b.WriteString(shellQuote(v))
 		b.WriteByte(' ')
 	}
+}
+
+func singleEnvFile(envFile string) []string {
+	if strings.TrimSpace(envFile) == "" {
+		return nil
+	}
+	return []string{envFile}
 }
 
 func shellWords(words []string) []string {

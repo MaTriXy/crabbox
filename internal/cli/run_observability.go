@@ -1,8 +1,11 @@
 package cli
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
@@ -10,219 +13,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 )
-
-const (
-	failureTailLines        = 40
-	failureTailLineBytes    = 16 * 1024
-	phaseMarkerPendingBytes = 4 * 1024
-)
-
-type streamTailBuffer struct {
-	max     int
-	lines   []string
-	pending string
-}
-
-func newStreamTailBuffer(max int) *streamTailBuffer {
-	if max <= 0 {
-		max = failureTailLines
-	}
-	return &streamTailBuffer{max: max}
-}
-
-func (b *streamTailBuffer) Write(p []byte) (int, error) {
-	text := b.pending + string(p)
-	parts := strings.SplitAfter(text, "\n")
-	b.pending = ""
-	for _, part := range parts {
-		if part == "" {
-			continue
-		}
-		if strings.HasSuffix(part, "\n") {
-			b.append(truncateFailureTailLine(strings.TrimRight(part, "\r\n")))
-			continue
-		}
-		b.pending = truncateFailureTailLine(part)
-	}
-	return len(p), nil
-}
-
-func (b *streamTailBuffer) Lines() []string {
-	lines := append([]string(nil), b.lines...)
-	if b.pending != "" {
-		lines = append(lines, b.pending)
-	}
-	if len(lines) > b.max {
-		lines = lines[len(lines)-b.max:]
-	}
-	return lines
-}
-
-func (b *streamTailBuffer) append(line string) {
-	b.lines = append(b.lines, line)
-	if len(b.lines) > b.max {
-		b.lines = b.lines[len(b.lines)-b.max:]
-	}
-}
-
-func truncateFailureTailLine(line string) string {
-	if len(line) <= failureTailLineBytes {
-		return line
-	}
-	return "[truncated] " + line[len(line)-failureTailLineBytes:]
-}
-
-type commandPhaseTracker struct {
-	mu           sync.Mutex
-	current      string
-	currentStart time.Time
-	phases       []timingPhase
-}
-
-type CommandPhaseTracker = commandPhaseTracker
-
-func newCommandPhaseTracker(start time.Time) *commandPhaseTracker {
-	return &commandPhaseTracker{current: "user-command", currentStart: start}
-}
-
-func NewCommandPhaseTracker(start time.Time) *CommandPhaseTracker {
-	return newCommandPhaseTracker(start)
-}
-
-func FinishCommandPhaseTracker(tracker *CommandPhaseTracker, at time.Time) []TimingPhase {
-	if tracker == nil {
-		return nil
-	}
-	return tracker.Finish(at)
-}
-
-func (t *commandPhaseTracker) StartPhase(name string, at time.Time) {
-	name = sanitizePhaseName(name)
-	if name == "" {
-		return
-	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.finishCurrentLocked(at)
-	t.current = name
-	t.currentStart = at
-}
-
-func (t *commandPhaseTracker) Finish(at time.Time) []timingPhase {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.finishCurrentLocked(at)
-	out := make([]timingPhase, len(t.phases))
-	copy(out, t.phases)
-	return out
-}
-
-func (t *commandPhaseTracker) finishCurrentLocked(at time.Time) {
-	if t.current == "" || t.currentStart.IsZero() {
-		return
-	}
-	if at.Before(t.currentStart) {
-		at = t.currentStart
-	}
-	t.phases = append(t.phases, timingPhase{Name: t.current, Ms: at.Sub(t.currentStart).Milliseconds()})
-	t.current = ""
-	t.currentStart = time.Time{}
-}
-
-type phaseMarkerWriter struct {
-	tracker *commandPhaseTracker
-	pending string
-}
-
-type PhaseMarkerWriter = phaseMarkerWriter
-
-func NewPhaseMarkerWriter(tracker *CommandPhaseTracker) *PhaseMarkerWriter {
-	return &phaseMarkerWriter{tracker: tracker}
-}
-
-func (w *phaseMarkerWriter) Write(p []byte) (int, error) {
-	if w == nil || w.tracker == nil {
-		return len(p), nil
-	}
-	text := w.pending + string(p)
-	for {
-		i := strings.IndexByte(text, '\n')
-		if i < 0 {
-			break
-		}
-		w.observeLine(text[:i])
-		text = text[i+1:]
-	}
-	w.pending = truncatePhaseMarkerPending(text)
-	return len(p), nil
-}
-
-func (w *phaseMarkerWriter) Flush() {
-	if w != nil && w.pending != "" {
-		w.observeLine(w.pending)
-		w.pending = ""
-	}
-}
-
-func (w *phaseMarkerWriter) observeLine(line string) {
-	if name, ok := phaseNameFromLine(line); ok {
-		w.tracker.StartPhase(name, time.Now())
-	}
-}
-
-func truncatePhaseMarkerPending(line string) string {
-	if len(line) <= phaseMarkerPendingBytes {
-		return line
-	}
-	return line[len(line)-phaseMarkerPendingBytes:]
-}
-
-func phaseNameFromLine(line string) (string, bool) {
-	const prefix = "CRABBOX_PHASE:"
-	line = strings.TrimSpace(line)
-	if !strings.HasPrefix(line, prefix) {
-		return "", false
-	}
-	name := sanitizePhaseName(strings.TrimSpace(strings.TrimPrefix(line, prefix)))
-	return name, name != ""
-}
-
-func sanitizePhaseName(name string) string {
-	name = strings.TrimSpace(name)
-	if len(name) > 80 {
-		name = name[:80]
-	}
-	var b strings.Builder
-	for _, r := range name {
-		switch {
-		case r >= 'a' && r <= 'z':
-			b.WriteRune(r)
-		case r >= 'A' && r <= 'Z':
-			b.WriteRune(r)
-		case r >= '0' && r <= '9':
-			b.WriteRune(r)
-		case r == '_' || r == '-' || r == '.':
-			b.WriteRune(r)
-		case r == ' ':
-			b.WriteRune('-')
-		}
-	}
-	return b.String()
-}
-
-func formatCommandPhaseTimings(phases []timingPhase) string {
-	parts := make([]string, 0, len(phases))
-	for _, phase := range phases {
-		if phase.Name == "" {
-			continue
-		}
-		parts = append(parts, fmt.Sprintf("%s:%s", phase.Name, time.Duration(phase.Ms)*time.Millisecond))
-	}
-	return strings.Join(parts, ",")
-}
 
 func maybePrintEnvForwardingSummary(w io.Writer, provider, behavior string, allow []string, env map[string]string) {
 	if strings.TrimSpace(os.Getenv("CRABBOX_ENV_ALLOW")) == "" {
@@ -295,6 +87,59 @@ func printRunContextSummary(w io.Writer, coord *CoordinatorClient, cfg Config, s
 	fmt.Fprintf(w, "  workdir=%s workspace=%s actions=%s\n", workdir, workspace, blank(actionsURL, "-"))
 }
 
+func printKeepOnFailureSSHHint(w io.Writer, cfg Config, leaseID string, server Server, target SSHTarget) {
+	if w == nil {
+		return
+	}
+	id := firstNonBlank(serverSlug(server), leaseID)
+	expires := blank(leaseLabelTimeDisplay(server.Labels["expires_at"]), server.Labels["expires_at"])
+	if expires == "" {
+		expires = "idle/ttl"
+	}
+	fmt.Fprintf(w, "keep-on-failure: kept lease=%s slug=%s expires=%s idle_timeout=%s ttl=%s\n", leaseID, blank(serverSlug(server), "-"), expires, cfg.IdleTimeout, cfg.TTL)
+	fmt.Fprintf(w, "inspect: crabbox inspect --provider %s --id %s\n", displayShellArg(cfg.Provider), displayShellArg(id))
+	fmt.Fprintf(w, "ssh: crabbox ssh --provider %s --id %s\n", displayShellArg(cfg.Provider), displayShellArg(id))
+	if target.Host != "" && !target.AuthSecret {
+		fmt.Fprintf(w, "ssh-direct: %s\n", sshCommandLine(target, false))
+	}
+	if target.AuthSecret {
+		fmt.Fprintf(w, "ssh-direct: crabbox ssh --provider %s --id %s --show-secret\n", displayShellArg(cfg.Provider), displayShellArg(id))
+	}
+	fmt.Fprintf(w, "stop: crabbox stop --provider %s %s\n", displayShellArg(cfg.Provider), displayShellArg(id))
+}
+
+func printKeepOnFailureDelegatedHint(w io.Writer, provider, leaseID, slug string, idleTimeout, ttl time.Duration) {
+	if w == nil {
+		return
+	}
+	id := firstNonBlank(slug, leaseID)
+	fmt.Fprintf(w, "keep-on-failure: kept lease=%s slug=%s expires=idle/ttl idle_timeout=%s ttl=%s\n", leaseID, blank(slug, "-"), idleTimeout, ttl)
+	fmt.Fprintf(w, "rerun: crabbox run --provider %s --id %s -- <command>\n", displayShellArg(provider), displayShellArg(id))
+	fmt.Fprintf(w, "stop: crabbox stop --provider %s %s\n", displayShellArg(provider), displayShellArg(id))
+}
+
+func PrintKeepOnFailureDelegatedHint(w io.Writer, provider, leaseID, slug string, idleTimeout, ttl time.Duration) {
+	printKeepOnFailureDelegatedHint(w, provider, leaseID, slug, idleTimeout, ttl)
+}
+
+func HandleDelegatedRunFailure(w io.Writer, req RunRequest, provider, leaseID, slug string, idleTimeout, ttl time.Duration, acquired bool, shouldStop *bool) {
+	if !req.KeepOnFailure {
+		return
+	}
+	if acquired && !req.Keep && shouldStop != nil {
+		*shouldStop = false
+	}
+	printKeepOnFailureDelegatedHint(w, provider, leaseID, slug, idleTimeout, ttl)
+}
+
+func displayShellArg(value string) string {
+	words := readableShellWords([]string{value})
+	if len(words) == 0 {
+		return "''"
+	}
+	return words[0]
+}
+
 func runPortalURL(coord *CoordinatorClient, runID string) string {
 	if coord == nil || coord.BaseURL == "" || runID == "" {
 		return "-"
@@ -309,7 +154,7 @@ func runLogsURL(coord *CoordinatorClient, runID string) string {
 	return strings.TrimRight(coord.BaseURL, "/") + "/v1/runs/" + url.PathEscape(runID) + "/logs"
 }
 
-func printRemoteCapabilityPreflight(ctx context.Context, w io.Writer, cfg Config, target SSHTarget, leaseID, workdir, actionsEnvFile string, hydrated bool, actionsURL string, hydrateSupported bool, env map[string]string) {
+func printRemoteCapabilityPreflight(ctx context.Context, w io.Writer, cfg Config, target SSHTarget, leaseID, workdir string, envFiles []string, hydrated bool, actionsURL string, hydrateSupported bool, env map[string]string) {
 	if w == nil {
 		return
 	}
@@ -320,7 +165,7 @@ func printRemoteCapabilityPreflight(ctx context.Context, w io.Writer, cfg Config
 		fmt.Fprintln(w, "remote preflight skipped: native Windows capability probe is not implemented")
 		return
 	}
-	out, err := runSSHCombinedOutput(ctx, target, remoteCapabilityPreflightCommand(workdir, env, actionsEnvFile))
+	out, err := runSSHCombinedOutput(ctx, target, remoteCapabilityPreflightCommand(workdir, env, envFiles))
 	if err != nil {
 		fmt.Fprintf(w, "remote preflight failed: %v\n", err)
 		if strings.TrimSpace(out) != "" {
@@ -383,7 +228,7 @@ func hydrateCommandSuggestion(cfg Config, target SSHTarget, leaseID string, supp
 	return command
 }
 
-func remoteCapabilityPreflightCommand(workdir string, env map[string]string, envFile string) string {
+func remoteCapabilityPreflightCommand(workdir string, env map[string]string, envFiles []string) string {
 	script := `printf 'user=%s\n' "$(id -un 2>/dev/null || whoami 2>/dev/null || printf unknown)"
 printf 'cwd=%s\n' "$(pwd -P 2>/dev/null || pwd)"
 if command -v sudo >/dev/null 2>&1; then
@@ -396,26 +241,298 @@ if command -v node >/dev/null 2>&1; then printf 'node=%s\n' "$(node --version 2>
 if command -v pnpm >/dev/null 2>&1; then printf 'pnpm=%s\n' "$(pnpm --version 2>/dev/null || printf present)"; else printf 'pnpm=missing\n'; fi
 if command -v docker >/dev/null 2>&1; then printf 'docker=%s\n' "$(docker --version 2>/dev/null | sed 's/,.*//')"; else printf 'docker=missing\n'; fi
 if command -v bwrap >/dev/null 2>&1; then printf 'bubblewrap=yes\n'; else printf 'bubblewrap=missing\n'; fi`
-	return remoteShellCommandWithEnvFile(workdir, env, envFile, script)
+	return remoteShellCommandWithEnvFiles(workdir, env, envFiles, script)
 }
 
-func captureFailureArtifacts(ctx context.Context, target SSHTarget, workdir, leaseID, runID string) (local string, bytes int, err error) {
+type FailureCaptureMetadata struct {
+	Provider       string
+	LeaseID        string
+	Slug           string
+	RunID          string
+	Workdir        string
+	ExitCode       int
+	ActionsRunURL  string
+	Timing         timingReport
+	EnvAllow       []string
+	Env            map[string]string
+	Config         Config
+	StdoutPath     string
+	StderrPath     string
+	CaptureFlagSet bool
+}
+
+func openFailureStreamBundleFile(label, explicitPath string) (*os.File, string, func(), error) {
+	if explicitPath != "" {
+		return nil, explicitPath, func() {}, nil
+	}
+	file, err := os.CreateTemp("", "crabbox-failure-*."+label+".log")
+	if err != nil {
+		return nil, "", func() {}, exit(2, "failure bundle %s temp: %v", label, err)
+	}
+	path := file.Name()
+	cleanup := func() {
+		_ = file.Close()
+		_ = os.Remove(path)
+	}
+	return file, path, cleanup, nil
+}
+
+func captureFailureArtifacts(ctx context.Context, target SSHTarget, workdir, leaseID, runID string, meta FailureCaptureMetadata) (local string, bytes int, err error) {
 	if isWindowsNativeTarget(target) {
 		return "", 0, exit(2, "capture-on-fail is not supported for native Windows targets")
 	}
 	name := safeCaptureName(firstNonBlank(runID, leaseID, "run")) + "-" + time.Now().UTC().Format("20060102T150405Z") + ".tar.gz"
 	remotePath := ".crabbox/" + name
 	if out, err := runSSHCombinedOutput(ctx, target, remoteFailureCaptureCommand(workdir, remotePath)); err != nil {
-		return "", 0, exit(7, "capture-on-fail prepare: %v: %s", err, strings.TrimSpace(out))
+		local, bytes, bundleErr := writeLocalFailureBundle(name, "", meta)
+		if bundleErr != nil {
+			return local, bytes, exit(7, "capture-on-fail prepare: %v: %s; local bundle: %v", err, strings.TrimSpace(out), bundleErr)
+		}
+		return local, bytes, exit(7, "capture-on-fail prepare: %v: %s", err, strings.TrimSpace(out))
 	}
 	defer func() {
 		if out, cleanupErr := runSSHCombinedOutput(ctx, target, remoteRemoveFailureCaptureCommand(workdir, remotePath)); cleanupErr != nil && err == nil {
 			err = exit(7, "capture-on-fail remote cleanup: %v: %s", cleanupErr, strings.TrimSpace(out))
 		}
 	}()
+	remoteLocalPath := filepath.Join(os.TempDir(), safeCaptureName(firstNonBlank(runID, leaseID, "run"))+"-remote-"+name)
+	_, remoteLocal, downloadErr := downloadRemoteFile(ctx, target, workdir, remotePath+"="+remoteLocalPath)
+	if downloadErr != nil {
+		local, bytes, bundleErr := writeLocalFailureBundle(name, "", meta)
+		if bundleErr != nil {
+			return local, bytes, exit(7, "capture-on-fail download: %v; local bundle: %v", downloadErr, bundleErr)
+		}
+		return local, bytes, downloadErr
+	}
+	defer os.Remove(remoteLocal)
+	return writeLocalFailureBundle(name, remoteLocal, meta)
+}
+
+func CaptureLocalFailureBundle(nameSeed string, meta FailureCaptureMetadata) (string, int, error) {
+	name := safeCaptureName(firstNonBlank(nameSeed, meta.RunID, meta.LeaseID, "run")) + "-" + time.Now().UTC().Format("20060102T150405Z") + ".tar.gz"
+	return writeLocalFailureBundle(name, "", meta)
+}
+
+func captureFailureBundle(ctx context.Context, target SSHTarget, workdir, leaseID, runID string, meta FailureCaptureMetadata) (string, int, error) {
+	if isWindowsNativeTarget(target) {
+		return CaptureLocalFailureBundle(firstNonBlank(runID, leaseID, "run"), meta)
+	}
+	return captureFailureArtifacts(ctx, target, workdir, leaseID, runID, meta)
+}
+
+func writeLocalFailureBundle(name, remoteTarPath string, meta FailureCaptureMetadata) (string, int, error) {
 	localPath := filepath.Join(".crabbox", "captures", name)
-	bytes, local, err = downloadRemoteFile(ctx, target, workdir, remotePath+"="+localPath)
-	return local, bytes, err
+	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
+		return localPath, 0, exit(2, "failure bundle create %s: %v", filepath.Dir(localPath), err)
+	}
+	file, err := os.Create(localPath)
+	if err != nil {
+		return localPath, 0, exit(2, "failure bundle create %s: %v", localPath, err)
+	}
+	counting := &countingWriteCloser{WriteCloser: file}
+	gzipWriter := gzip.NewWriter(counting)
+	tarWriter := tar.NewWriter(gzipWriter)
+	closeErr := func() error {
+		if err := tarWriter.Close(); err != nil {
+			_ = gzipWriter.Close()
+			_ = counting.Close()
+			return err
+		}
+		if err := gzipWriter.Close(); err != nil {
+			_ = counting.Close()
+			return err
+		}
+		return counting.Close()
+	}
+	if err := addFailureBundleMetadata(tarWriter, meta); err != nil {
+		_ = closeErr()
+		return localPath, int(counting.N), err
+	}
+	if err := addFailureBundleFile(tarWriter, "crabbox-artifacts/stdout.log", meta.StdoutPath); err != nil {
+		_ = closeErr()
+		return localPath, int(counting.N), err
+	}
+	if err := addFailureBundleFile(tarWriter, "crabbox-artifacts/stderr.log", meta.StderrPath); err != nil {
+		_ = closeErr()
+		return localPath, int(counting.N), err
+	}
+	if remoteTarPath != "" {
+		if err := appendRemoteFailureTar(tarWriter, remoteTarPath, "crabbox-artifacts/remote/"); err != nil {
+			_ = closeErr()
+			return localPath, int(counting.N), err
+		}
+	}
+	if err := closeErr(); err != nil {
+		return localPath, int(counting.N), exit(2, "failure bundle close %s: %v", localPath, err)
+	}
+	return localPath, int(counting.N), nil
+}
+
+func addFailureBundleMetadata(tw *tar.Writer, meta FailureCaptureMetadata) error {
+	run := map[string]any{
+		"provider":          meta.Provider,
+		"leaseId":           meta.LeaseID,
+		"slug":              meta.Slug,
+		"runId":             meta.RunID,
+		"workdir":           meta.Workdir,
+		"exitCode":          meta.ExitCode,
+		"actionsRunUrl":     meta.ActionsRunURL,
+		"captureOnFailFlag": meta.CaptureFlagSet,
+	}
+	runJSON, err := json.MarshalIndent(run, "", "  ")
+	if err != nil {
+		return err
+	}
+	timingJSON, err := json.MarshalIndent(meta.Timing, "", "  ")
+	if err != nil {
+		return err
+	}
+	entries := map[string]string{
+		"crabbox-artifacts/crabbox-run.json":    string(runJSON) + "\n",
+		"crabbox-artifacts/timings.json":        string(timingJSON) + "\n",
+		"crabbox-artifacts/env.redacted.txt":    failureEnvSummary(meta.EnvAllow, meta.Env),
+		"crabbox-artifacts/config.redacted.txt": failureConfigSummary(meta.Config),
+		"crabbox-artifacts/README.txt": "Failure bundle files are local-only and not fully redacted. " +
+			"Review before sharing. Secret values are not intentionally written by Crabbox metadata.\n",
+	}
+	for name, content := range entries {
+		if err := addFailureBundleBytes(tw, name, []byte(content)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func addFailureBundleBytes(tw *tar.Writer, name string, data []byte) error {
+	if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o600, Size: int64(len(data)), ModTime: time.Now()}); err != nil {
+		return err
+	}
+	_, err := tw.Write(data)
+	return err
+}
+
+func addFailureBundleFile(tw *tar.Writer, name, path string) error {
+	if strings.TrimSpace(path) == "" {
+		return addFailureBundleBytes(tw, name, nil)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return addFailureBundleBytes(tw, name, nil)
+		}
+		return exit(2, "failure bundle stat %s: %v", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return exit(2, "failure bundle read %s: not a regular file", path)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return exit(2, "failure bundle open %s: %v", path, err)
+	}
+	defer file.Close()
+	if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o600, Size: info.Size(), ModTime: info.ModTime()}); err != nil {
+		return err
+	}
+	if _, err := io.Copy(tw, file); err != nil {
+		return exit(2, "failure bundle stream %s: %v", path, err)
+	}
+	return nil
+}
+
+func appendRemoteFailureTar(tw *tar.Writer, remoteTarPath, prefix string) error {
+	file, err := os.Open(remoteTarPath)
+	if err != nil {
+		return exit(2, "failure bundle open remote tar %s: %v", remoteTarPath, err)
+	}
+	defer file.Close()
+	gzipReader, err := gzip.NewReader(file)
+	if err != nil {
+		return exit(2, "failure bundle read remote tar %s: %v", remoteTarPath, err)
+	}
+	defer gzipReader.Close()
+	tr := tar.NewReader(gzipReader)
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return exit(2, "failure bundle read remote tar %s: %v", remoteTarPath, err)
+		}
+		cleanName := filepath.ToSlash(filepath.Clean(header.Name))
+		if cleanName == "." || cleanName == ".." || strings.HasPrefix(cleanName, "/") || strings.HasPrefix(cleanName, "../") {
+			continue
+		}
+		next := *header
+		next.Name = prefix + cleanName
+		if err := tw.WriteHeader(&next); err != nil {
+			return err
+		}
+		if header.Typeflag == tar.TypeReg || header.Typeflag == tar.TypeRegA {
+			if _, err := io.Copy(tw, tr); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func failureEnvSummary(allowed []string, values map[string]string) string {
+	if len(allowed) == 0 && len(values) == 0 {
+		return "env_allow=empty\n"
+	}
+	names := append([]string(nil), allowed...)
+	for name := range values {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	names = compactSortedStrings(names)
+	var b strings.Builder
+	for _, name := range names {
+		if strings.TrimSpace(name) == "" {
+			continue
+		}
+		value, ok := values[name]
+		if !ok {
+			fmt.Fprintf(&b, "%s=missing\n", name)
+			continue
+		}
+		if envNameLooksSecret(name) {
+			fmt.Fprintf(&b, "%s=present len=%d secret=true\n", name, len(value))
+		} else {
+			fmt.Fprintf(&b, "%s=present\n", name)
+		}
+	}
+	return b.String()
+}
+
+func compactSortedStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := values[:0]
+	last := ""
+	for _, value := range values {
+		if value == "" || value == last {
+			continue
+		}
+		out = append(out, value)
+		last = value
+	}
+	return out
+}
+
+func failureConfigSummary(cfg Config) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "provider=%s\n", blank(cfg.Provider, "-"))
+	fmt.Fprintf(&b, "target=%s\n", blank(cfg.TargetOS, "-"))
+	fmt.Fprintf(&b, "windows_mode=%s\n", blank(cfg.WindowsMode, "-"))
+	fmt.Fprintf(&b, "class=%s\n", blank(cfg.Class, "-"))
+	fmt.Fprintf(&b, "server_type=%s\n", blank(cfg.ServerType, "-"))
+	fmt.Fprintf(&b, "idle_timeout=%s\n", cfg.IdleTimeout)
+	fmt.Fprintf(&b, "ttl=%s\n", cfg.TTL)
+	fmt.Fprintf(&b, "work_root=%s\n", blank(cfg.WorkRoot, "-"))
+	fmt.Fprintf(&b, "sync_base_ref=%s\n", blank(cfg.Sync.BaseRef, "-"))
+	return b.String()
 }
 
 func safeCaptureName(value string) string {
@@ -453,8 +570,16 @@ files=.crabbox/capture-files.txt
   printf 'pwd=%s\n' "$(pwd -P 2>/dev/null || pwd)"
   printf 'note=%s\n' 'local-only failure capture; caller owns redaction before sharing'
 } > "$manifest"
+gateway_tail=.crabbox/gateway-log-tail.txt
+rm -f "$gateway_tail"
+for path in /tmp/crabbox-gateway.log /tmp/gateway.log gateway.log logs/gateway.log .crabbox/gateway.log; do
+  if [ -f "$path" ]; then
+    tail -n 400 "$path" > "$gateway_tail" 2>/dev/null || true
+    break
+  fi
+done
 : > "$files"
-for path in test-results playwright-report coverage junit.xml results.xml .crabbox/capture-manifest.txt; do
+for path in test-results playwright-report coverage junit.xml results.xml .crabbox/scripts .crabbox/capture-manifest.txt .crabbox/gateway-log-tail.txt; do
   if [ -e "$path" ]; then printf '%s\n' "$path" >> "$files"; fi
 done
 find . -maxdepth 3 -type f \( -name '*.log' -o -name 'junit*.xml' -o -name 'TEST-*.xml' \) \

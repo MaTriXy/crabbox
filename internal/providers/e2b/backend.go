@@ -135,8 +135,12 @@ func (b *e2bBackend) Run(ctx context.Context, req RunRequest) (RunResult, error)
 			return RunResult{}, err
 		}
 	}
-	if acquired && !req.Keep {
+	shouldStop := acquired && !req.Keep
+	if shouldStop {
 		defer func() {
+			if !shouldStop {
+				return
+			}
 			if err := client.DeleteSandbox(context.Background(), sandboxID); err != nil {
 				fmt.Fprintf(b.rt.Stderr, "warning: e2b stop failed for %s: %v\n", sandboxID, err)
 				return
@@ -189,7 +193,7 @@ func (b *e2bBackend) Run(ctx context.Context, req RunRequest) (RunResult, error)
 	exitCode, commandErr := client.StartProcess(ctx, session, e2bProcessRequest{
 		Command: command,
 		CWD:     workspace,
-		Env:     allowedEnv(req.Options.EnvAllow),
+		Env:     req.Env,
 		User:    processUser,
 		Timeout: e2bTimeoutDuration(b.cfg.TTL),
 		Stdout:  b.rt.Stdout,
@@ -224,9 +228,11 @@ func (b *e2bBackend) Run(ctx context.Context, req RunRequest) (RunResult, error)
 		}
 	}
 	if commandErr != nil {
+		handleDelegatedRunFailure(b.rt.Stderr, req, e2bProvider, leaseID, slug, b.cfg.IdleTimeout, b.cfg.TTL, acquired, &shouldStop)
 		return result, ExitError{Code: 1, Message: fmt.Sprintf("e2b run failed: %v", commandErr)}
 	}
 	if result.ExitCode != 0 {
+		handleDelegatedRunFailure(b.rt.Stderr, req, e2bProvider, leaseID, slug, b.cfg.IdleTimeout, b.cfg.TTL, acquired, &shouldStop)
 		return result, ExitError{Code: result.ExitCode, Message: fmt.Sprintf("e2b run exited %d", result.ExitCode)}
 	}
 	return result, nil

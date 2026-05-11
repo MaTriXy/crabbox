@@ -78,6 +78,26 @@ func TestRemoteCommandSourcesActionsEnvFile(t *testing.T) {
 	}
 }
 
+func TestRemoteCommandSourcesMultipleEnvFilesWithoutInlineSecret(t *testing.T) {
+	got := remoteCommandWithEnvFiles("/work/repo", map[string]string{"CI": "1"}, []string{
+		"/home/runner/.crabbox/actions/cbx-123.env.sh",
+		".crabbox/env/run.env.sh",
+	}, []string{"pnpm", "test"})
+	for _, want := range []string{
+		"if [ -f '/home/runner/.crabbox/actions/cbx-123.env.sh' ]; then . '/home/runner/.crabbox/actions/cbx-123.env.sh'; fi",
+		"if [ -f '.crabbox/env/run.env.sh' ]; then . '.crabbox/env/run.env.sh'; fi",
+		"CI='1'",
+		"'exec \"$@\"' bash 'pnpm' 'test'",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("remoteCommandWithEnvFiles() missing %q in %q", want, got)
+		}
+	}
+	if strings.Contains(got, "API_TOKEN") || strings.Contains(got, "secret") {
+		t.Fatalf("remoteCommandWithEnvFiles() should not inline profile secrets: %q", got)
+	}
+}
+
 func TestWindowsNativeRemoteCommandUsesPowerShell(t *testing.T) {
 	got := windowsRemoteCommandWithEnvFile(`C:\crabbox\cbx\repo`, map[string]string{"CI": "1"}, "", []string{"pwsh", "-NoProfile", "-Command", "echo ok"})
 	if !strings.HasPrefix(got, powerShellEncodedCommandPrefix) {
@@ -86,6 +106,23 @@ func TestWindowsNativeRemoteCommandUsesPowerShell(t *testing.T) {
 	decoded := decodePowerShellCommand(t, got)
 	if !strings.HasPrefix(decoded, "$ProgressPreference = \"SilentlyContinue\"\n") {
 		t.Fatalf("windows command should suppress PowerShell progress records: %q", decoded)
+	}
+}
+
+func TestWindowsNativeRemoteCommandSourcesMultipleEnvFiles(t *testing.T) {
+	got := windowsRemoteCommandWithEnvFiles(`C:\crabbox\cbx\repo`, map[string]string{"CI": "1"}, []string{
+		`.crabbox\actions.env`,
+		`.crabbox\env\run.env`,
+	}, []string{"pwsh", "-NoProfile", "-Command", "echo ok"})
+	decoded := decodePowerShellCommand(t, got)
+	for _, want := range []string{
+		`Get-Content -LiteralPath '.crabbox\actions.env'`,
+		`Get-Content -LiteralPath '.crabbox\env\run.env'`,
+		`$env:CI = '1'`,
+	} {
+		if !strings.Contains(decoded, want) {
+			t.Fatalf("windows command missing %q in %q", want, decoded)
+		}
 	}
 }
 

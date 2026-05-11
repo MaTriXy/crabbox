@@ -145,6 +145,8 @@ func TestRunCommandRejectsUnsupportedDelegatedCaptureOptions(t *testing.T) {
 		{name: "daytona download", provider: "daytona", args: []string{"--download", "/tmp/proof=proof.bin"}, want: "daytona delegates run execution; --download is not supported"},
 		{name: "islo download", provider: "islo", args: []string{"--download", "/tmp/proof=proof.bin"}, want: "islo delegates run execution; --download is not supported"},
 		{name: "e2b download", provider: "e2b", args: []string{"--download", "/tmp/proof=proof.bin"}, want: "e2b delegates run execution; --download is not supported"},
+		{name: "daytona script", provider: "daytona", args: []string{"--script", "testdata/missing.sh"}, want: "daytona delegates run execution; --script is not supported"},
+		{name: "e2b fresh pr", provider: "e2b", args: []string{"--fresh-pr", "example-org/my-app#1"}, want: "e2b delegates sync; --fresh-pr is not supported"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -161,6 +163,50 @@ func TestRunCommandRejectsUnsupportedDelegatedCaptureOptions(t *testing.T) {
 				t.Fatalf("message=%q want %q", exitErr.Message, tt.want)
 			}
 		})
+	}
+}
+
+func TestRunCommandRejectsDelegatedScriptStdinBeforeReading(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := (App{
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Stdin:  strings.NewReader("should-not-be-consumed"),
+	}).runCommand(context.Background(), []string{"--provider", "e2b", "--script-stdin"})
+	var exitErr ExitError
+	if !AsExitError(err, &exitErr) || exitErr.Code != 2 {
+		t.Fatalf("error=%v, want exit 2", err)
+	}
+	if !strings.Contains(exitErr.Message, "e2b delegates run execution; --script is not supported") {
+		t.Fatalf("message=%q", exitErr.Message)
+	}
+}
+
+func TestRunCommandRejectsSyncOnlyScriptStdinBeforeReading(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := (App{
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Stdin:  strings.NewReader("should-not-be-consumed"),
+	}).runCommand(context.Background(), []string{"--sync-only", "--script-stdin"})
+	var exitErr ExitError
+	if !AsExitError(err, &exitErr) || exitErr.Code != 2 {
+		t.Fatalf("error=%v, want exit 2", err)
+	}
+	if !strings.Contains(exitErr.Message, "--script cannot be combined with --sync-only") {
+		t.Fatalf("message=%q", exitErr.Message)
+	}
+}
+
+func TestRunCommandRejectsApplyLocalPatchWithoutFreshPR(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := (App{Stdout: &stdout, Stderr: &stderr}).runCommand(context.Background(), []string{"--apply-local-patch", "--", "true"})
+	var exitErr ExitError
+	if !AsExitError(err, &exitErr) || exitErr.Code != 2 {
+		t.Fatalf("error=%v, want exit 2", err)
+	}
+	if !strings.Contains(exitErr.Message, "--apply-local-patch requires --fresh-pr") {
+		t.Fatalf("message=%q", exitErr.Message)
 	}
 }
 
@@ -324,7 +370,7 @@ func TestRemotePreflightRawWorkspaceSkipsHydrateSuggestionWithoutWorkflow(t *tes
 }
 
 func TestRemoteCapabilityPreflightCommandUsesCommandEnvironment(t *testing.T) {
-	got := remoteCapabilityPreflightCommand("/home/runner/work/repo/repo", map[string]string{"CI": "1"}, "/home/runner/.crabbox/actions/cbx-123.env.sh")
+	got := remoteCapabilityPreflightCommand("/home/runner/work/repo/repo", map[string]string{"CI": "1"}, []string{"/home/runner/.crabbox/actions/cbx-123.env.sh"})
 	for _, want := range []string{
 		"cd '/home/runner/work/repo/repo'",
 		". '/home/runner/.crabbox/actions/cbx-123.env.sh'",
@@ -412,6 +458,247 @@ func TestRemoteRemoveFailureCaptureCommandRemovesBundle(t *testing.T) {
 	}
 	if _, err := os.Stat(capturePath); !os.IsNotExist(err) {
 		t.Fatalf("capture bundle should be removed, stat err=%v", err)
+	}
+}
+
+func TestFailureEnvSummaryRedactsSecretValues(t *testing.T) {
+	got := failureEnvSummary([]string{"API_TOKEN", "CI", "MISSING"}, map[string]string{
+		"API_TOKEN": "secret-value",
+		"CI":        "1",
+	})
+	if strings.Contains(got, "secret-value") {
+		t.Fatalf("summary leaked secret: %s", got)
+	}
+	for _, want := range []string{
+		"API_TOKEN=present len=12 secret=true",
+		"CI=present",
+		"MISSING=missing",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("summary missing %q in %q", want, got)
+		}
+	}
+}
+
+func TestWriteLocalFailureBundleIncludesMetadataStreamsAndRemoteFiles(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash is required for POSIX capture command test")
+	}
+	dir := t.TempDir()
+	t.Chdir(dir)
+	stdoutPath := filepath.Join(dir, "stdout.log")
+	stderrPath := filepath.Join(dir, "stderr.log")
+	if err := os.WriteFile(stdoutPath, []byte("remote stdout\n"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stderrPath, []byte("remote stderr\n"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	remoteWorkdir := filepath.Join(dir, "remote")
+	if err := os.MkdirAll(filepath.Join(remoteWorkdir, "test-results"), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(remoteWorkdir, "test-results", "failure.log"), []byte("failure"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	command := remoteFailureCaptureCommand(remoteWorkdir, ".crabbox/remote.tar.gz")
+	if out, err := exec.Command("bash", "-lc", command).CombinedOutput(); err != nil {
+		t.Fatalf("remote capture command failed: %v\n%s", err, out)
+	}
+
+	local, _, err := writeLocalFailureBundle("bundle.tar.gz", filepath.Join(remoteWorkdir, ".crabbox", "remote.tar.gz"), FailureCaptureMetadata{
+		Provider:   "aws",
+		LeaseID:    "cbx_123",
+		Slug:       "blue-crab",
+		RunID:      "run_123",
+		Workdir:    "/work/crabbox/cbx_123/repo",
+		ExitCode:   7,
+		Timing:     timingReport{Provider: "aws", LeaseID: "cbx_123", ExitCode: 7},
+		EnvAllow:   []string{"API_TOKEN"},
+		Env:        map[string]string{"API_TOKEN": "secret-value"},
+		Config:     Config{Provider: "aws", TargetOS: targetLinux, Class: "standard", IdleTimeout: time.Minute, TTL: time.Hour, WorkRoot: "/work/crabbox"},
+		StdoutPath: stdoutPath,
+		StderrPath: stderrPath,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents := readTarGzContents(t, local)
+	for _, want := range []string{
+		"crabbox-artifacts/crabbox-run.json",
+		"crabbox-artifacts/timings.json",
+		"crabbox-artifacts/env.redacted.txt",
+		"crabbox-artifacts/config.redacted.txt",
+		"crabbox-artifacts/stdout.log",
+		"crabbox-artifacts/stderr.log",
+		"crabbox-artifacts/remote/test-results/failure.log",
+	} {
+		if _, ok := contents[want]; !ok {
+			t.Fatalf("bundle missing %q; entries=%#v", want, contents)
+		}
+	}
+	for name, data := range contents {
+		if bytes.Contains(data, []byte("secret-value")) {
+			t.Fatalf("bundle entry %s leaked secret value", name)
+		}
+	}
+}
+
+func TestNativeWindowsFailureBundleUsesLocalStreams(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	stdoutPath := filepath.Join(dir, "stdout.log")
+	stderrPath := filepath.Join(dir, "stderr.log")
+	if err := os.WriteFile(stdoutPath, []byte("native stdout\n"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stderrPath, []byte("native stderr\n"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	local, _, err := captureFailureBundle(context.Background(), SSHTarget{TargetOS: targetWindows, WindowsMode: windowsModeNormal}, "C:\\crabbox\\repo", "cbx_win", "run_win", FailureCaptureMetadata{
+		Provider:   "aws",
+		LeaseID:    "cbx_win",
+		RunID:      "run_win",
+		Workdir:    "C:\\crabbox\\repo",
+		ExitCode:   9,
+		Timing:     timingReport{Provider: "aws", LeaseID: "cbx_win", ExitCode: 9},
+		Config:     Config{Provider: "aws", TargetOS: targetWindows, WindowsMode: windowsModeNormal},
+		StdoutPath: stdoutPath,
+		StderrPath: stderrPath,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents := readTarGzContents(t, local)
+	if !bytes.Contains(contents["crabbox-artifacts/stdout.log"], []byte("native stdout")) {
+		t.Fatalf("stdout missing: %#v", contents["crabbox-artifacts/stdout.log"])
+	}
+	if !bytes.Contains(contents["crabbox-artifacts/stderr.log"], []byte("native stderr")) {
+		t.Fatalf("stderr missing: %#v", contents["crabbox-artifacts/stderr.log"])
+	}
+	if _, ok := contents["crabbox-artifacts/remote/.crabbox/capture-manifest.txt"]; ok {
+		t.Fatalf("native Windows bundle should be local-only: %#v", contents)
+	}
+}
+
+func TestFailureBundleStreamsLargeStreamFiles(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	stdoutPath := filepath.Join(dir, "stdout.log")
+	stderrPath := filepath.Join(dir, "stderr.log")
+	stdoutData := bytes.Repeat([]byte("stdout0123456789\n"), 128*1024)
+	stderrData := []byte("stderr\n")
+	if err := os.WriteFile(stdoutPath, stdoutData, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stderrPath, stderrData, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	local, _, err := writeLocalFailureBundle("large-streams.tar.gz", "", FailureCaptureMetadata{
+		Provider:   "aws",
+		LeaseID:    "cbx_large",
+		RunID:      "run_large",
+		ExitCode:   1,
+		Timing:     timingReport{Provider: "aws", LeaseID: "cbx_large", ExitCode: 1},
+		Config:     Config{Provider: "aws", TargetOS: targetLinux},
+		StdoutPath: stdoutPath,
+		StderrPath: stderrPath,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents := readTarGzContents(t, local)
+	if !bytes.Equal(contents["crabbox-artifacts/stdout.log"], stdoutData) {
+		t.Fatalf("stdout data mismatch: got=%d want=%d", len(contents["crabbox-artifacts/stdout.log"]), len(stdoutData))
+	}
+	if !bytes.Equal(contents["crabbox-artifacts/stderr.log"], stderrData) {
+		t.Fatalf("stderr data mismatch: got=%q want=%q", contents["crabbox-artifacts/stderr.log"], stderrData)
+	}
+}
+
+func TestCappedFailureBundleStreamBoundsImplicitCapture(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "stream.log")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := NewCappedFailureBundleStream(file)
+	chunk := bytes.Repeat([]byte("x"), 1024*1024)
+	for i := 0; i < 24; i++ {
+		if _, err := writer.Write(chunk); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Size() > failureBundleStreamCaptureBytes+256 {
+		t.Fatalf("implicit capture grew too large: %d", info.Size())
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(data, []byte("failure-bundle stream truncated")) {
+		t.Fatalf("missing truncation marker")
+	}
+}
+
+func readTarGzContents(t *testing.T, path string) map[string][]byte {
+	t.Helper()
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	gzipReader, err := gzip.NewReader(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gzipReader.Close()
+	tarReader := tar.NewReader(gzipReader)
+	entries := make(map[string][]byte)
+	for {
+		header, err := tarReader.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if header.Typeflag == tar.TypeReg || header.Typeflag == tar.TypeRegA {
+			data, err := io.ReadAll(tarReader)
+			if err != nil {
+				t.Fatal(err)
+			}
+			entries[header.Name] = data
+		} else {
+			entries[header.Name] = nil
+		}
+	}
+	return entries
+}
+
+func TestPrintKeepOnFailureSSHHint(t *testing.T) {
+	var buf bytes.Buffer
+	cfg := Config{Provider: "aws", IdleTimeout: 30 * time.Minute, TTL: 90 * time.Minute}
+	server := Server{Labels: map[string]string{"slug": "blue-crab", "expires_at": "1777777777"}}
+	target := SSHTarget{User: "crabbox", Host: "203.0.113.10", Port: "22", Key: "/tmp/key"}
+	printKeepOnFailureSSHHint(&buf, cfg, "cbx_123", server, target)
+	got := buf.String()
+	for _, want := range []string{
+		"keep-on-failure: kept lease=cbx_123",
+		"ssh: crabbox ssh --provider aws --id blue-crab",
+		"ssh-direct:",
+		"stop: crabbox stop --provider aws blue-crab",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("hint missing %q in %q", want, got)
+		}
 	}
 }
 

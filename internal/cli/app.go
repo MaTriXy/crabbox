@@ -12,10 +12,11 @@ import (
 type App struct {
 	Stdout io.Writer
 	Stderr io.Writer
+	Stdin  io.Reader
 }
 
 func Run(ctx context.Context, args []string) error {
-	app := App{Stdout: os.Stdout, Stderr: os.Stderr}
+	app := App{Stdout: os.Stdout, Stderr: os.Stderr, Stdin: os.Stdin}
 	return app.Run(ctx, args)
 }
 

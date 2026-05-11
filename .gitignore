@@ -1,6 +1,7 @@
 bin/
 dist/
 artifacts/
+.crabbox/captures/
 node_modules/
 .wrangler/
 *.test

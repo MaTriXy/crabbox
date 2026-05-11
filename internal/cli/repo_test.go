@@ -48,6 +48,8 @@ func TestSyncManifestPrunesNestedDefaultExcludes(t *testing.T) {
 	runGit(t, dir, "config", "user.email", "test@example.com")
 	runGit(t, dir, "config", "user.name", "Test")
 	writeFile(t, filepath.Join(dir, "packages", "app", "node_modules", "lib.js"), "cache")
+	writeFile(t, filepath.Join(dir, ".ignored", "churn"), "cache")
+	writeFile(t, filepath.Join(dir, "playwright-report", "index.html"), "cache")
 	writeFile(t, filepath.Join(dir, "apps", "foo", ".build", "debug.o"), "cache")
 	writeFile(t, filepath.Join(dir, "apps", "foo", "src", "main.go"), "package main\n")
 	runGit(t, dir, "add", ".")
@@ -58,11 +60,34 @@ func TestSyncManifestPrunesNestedDefaultExcludes(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := strings.Join(manifest.Files, ",")
-	if strings.Contains(got, "node_modules") || strings.Contains(got, ".build") {
+	if strings.Contains(got, "node_modules") || strings.Contains(got, ".build") || strings.Contains(got, ".ignored") || strings.Contains(got, "playwright-report") {
 		t.Fatalf("manifest should prune nested cache dirs: %q", got)
 	}
 	if !strings.Contains(got, "apps/foo/src/main.go") {
 		t.Fatalf("manifest missing source file: %q", got)
+	}
+}
+
+func TestSyncManifestDoesNotExcludeTrackedBuildOrOutSourcePaths(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@example.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	writeFile(t, filepath.Join(dir, "cmd", "build", "main.go"), "package main\n")
+	writeFile(t, filepath.Join(dir, "src", "out", "schema.sql"), "select 1;\n")
+	writeFile(t, filepath.Join(dir, "testdata", "tmp", "input.json"), "{}\n")
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "init")
+
+	manifest, err := syncManifest(dir, configuredExcludes(baseConfig()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(manifest.Files, ",")
+	for _, want := range []string{"cmd/build/main.go", "src/out/schema.sql", "testdata/tmp/input.json"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("manifest %q missing tracked source path %q", got, want)
+		}
 	}
 }
 
@@ -188,6 +213,34 @@ func TestSyncManifestRecordsTrackedDeletes(t *testing.T) {
 	if !bytes.Equal(manifest.DeletedNUL(), []byte("deleted.txt\x00")) {
 		t.Fatalf("deleted NUL=%q", string(manifest.DeletedNUL()))
 	}
+	if strings.Join(manifest.Changed, ",") != "deleted.txt" {
+		t.Fatalf("deleted path should count in dirty delta: %v", manifest.Changed)
+	}
+}
+
+func TestSyncManifestRecordsDirtyDelta(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@example.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	writeFile(t, filepath.Join(dir, "src", "main.go"), "package main\n")
+	writeFile(t, filepath.Join(dir, "README.md"), "hello\n")
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "init")
+	writeFile(t, filepath.Join(dir, "src", "main.go"), "package main\n// changed\n")
+	writeFile(t, filepath.Join(dir, "scratch.txt"), "local\n")
+
+	manifest, err := syncManifest(dir, configuredExcludes(baseConfig()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(manifest.Changed, ",")
+	if got != "scratch.txt,src/main.go" {
+		t.Fatalf("dirty delta=%q", got)
+	}
+	if manifest.ChangedBytes <= 0 {
+		t.Fatalf("dirty delta bytes=%d", manifest.ChangedBytes)
+	}
 }
 
 func TestSyncManifestDoesNotDeleteRecreatedStagedDelete(t *testing.T) {
@@ -243,6 +296,43 @@ func TestCheckSyncPreflightFailsLargeCandidate(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "sync candidate: 2 files") {
 		t.Fatalf("missing preflight output: %q", stderr.String())
+	}
+}
+
+func TestCheckSyncPreflightUsesDirtyDeltaWhenPresent(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Sync.FailFiles = 2
+	var stderr bytes.Buffer
+	err := checkSyncPreflight(SyncManifest{
+		Files:        []string{"a", "b", "c", "d"},
+		Changed:      []string{"src/changed.go"},
+		Bytes:        400,
+		ChangedBytes: 10,
+	}, cfg, false, &stderr)
+	if err != nil {
+		t.Fatalf("small dirty delta should not fail on full candidate size: %v", err)
+	}
+	got := stderr.String()
+	if !strings.Contains(got, "sync candidate: 4 files") || !strings.Contains(got, "dirty_delta=1 files") {
+		t.Fatalf("missing dirty delta output: %q", got)
+	}
+}
+
+func TestCheckSyncPreflightUsesDirtyDeltaForDeletions(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Sync.FailFiles = 2
+	var stderr bytes.Buffer
+	err := checkSyncPreflight(SyncManifest{
+		Files:   []string{"a", "b", "c", "d"},
+		Changed: []string{"deleted.go"},
+		Bytes:   400,
+	}, cfg, false, &stderr)
+	if err != nil {
+		t.Fatalf("single deleted dirty path should not fail on full candidate size: %v", err)
+	}
+	got := stderr.String()
+	if !strings.Contains(got, "dirty_delta=1 files") {
+		t.Fatalf("missing deletion dirty delta output: %q", got)
 	}
 }
 

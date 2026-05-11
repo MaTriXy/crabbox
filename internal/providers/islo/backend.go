@@ -154,10 +154,9 @@ func (b *isloBackend) Run(ctx context.Context, req RunRequest) (RunResult, error
 	if err != nil {
 		return RunResult{}, err
 	}
-	leaseID, name := "", ""
+	leaseID, name, slug := "", "", ""
 	acquired := false
 	if req.ID == "" {
-		var slug string
 		leaseID, name, slug, err = b.createSandbox(ctx, client, req.Repo, req.Reclaim)
 		if err != nil {
 			return RunResult{}, err
@@ -169,9 +168,14 @@ func (b *isloBackend) Run(ctx context.Context, req RunRequest) (RunResult, error
 		if err != nil {
 			return RunResult{}, err
 		}
+		slug = newLeaseSlug(leaseID)
 	}
-	if acquired && !req.Keep {
+	shouldStop := acquired && !req.Keep
+	if shouldStop {
 		defer func() {
+			if !shouldStop {
+				return
+			}
 			if err := client.DeleteSandbox(context.Background(), name); err != nil {
 				fmt.Fprintf(b.rt.Stderr, "warning: islo stop failed for %s: %v\n", name, err)
 				return
@@ -193,7 +197,7 @@ func (b *isloBackend) Run(ctx context.Context, req RunRequest) (RunResult, error
 		return RunResult{}, err
 	}
 	commandStart := b.now()
-	exitCode, runErr := b.exec(ctx, client, name, workspace, req.Command, req.ShellMode)
+	exitCode, runErr := b.exec(ctx, client, name, workspace, req.Command, req.ShellMode, req.Env)
 	commandDuration := b.now().Sub(commandStart)
 	result := RunResult{
 		ExitCode:      exitCode,
@@ -222,9 +226,11 @@ func (b *isloBackend) Run(ctx context.Context, req RunRequest) (RunResult, error
 		}
 	}
 	if runErr != nil {
+		handleDelegatedRunFailure(b.rt.Stderr, req, isloProvider, leaseID, slug, b.cfg.IdleTimeout, b.cfg.TTL, acquired, &shouldStop)
 		return result, ExitError{Code: 1, Message: fmt.Sprintf("islo run failed: %v", runErr)}
 	}
 	if exitCode != 0 {
+		handleDelegatedRunFailure(b.rt.Stderr, req, isloProvider, leaseID, slug, b.cfg.IdleTimeout, b.cfg.TTL, acquired, &shouldStop)
 		return result, ExitError{Code: exitCode, Message: fmt.Sprintf("islo run exited %d", exitCode)}
 	}
 	return result, nil
@@ -342,7 +348,7 @@ func (b *isloBackend) createSandbox(ctx context.Context, client isloAPI, repo Re
 	return leaseID, sandbox.GetName(), slug, nil
 }
 
-func (b *isloBackend) exec(ctx context.Context, client isloAPI, name, workdir string, command []string, shellMode bool) (int, error) {
+func (b *isloBackend) exec(ctx context.Context, client isloAPI, name, workdir string, command []string, shellMode bool, env map[string]string) (int, error) {
 	execCommand, err := isloExecCommand(command, shellMode)
 	if err != nil {
 		return 2, err
@@ -350,6 +356,13 @@ func (b *isloBackend) exec(ctx context.Context, client isloAPI, name, workdir st
 	req := &gosdk.ExecRequest{Command: execCommand}
 	if workdir != "" {
 		req.Workdir = stringValue(workdir)
+	}
+	if len(env) > 0 {
+		req.Env = make(map[string]*string, len(env))
+		for name, value := range env {
+			value := value
+			req.Env[name] = &value
+		}
 	}
 	return client.ExecStream(ctx, name, req, b.rt.Stdout, b.rt.Stderr)
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -103,8 +104,12 @@ if (-not (Test-Path -LiteralPath (Join-Path $workdir ".git"))) {
 }
 
 func windowsRemoteCommandWithEnvFile(workdir string, env map[string]string, envFile string, command []string) string {
+	return windowsRemoteCommandWithEnvFiles(workdir, env, singleEnvFile(envFile), command)
+}
+
+func windowsRemoteCommandWithEnvFiles(workdir string, env map[string]string, envFiles []string, command []string) string {
 	var b bytes.Buffer
-	writeWindowsRemotePrefix(&b, workdir, env, envFile)
+	writeWindowsRemotePrefix(&b, workdir, env, envFiles)
 	if len(command) == 0 {
 		b.WriteString("exit 0\n")
 	} else {
@@ -119,18 +124,26 @@ func windowsRemoteCommandWithEnvFile(workdir string, env map[string]string, envF
 }
 
 func windowsRemoteShellCommandWithEnvFile(workdir string, env map[string]string, envFile, script string) string {
+	return windowsRemoteShellCommandWithEnvFiles(workdir, env, singleEnvFile(envFile), script)
+}
+
+func windowsRemoteShellCommandWithEnvFiles(workdir string, env map[string]string, envFiles []string, script string) string {
 	var b bytes.Buffer
-	writeWindowsRemotePrefix(&b, workdir, env, envFile)
+	writeWindowsRemotePrefix(&b, workdir, env, envFiles)
 	b.WriteString(script)
 	b.WriteString("\nif (-not $?) { exit 1 }\n")
 	b.WriteString("if ($null -ne $global:LASTEXITCODE) { exit $global:LASTEXITCODE }\n")
 	return powershellCommand(b.String())
 }
 
-func writeWindowsRemotePrefix(b *bytes.Buffer, workdir string, env map[string]string, envFile string) {
+func writeWindowsRemotePrefix(b *bytes.Buffer, workdir string, env map[string]string, envFiles []string) {
 	b.WriteString(`$ErrorActionPreference = "Stop"` + "\n")
 	b.WriteString(`Set-Location -LiteralPath ` + psQuote(workdir) + "\n")
-	if envFile != "" {
+	for _, envFile := range envFiles {
+		envFile = strings.TrimSpace(envFile)
+		if envFile == "" {
+			continue
+		}
 		b.WriteString(`if (Test-Path -LiteralPath ` + psQuote(envFile) + `) { Get-Content -LiteralPath ` + psQuote(envFile) + ` | ForEach-Object { if ($_ -match '^([^=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process') } } }` + "\n")
 	}
 	for key, value := range env {

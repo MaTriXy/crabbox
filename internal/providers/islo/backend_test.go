@@ -257,6 +257,25 @@ func TestIsloSyncWorkspaceFallsBackToExecUpload(t *testing.T) {
 	}
 }
 
+func TestIsloExecForwardsEnv(t *testing.T) {
+	client := &fakeIsloSyncClient{}
+	backend := &isloBackend{rt: Runtime{Stdout: io.Discard, Stderr: io.Discard}}
+	code, err := backend.exec(context.Background(), client, "crabbox-test", "/workspace/repo", []string{"env"}, false, map[string]string{
+		"API_TOKEN": "secret",
+		"CI":        "1",
+	})
+	if err != nil || code != 0 {
+		t.Fatalf("exec code=%d err=%v", code, err)
+	}
+	if len(client.execRequests) != 1 {
+		t.Fatalf("exec requests=%d", len(client.execRequests))
+	}
+	env := client.execRequests[0].Env
+	if env["API_TOKEN"] == nil || *env["API_TOKEN"] != "secret" || env["CI"] == nil || *env["CI"] != "1" {
+		t.Fatalf("env=%#v", env)
+	}
+}
+
 func TestRejectIsloSyncOptionsAllowsForceSyncLarge(t *testing.T) {
 	if err := rejectIsloSyncOptions(RunRequest{ForceSyncLarge: true}); err != nil {
 		t.Fatalf("force sync large should be honored by Islo archive sync: %v", err)
@@ -399,6 +418,7 @@ func TestIsloSDKClientUploadArchiveStreamsMultipartTarball(t *testing.T) {
 
 type fakeIsloSyncClient struct {
 	prepareCommands   []string
+	execRequests      []*gosdk.ExecRequest
 	uploadPath        string
 	uploaded          bytes.Buffer
 	uploadErr         error
@@ -443,6 +463,7 @@ func (f *fakeIsloSyncClient) UploadArchive(_ context.Context, _ string, targetPa
 }
 
 func (f *fakeIsloSyncClient) ExecStream(_ context.Context, _ string, req *gosdk.ExecRequest, _, _ io.Writer) (int, error) {
+	f.execRequests = append(f.execRequests, req)
 	f.prepareCommands = append(f.prepareCommands, strings.Join(req.GetCommand(), " "))
 	return 0, nil
 }

@@ -81,6 +81,14 @@ func writeTimingJSON(w io.Writer, report timingReport) error {
 	return core.WriteTimingJSON(w, report)
 }
 
+func PrintKeepOnFailureDelegatedHint(w io.Writer, provider, leaseID, slug string, idleTimeout, ttl time.Duration) {
+	core.PrintKeepOnFailureDelegatedHint(w, provider, leaseID, slug, idleTimeout, ttl)
+}
+
+func handleDelegatedRunFailure(w io.Writer, req RunRequest, provider, leaseID, slug string, idleTimeout, ttl time.Duration, acquired bool, shouldStop *bool) {
+	core.HandleDelegatedRunFailure(w, req, provider, leaseID, slug, idleTimeout, ttl, acquired, shouldStop)
+}
+
 func shellQuote(s string) string {
 	return core.ShellQuote(s)
 }
