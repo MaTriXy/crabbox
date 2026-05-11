@@ -15,6 +15,7 @@ type TimingReport struct {
 	SyncSkipped   bool          `json:"syncSkipped"`
 	SyncDelegated bool          `json:"syncDelegated,omitempty"`
 	CommandMs     int64         `json:"commandMs"`
+	CommandPhases []TimingPhase `json:"commandPhases,omitempty"`
 	TotalMs       int64         `json:"totalMs"`
 	ExitCode      int           `json:"exitCode"`
 	ActionsRunURL string        `json:"actionsRunUrl,omitempty"`
@@ -60,15 +61,16 @@ func durationMinutesCeil(duration time.Duration) int {
 
 func timingReportFromRun(provider, leaseID, slug string, timings runTimings, total time.Duration, exitCode int) timingReport {
 	return timingReport{
-		Provider:    provider,
-		LeaseID:     leaseID,
-		Slug:        slug,
-		SyncMs:      timings.sync.Milliseconds(),
-		SyncPhases:  syncTimingPhases(timings.syncSteps),
-		SyncSkipped: timings.syncSkipped,
-		CommandMs:   timings.command.Milliseconds(),
-		TotalMs:     total.Milliseconds(),
-		ExitCode:    exitCode,
+		Provider:      provider,
+		LeaseID:       leaseID,
+		Slug:          slug,
+		SyncMs:        timings.sync.Milliseconds(),
+		SyncPhases:    syncTimingPhases(timings.syncSteps),
+		SyncSkipped:   timings.syncSkipped,
+		CommandMs:     timings.command.Milliseconds(),
+		CommandPhases: timings.commandPhases,
+		TotalMs:       total.Milliseconds(),
+		ExitCode:      exitCode,
 	}
 }
 

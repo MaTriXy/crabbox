@@ -129,10 +129,17 @@ func (b *blacksmithBackend) Run(ctx context.Context, req RunRequest) (RunResult,
 		}()
 	}
 	fmt.Fprintf(b.rt.Stderr, "provider=blacksmith-testbox id=%s sync=delegated auth=blacksmith\n", leaseID)
+	if strings.TrimSpace(os.Getenv("CRABBOX_ENV_ALLOW")) != "" {
+		core.PrintEnvForwardingSummary(b.rt.Stderr, blacksmithTestboxProvider, "unsupported", req.Options.EnvAllow, core.AllowedEnv(req.Options.EnvAllow))
+		fmt.Fprintf(b.rt.Stderr, "env forwarding note=blacksmith-testbox delegates execution to the Blacksmith CLI; configure secrets in the Testbox workflow instead\n")
+	}
 	commandStart := b.rt.Clock.Now()
-	code := b.runTestbox(ctx, leaseID, req.Command, req.DebugSync, req.ShellMode)
-	commandDuration := b.rt.Clock.Now().Sub(commandStart)
-	total := b.rt.Clock.Now().Sub(started)
+	phaseTracker := core.NewCommandPhaseTracker(commandStart)
+	code := b.runTestbox(ctx, leaseID, req.Command, req.DebugSync, req.ShellMode, phaseTracker)
+	finished := b.rt.Clock.Now()
+	commandDuration := finished.Sub(commandStart)
+	commandPhases := core.FinishCommandPhaseTracker(phaseTracker, finished)
+	total := finished.Sub(started)
 	fmt.Fprintf(b.rt.Stderr, "blacksmith run summary sync=delegated command=%s total=%s exit=%d\n", commandDuration.Round(time.Millisecond), total.Round(time.Millisecond), code)
 	if req.TimingJSON {
 		if err := writeTimingJSON(b.rt.Stderr, timingReport{
@@ -142,6 +149,7 @@ func (b *blacksmithBackend) Run(ctx context.Context, req RunRequest) (RunResult,
 			SyncPhases:    []timingPhase{{Name: "delegated", Skipped: true, Reason: "blacksmith-testbox owns sync"}},
 			SyncDelegated: true,
 			CommandMs:     commandDuration.Milliseconds(),
+			CommandPhases: commandPhases,
 			TotalMs:       total.Milliseconds(),
 			ExitCode:      code,
 		}); err != nil {
@@ -260,14 +268,18 @@ func (b *blacksmithBackend) warmupLease(ctx context.Context, repo Repo, reclaim 
 	return leaseID, slug, nil
 }
 
-func (b *blacksmithBackend) runTestbox(ctx context.Context, leaseID string, command []string, debug, shellMode bool) int {
+func (b *blacksmithBackend) runTestbox(ctx context.Context, leaseID string, command []string, debug, shellMode bool, phaseTracker *core.CommandPhaseTracker) int {
 	keyPath, err := testboxKeyPath(leaseID)
 	if err != nil {
 		fmt.Fprintf(b.rt.Stderr, "blacksmith key path failed: %v\n", err)
 		return 2
 	}
 	args := blacksmithRunArgs(b.cfg, leaseID, keyPath, command, debug || b.cfg.Blacksmith.Debug, shellMode)
-	result, timedOut, err := b.runCommandWithSyncGuard(ctx, args, b.rt.Stdout, b.rt.Stderr)
+	stdout, stdoutPhaseWriter := commandPhaseWriter(b.rt.Stdout, phaseTracker)
+	stderr, stderrPhaseWriter := commandPhaseWriter(b.rt.Stderr, phaseTracker)
+	result, timedOut, err := b.runCommandWithSyncGuard(ctx, args, stdout, stderr)
+	stdoutPhaseWriter.Flush()
+	stderrPhaseWriter.Flush()
 	if timedOut {
 		fmt.Fprintf(
 			b.rt.Stderr,
@@ -281,6 +293,14 @@ func (b *blacksmithBackend) runTestbox(ctx context.Context, leaseID string, comm
 		return result.ExitCode
 	}
 	return 0
+}
+
+func commandPhaseWriter(w io.Writer, tracker *core.CommandPhaseTracker) (io.Writer, *core.PhaseMarkerWriter) {
+	phaseWriter := core.NewPhaseMarkerWriter(tracker)
+	if w == nil {
+		return phaseWriter, phaseWriter
+	}
+	return io.MultiWriter(w, phaseWriter), phaseWriter
 }
 
 func (b *blacksmithBackend) commandOutput(ctx context.Context, args []string) (string, error) {

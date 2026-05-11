@@ -1,11 +1,15 @@
 package cli
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -136,6 +140,8 @@ func TestRunCommandRejectsUnsupportedDelegatedCaptureOptions(t *testing.T) {
 		{name: "daytona capture stdout", provider: "daytona", args: []string{"--capture-stdout", "stdout.bin"}, want: "daytona delegates run execution; --capture-stdout is not supported"},
 		{name: "islo capture stdout", provider: "islo", args: []string{"--capture-stdout", "stdout.bin"}, want: "islo delegates run execution; --capture-stdout is not supported"},
 		{name: "e2b capture stdout", provider: "e2b", args: []string{"--capture-stdout", "stdout.bin"}, want: "e2b delegates run execution; --capture-stdout is not supported"},
+		{name: "daytona capture stderr", provider: "daytona", args: []string{"--capture-stderr", "stderr.bin"}, want: "daytona delegates run execution; --capture-stderr is not supported"},
+		{name: "islo capture on fail", provider: "islo", args: []string{"--capture-on-fail"}, want: "islo delegates run execution; --capture-on-fail is not supported"},
 		{name: "daytona download", provider: "daytona", args: []string{"--download", "/tmp/proof=proof.bin"}, want: "daytona delegates run execution; --download is not supported"},
 		{name: "islo download", provider: "islo", args: []string{"--download", "/tmp/proof=proof.bin"}, want: "islo delegates run execution; --download is not supported"},
 		{name: "e2b download", provider: "e2b", args: []string{"--download", "/tmp/proof=proof.bin"}, want: "e2b delegates run execution; --download is not supported"},
@@ -166,6 +172,8 @@ func TestRunCommandPreflightsLocalOutputOptions(t *testing.T) {
 	}{
 		{name: "malformed download", args: []string{"--download", "out.bin", "--", "true"}, want: "--download expects remote=local"},
 		{name: "missing capture directory", args: []string{"--capture-stdout", filepath.Join(t.TempDir(), "missing", "stdout.bin"), "--", "true"}, want: "capture stdout:"},
+		{name: "missing stderr capture directory", args: []string{"--capture-stderr", filepath.Join(t.TempDir(), "missing", "stderr.bin"), "--", "true"}, want: "capture stderr:"},
+		{name: "same capture path", args: []string{"--capture-stdout", "run.log", "--capture-stderr", "run.log", "--", "true"}, want: "paths must be different"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -179,6 +187,258 @@ func TestRunCommandPreflightsLocalOutputOptions(t *testing.T) {
 				t.Fatalf("message=%q want %q", exitErr.Message, tt.want)
 			}
 		})
+	}
+}
+
+func TestEnvForwardingSummaryRedactsSecretValues(t *testing.T) {
+	t.Setenv("CRABBOX_ENV_ALLOW", "OPENAI_API_KEY,CI")
+	var buf bytes.Buffer
+	printEnvForwardingSummary(&buf, "aws", "forwarded", []string{"OPENAI_API_KEY", "CI"}, map[string]string{
+		"OPENAI_API_KEY": "sk-live-secret",
+		"CI":             "1",
+	})
+	got := buf.String()
+	if strings.Contains(got, "sk-live-secret") {
+		t.Fatalf("summary leaked value: %s", got)
+	}
+	for _, want := range []string{
+		"provider=aws",
+		"behavior=forwarded",
+		"OPENAI_API_KEY=set len=14 secret=true",
+		"CI=set",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("summary missing %q in %q", want, got)
+		}
+	}
+}
+
+func TestPhaseMarkerParsingAndTimingJSON(t *testing.T) {
+	if name, ok := phaseNameFromLine("CRABBOX_PHASE: install deps"); !ok || name != "install-deps" {
+		t.Fatalf("phase=%q ok=%t", name, ok)
+	}
+	if _, ok := phaseNameFromLine("not a marker"); ok {
+		t.Fatal("unexpected phase marker")
+	}
+
+	var buf bytes.Buffer
+	err := writeTimingJSON(&buf, timingReportFromRun("aws", "cbx_123", "blue-crab", runTimings{
+		command: 1500 * time.Millisecond,
+		commandPhases: []timingPhase{
+			{Name: "install", Ms: 500},
+			{Name: "build", Ms: 1000},
+		},
+	}, 2*time.Second, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		CommandPhases []struct {
+			Name string `json:"name"`
+			Ms   int64  `json:"ms"`
+		} `json:"commandPhases"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.CommandPhases) != 2 || got.CommandPhases[0].Name != "install" || got.CommandPhases[1].Ms != 1000 {
+		t.Fatalf("unexpected command phases: %#v", got.CommandPhases)
+	}
+}
+
+func TestPhaseMarkerWritersKeepStreamBuffersSeparate(t *testing.T) {
+	tracker := newCommandPhaseTracker(time.Now())
+	stdoutWriter := &phaseMarkerWriter{tracker: tracker}
+	stderrWriter := &phaseMarkerWriter{tracker: tracker}
+
+	if _, err := stdoutWriter.Write([]byte("CRABBOX_PHASE:build")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stderrWriter.Write([]byte("CRABBOX_PHASE:test\n")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stdoutWriter.Write([]byte("\n")); err != nil {
+		t.Fatal(err)
+	}
+
+	phases := tracker.Finish(time.Now())
+	names := make(map[string]bool)
+	for _, phase := range phases {
+		names[phase.Name] = true
+	}
+	if !names["build"] || !names["test"] {
+		t.Fatalf("phases=%#v want independent stdout/stderr markers", phases)
+	}
+}
+
+func TestPhaseMarkerWriterParsesCompleteLinesBeforePendingTruncation(t *testing.T) {
+	tracker := newCommandPhaseTracker(time.Now())
+	writer := &phaseMarkerWriter{tracker: tracker}
+
+	if _, err := writer.Write([]byte("CRABBOX_PHASE:build\n" + strings.Repeat("x", phaseMarkerPendingBytes*2))); err != nil {
+		t.Fatal(err)
+	}
+	if len(writer.pending) > phaseMarkerPendingBytes {
+		t.Fatalf("pending=%d want <=%d", len(writer.pending), phaseMarkerPendingBytes)
+	}
+
+	phases := tracker.Finish(time.Now())
+	names := make(map[string]bool)
+	for _, phase := range phases {
+		names[phase.Name] = true
+	}
+	if !names["build"] {
+		t.Fatalf("phases=%#v want build marker from large chunk", phases)
+	}
+}
+
+func TestRemotePreflightRawWorkspaceHydrateWarning(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Provider = "aws"
+	cfg.Actions.Workflow = ".github/workflows/hydrate.yml"
+	lines := remotePreflightWorkspaceLines(cfg, SSHTarget{TargetOS: targetLinux}, "cbx_123", "/work/crabbox/cbx_123/repo", false, "", true)
+	got := strings.Join(lines, "\n")
+	for _, want := range []string{
+		"workspace=raw",
+		"workdir=/work/crabbox/cbx_123/repo",
+		"hydrate_supported=true",
+		"hydrate_suggestion=crabbox actions hydrate --id cbx_123 --provider aws --target linux --workflow .github/workflows/hydrate.yml",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("preflight text missing %q in %q", want, got)
+		}
+	}
+}
+
+func TestRemotePreflightRawWorkspaceSkipsHydrateSuggestionWithoutWorkflow(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Provider = "aws"
+	lines := remotePreflightWorkspaceLines(cfg, SSHTarget{TargetOS: targetLinux}, "cbx_123", "/work/crabbox/cbx_123/repo", false, "", true)
+	got := strings.Join(lines, "\n")
+	if strings.Contains(got, "hydrate_suggestion=") {
+		t.Fatalf("unexpected hydrate suggestion without workflow: %q", got)
+	}
+	if !strings.Contains(got, "workspace=raw") {
+		t.Fatalf("preflight text missing workspace: %q", got)
+	}
+}
+
+func TestRemoteCapabilityPreflightCommandUsesCommandEnvironment(t *testing.T) {
+	got := remoteCapabilityPreflightCommand("/home/runner/work/repo/repo", map[string]string{"CI": "1"}, "/home/runner/.crabbox/actions/cbx-123.env.sh")
+	for _, want := range []string{
+		"cd '/home/runner/work/repo/repo'",
+		". '/home/runner/.crabbox/actions/cbx-123.env.sh'",
+		"CI='1'",
+		"pwd -P",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("preflight command missing %q in %q", want, got)
+		}
+	}
+}
+
+func TestDelegatedPreflightPrintsUnsupportedMessage(t *testing.T) {
+	var stderr bytes.Buffer
+	printDelegatedPreflightUnsupported(&stderr, "e2b")
+	got := stderr.String()
+	for _, want := range []string{"provider=e2b", "delegated unsupported", "provider owns workspace and command transport"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("message missing %q in %q", want, got)
+		}
+	}
+}
+
+func TestRemoteFailureCaptureCommandAvoidsDuplicateDirectoryChildren(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash is required for POSIX capture command test")
+	}
+	workdir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(workdir, "test-results"), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workdir, "test-results", "failure.log"), []byte("failure"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+
+	command := remoteFailureCaptureCommand(workdir, ".crabbox/capture.tar.gz")
+	if out, err := exec.Command("bash", "-lc", command).CombinedOutput(); err != nil {
+		t.Fatalf("capture command failed: %v\n%s", err, out)
+	}
+
+	file, err := os.Open(filepath.Join(workdir, ".crabbox", "capture.tar.gz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	gzipReader, err := gzip.NewReader(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gzipReader.Close()
+	tarReader := tar.NewReader(gzipReader)
+	counts := make(map[string]int)
+	for {
+		header, err := tarReader.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		counts[header.Name]++
+	}
+	if counts["test-results/failure.log"] != 1 {
+		t.Fatalf("test-results/failure.log count=%d entries=%#v", counts["test-results/failure.log"], counts)
+	}
+}
+
+func TestRemoteRemoveFailureCaptureCommandRemovesBundle(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash is required for POSIX cleanup command test")
+	}
+	workdir := t.TempDir()
+	captureDir := filepath.Join(workdir, ".crabbox")
+	if err := os.Mkdir(captureDir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	capturePath := filepath.Join(captureDir, "capture.tar.gz")
+	if err := os.WriteFile(capturePath, []byte("secret logs"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+
+	command := remoteRemoveFailureCaptureCommand(workdir, ".crabbox/capture.tar.gz")
+	if out, err := exec.Command("bash", "-lc", command).CombinedOutput(); err != nil {
+		t.Fatalf("cleanup command failed: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(capturePath); !os.IsNotExist(err) {
+		t.Fatalf("capture bundle should be removed, stat err=%v", err)
+	}
+}
+
+func TestStreamTailBufferBoundsLongPendingLine(t *testing.T) {
+	tail := newStreamTailBuffer(2)
+	chunk := strings.Repeat("a", failureTailLineBytes*3)
+	if _, err := tail.Write([]byte(chunk)); err != nil {
+		t.Fatal(err)
+	}
+	if len(tail.pending) > failureTailLineBytes+len("[truncated] ") {
+		t.Fatalf("pending length=%d", len(tail.pending))
+	}
+	lines := tail.Lines()
+	if len(lines) != 1 || !strings.HasPrefix(lines[0], "[truncated] ") {
+		t.Fatalf("unexpected lines: %#v", lines)
+	}
+	if _, err := tail.Write([]byte("\n" + strings.Repeat("b", failureTailLineBytes*2) + "\n")); err != nil {
+		t.Fatal(err)
+	}
+	lines = tail.Lines()
+	if len(lines) != 2 {
+		t.Fatalf("lines=%d want 2", len(lines))
+	}
+	for _, line := range lines {
+		if len(line) > failureTailLineBytes+len("[truncated] ") {
+			t.Fatalf("line length=%d", len(line))
+		}
 	}
 }
 

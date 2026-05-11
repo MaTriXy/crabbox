@@ -151,6 +151,9 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 	forceSyncLarge := fs.Bool("force-sync-large", false, "allow unusually large sync candidates")
 	junitResults := fs.String("junit", "", "comma-separated remote JUnit XML paths to record")
 	captureStdout := fs.String("capture-stdout", "", "write remote stdout to a local file instead of the terminal")
+	captureStderr := fs.String("capture-stderr", "", "write remote stderr to a local file instead of the terminal")
+	captureOnFail := fs.Bool("capture-on-fail", false, "download a local-only failure debug tarball when the command exits non-zero")
+	preflight := fs.Bool("preflight", false, "print remote capability preflight before running the command")
 	var downloads stringListFlag
 	fs.Var(&downloads, "download", "download a remote file after command success: remote=local; repeatable")
 	reclaim := fs.Bool("reclaim", false, "claim this lease for the current repo")
@@ -165,7 +168,7 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 	if len(command) == 0 && !*syncOnly {
 		return exit(2, "usage: crabbox run [flags] -- <command...>")
 	}
-	if err := preflightRunLocalOutputs(*captureStdout, downloads); err != nil {
+	if err := preflightRunLocalOutputs(*captureStdout, *captureStderr, downloads); err != nil {
 		return err
 	}
 
@@ -204,6 +207,9 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 		ChecksumSync:   *checksumSync,
 		ForceSyncLarge: *forceSyncLarge,
 		CaptureStdout:  *captureStdout,
+		CaptureStderr:  *captureStderr,
+		CaptureOnFail:  *captureOnFail,
+		Preflight:      *preflight,
 		Downloads:      downloads,
 		Command:        command,
 		TimingJSON:     *timingJSON,
@@ -211,6 +217,9 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 	if delegated, ok := backend.(DelegatedRunBackend); ok {
 		if err := RejectDelegatedSyncOptions(backend.Spec().Name, runReq); err != nil {
 			return err
+		}
+		if runReq.Preflight {
+			printDelegatedPreflightUnsupported(a.Stderr, backend.Spec().Name)
 		}
 		_, err := delegated.Run(ctx, runReq)
 		return err
@@ -338,6 +347,30 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 	} else if commandNeedsHydrationHint(command, *shellMode) && cfg.Actions.Workflow != "" {
 		fmt.Fprintf(a.Stderr, "warning: no GitHub Actions hydration marker found for %s; JS package commands may fail on a raw box. Run \"crabbox actions hydrate --id %s\" first, or include runtime setup in the command.\n", leaseID, leaseID)
 	}
+	contextPrinted := false
+	preflightPrinted := false
+	printContext := func(currentTarget SSHTarget) {
+		if contextPrinted {
+			return
+		}
+		printRunContextSummary(a.Stderr, coord, cfg, server, currentTarget, leaseID, workdir, hydratedByActions, actionsURL, recorder)
+		contextPrinted = true
+	}
+	printPreflight := func(currentTarget SSHTarget) {
+		if !*preflight || preflightPrinted {
+			return
+		}
+		hydrateTarget := currentTarget
+		if hydrateTarget.TargetOS == "" {
+			hydrateTarget.TargetOS = cfg.TargetOS
+		}
+		if hydrateTarget.WindowsMode == "" {
+			hydrateTarget.WindowsMode = cfg.WindowsMode
+		}
+		hydrateSupported := supportsActionsRunnerTarget(hydrateTarget)
+		printRemoteCapabilityPreflight(ctx, a.Stderr, cfg, currentTarget, leaseID, workdir, actionsEnvFile, hydratedByActions, actionsURL, hydrateSupported, allowedEnv(cfg.EnvAllow))
+		preflightPrinted = true
+	}
 	if !*noSync {
 		syncStart := time.Now()
 		fmt.Fprintf(a.Stderr, "syncing %s -> %s:%s\n", repo.Root, target.Host, workdir)
@@ -356,6 +389,7 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 				fmt.Fprintf(a.Stderr, "network fallback %s\n", resolved.FallbackReason)
 			}
 		}
+		printContext(target)
 		if !exitNodeEgressChecked {
 			if err := validateTailscaleExitNodeEgress(ctx, server, target); err != nil {
 				return recordFailure(err)
@@ -485,6 +519,9 @@ func (a App) runCommand(ctx context.Context, args []string) (err error) {
 	}
 afterSync:
 	if *syncOnly {
+		printPreflight(target)
+	}
+	if *syncOnly {
 		fmt.Fprintf(a.Stdout, "synced %s\n", workdir)
 		fmt.Fprintln(a.Stderr, formatRunSummary(timings, time.Since(timings.started), 0))
 		if *timingJSON {
@@ -512,6 +549,7 @@ afterSync:
 			fmt.Fprintf(a.Stderr, "network fallback %s\n", resolved.FallbackReason)
 		}
 	}
+	printContext(target)
 	if !exitNodeEgressChecked {
 		if err := validateTailscaleExitNodeEgress(ctx, server, target); err != nil {
 			return recordFailure(err)
@@ -529,6 +567,7 @@ afterSync:
 			return recordFailure(exit(7, "create remote workdir: %v", err))
 		}
 	}
+	printPreflight(target)
 	if !useCoordinator {
 		if touched, touchErr := sshBackend.Touch(context.Background(), TouchRequest{Lease: LeaseTarget{Server: server, SSH: target, LeaseID: leaseID}, State: "running", IdleTimeout: cfg.IdleTimeout}); touchErr == nil {
 			server = touched
@@ -549,7 +588,9 @@ afterSync:
 	if err != nil {
 		return recordFailure(err)
 	}
-	runEnv := mergeEnv(allowedEnv(cfg.EnvAllow), capabilityEnv)
+	allowedRunEnv := allowedEnv(cfg.EnvAllow)
+	maybePrintEnvForwardingSummary(a.Stderr, cfg.Provider, "forwarded", cfg.EnvAllow, allowedRunEnv)
+	runEnv := mergeEnv(allowedRunEnv, capabilityEnv)
 	remote := remoteCommandWithEnvFile(workdir, runEnv, actionsEnvFile, command)
 	if *shellMode {
 		remote = remoteShellCommandWithEnvFile(workdir, runEnv, actionsEnvFile, strings.Join(command, " "))
@@ -565,8 +606,13 @@ afterSync:
 	var logBuffer runLogBuffer
 	stdoutEvents := recorder.StreamWriter("stdout")
 	stderrEvents := recorder.StreamWriter("stderr")
-	stdout := io.MultiWriter(a.Stdout, &logBuffer, stdoutEvents)
-	stderr := io.MultiWriter(a.Stderr, &logBuffer, stderrEvents)
+	stdoutTail := newStreamTailBuffer(failureTailLines)
+	stderrTail := newStreamTailBuffer(failureTailLines)
+	phaseTracker := newCommandPhaseTracker(commandStart)
+	stdoutPhaseWriter := &phaseMarkerWriter{tracker: phaseTracker}
+	stderrPhaseWriter := &phaseMarkerWriter{tracker: phaseTracker}
+	stdout := io.MultiWriter(a.Stdout, &logBuffer, stdoutEvents, stdoutTail, stdoutPhaseWriter)
+	stderr := io.MultiWriter(a.Stderr, &logBuffer, stderrEvents, stderrTail, stderrPhaseWriter)
 	var stdoutCapture *countingWriteCloser
 	if *captureStdout != "" {
 		file, err := os.Create(*captureStdout)
@@ -574,14 +620,28 @@ afterSync:
 			return recordFailure(exit(2, "capture stdout: %v", err))
 		}
 		stdoutCapture = &countingWriteCloser{WriteCloser: file}
-		stdout = stdoutCapture
+		stdout = io.MultiWriter(stdoutCapture, stdoutPhaseWriter)
 		stdoutEvents = nil
 		fmt.Fprintf(a.Stderr, "capturing stdout to %s\n", *captureStdout)
+	}
+	var stderrCapture *countingWriteCloser
+	if *captureStderr != "" {
+		file, err := os.Create(*captureStderr)
+		if err != nil {
+			return recordFailure(exit(2, "capture stderr: %v", err))
+		}
+		stderrCapture = &countingWriteCloser{WriteCloser: file}
+		stderr = io.MultiWriter(stderrCapture, stderrPhaseWriter)
+		stderrEvents = nil
+		fmt.Fprintf(a.Stderr, "capturing stderr to %s\n", *captureStderr)
 	}
 	code, streamErr := runSSHStreamResult(ctx, target, remote, stdout, stderr)
 	if stdoutCapture != nil {
 		if streamErr != nil && !isSSHCommandExitError(streamErr) {
 			_ = stdoutCapture.Close()
+			if stderrCapture != nil {
+				_ = stderrCapture.Close()
+			}
 			return recordFailure(exit(2, "capture stdout: %v", streamErr))
 		}
 		if closeErr := stdoutCapture.Close(); closeErr != nil && code == 0 {
@@ -591,8 +651,22 @@ afterSync:
 	} else {
 		stdoutEvents.Flush()
 	}
-	stderrEvents.Flush()
+	if stderrCapture != nil {
+		if streamErr != nil && !isSSHCommandExitError(streamErr) {
+			_ = stderrCapture.Close()
+			return recordFailure(exit(2, "capture stderr: %v", streamErr))
+		}
+		if closeErr := stderrCapture.Close(); closeErr != nil && code == 0 {
+			return recordFailure(exit(2, "capture stderr close: %v", closeErr))
+		}
+		fmt.Fprintf(a.Stderr, "captured stderr=%s bytes=%d\n", *captureStderr, stderrCapture.N)
+	} else {
+		stderrEvents.Flush()
+	}
+	stdoutPhaseWriter.Flush()
+	stderrPhaseWriter.Flush()
 	timings.command = time.Since(commandStart)
+	timings.commandPhases = phaseTracker.Finish(time.Now())
 	var results *TestResultSummary
 	if len(cfg.Results.JUnit) > 0 {
 		results, err = collectRemoteJUnitResults(ctx, target, workdir, cfg.Results.JUnit)
@@ -621,6 +695,18 @@ afterSync:
 		}
 	}
 	if code != 0 {
+		if *captureOnFail {
+			if local, bytes, captureErr := captureFailureArtifacts(ctx, target, workdir, leaseID, recorder.runID); captureErr != nil {
+				fmt.Fprintf(a.Stderr, "warning: capture-on-fail failed: %v\n", captureErr)
+				if local != "" {
+					fmt.Fprintf(a.Stderr, "capture-on-fail local=%s bytes=%d secret_risk=caller-redacts-before-sharing\n", local, bytes)
+				}
+			} else {
+				fmt.Fprintf(a.Stderr, "capture-on-fail local=%s bytes=%d secret_risk=caller-redacts-before-sharing\n", local, bytes)
+			}
+		}
+		printFailureTail(a.Stderr, "stdout", stdoutTail, *captureStdout)
+		printFailureTail(a.Stderr, "stderr", stderrTail, *captureStderr)
 		return recordFailure(ExitError{Code: code, Message: fmt.Sprintf("remote command exited %d", code)})
 	}
 	return nil
@@ -645,11 +731,12 @@ func recordRunFailure(dst *error, failure error) error {
 }
 
 type runTimings struct {
-	started     time.Time
-	sync        time.Duration
-	command     time.Duration
-	syncSteps   syncStepTimings
-	syncSkipped bool
+	started       time.Time
+	sync          time.Duration
+	command       time.Duration
+	syncSteps     syncStepTimings
+	commandPhases []timingPhase
+	syncSkipped   bool
 }
 
 type syncStepTimings struct {
@@ -682,6 +769,9 @@ func formatRunSummary(timings runTimings, total time.Duration, exitCode int) str
 	)
 	if breakdown := formatSyncStepTimings(timings.syncSteps); breakdown != "" {
 		summary += " sync_steps=" + breakdown
+	}
+	if breakdown := formatCommandPhaseTimings(timings.commandPhases); breakdown != "" {
+		summary += " command_phases=" + breakdown
 	}
 	return summary
 }

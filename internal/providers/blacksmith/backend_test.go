@@ -3,6 +3,7 @@ package blacksmith
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -296,6 +297,56 @@ func TestBlacksmithOneShotRunRemovesClaimAfterStop(t *testing.T) {
 	}
 }
 
+func TestBlacksmithRunTimingJSONIncludesCommandPhases(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(home, ".local", "state"))
+	runner := &blacksmithFuncRunner{fn: func(req LocalCommandRequest) (LocalCommandResult, error) {
+		if len(req.Args) >= 3 && req.Args[0] == "testbox" && req.Args[1] == "warmup" {
+			return LocalCommandResult{Stdout: "ready tbx_phase123\n"}, nil
+		}
+		if len(req.Args) >= 3 && req.Args[0] == "testbox" && req.Args[1] == "run" {
+			if req.Stdout != nil {
+				_, _ = req.Stdout.Write([]byte("CRABBOX_PHASE:delegated\nok\n"))
+			}
+			return LocalCommandResult{}, nil
+		}
+		return LocalCommandResult{}, nil
+	}}
+	var stderr bytes.Buffer
+	cfg := baseConfig()
+	cfg.Blacksmith.Workflow = ".github/workflows/testbox.yml"
+	backend := &blacksmithBackend{
+		spec: Provider{}.Spec(),
+		cfg:  cfg,
+		rt:   Runtime{Stdout: io.Discard, Stderr: &stderr, Clock: testClock{}, Exec: runner},
+	}
+
+	_, err := backend.Run(context.Background(), RunRequest{
+		Repo:       Repo{Root: "/repo"},
+		Command:    []string{"true"},
+		TimingJSON: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report timingReport
+	for _, line := range strings.Split(stderr.String(), "\n") {
+		if strings.HasPrefix(line, "{") {
+			if err := json.Unmarshal([]byte(line), &report); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if len(report.CommandPhases) != 2 {
+		t.Fatalf("command phases=%#v, want user-command and delegated", report.CommandPhases)
+	}
+	if report.CommandPhases[1].Name != "delegated" {
+		t.Fatalf("command phases=%#v, want delegated marker", report.CommandPhases)
+	}
+}
+
 func TestBlacksmithRunTerminatesSyncStall(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -315,7 +366,7 @@ func TestBlacksmithRunTerminatesSyncStall(t *testing.T) {
 			Exec:   blockingSyncRunner{},
 		},
 	}
-	code := backend.runTestbox(context.Background(), "tbx_syncstall", []string{"pnpm", "test"}, false, false)
+	code := backend.runTestbox(context.Background(), "tbx_syncstall", []string{"pnpm", "test"}, false, false, nil)
 	if code != 124 {
 		t.Fatalf("exit=%d want 124", code)
 	}

@@ -25,20 +25,85 @@ func parseRunDownloadSpec(value string) (runDownloadSpec, error) {
 	return runDownloadSpec{Remote: remote, Local: local}, nil
 }
 
-func preflightRunLocalOutputs(captureStdout string, downloads []string) error {
+func preflightRunLocalOutputs(captureStdout, captureStderr string, downloads []string) error {
+	if captureStdout != "" && captureStderr != "" {
+		same, err := sameLocalOutputPath(captureStdout, captureStderr)
+		if err != nil {
+			return err
+		}
+		if same {
+			return exit(2, "capture stdout/stderr: paths must be different")
+		}
+	}
+	parsedDownloads := make([]runDownloadSpec, 0, len(downloads))
 	for _, spec := range downloads {
 		download, err := parseRunDownloadSpec(spec)
 		if err != nil {
 			return err
 		}
+		parsedDownloads = append(parsedDownloads, download)
+	}
+	for _, download := range parsedDownloads {
+		if err := rejectCaptureDownloadCollision("capture stdout", captureStdout, download); err != nil {
+			return err
+		}
+		if err := rejectCaptureDownloadCollision("capture stderr", captureStderr, download); err != nil {
+			return err
+		}
+	}
+	for i := range parsedDownloads {
+		for j := i + 1; j < len(parsedDownloads); j++ {
+			same, err := sameLocalOutputPath(parsedDownloads[i].Local, parsedDownloads[j].Local)
+			if err != nil {
+				return err
+			}
+			if same {
+				return exit(2, "download %s/download %s: paths must be different", parsedDownloads[i].Remote, parsedDownloads[j].Remote)
+			}
+		}
+	}
+	for _, download := range parsedDownloads {
 		if err := preflightLocalOutputPath("download "+download.Remote, download.Local, true); err != nil {
 			return err
 		}
 	}
-	if captureStdout == "" {
+	if captureStdout != "" {
+		if err := preflightLocalOutputPath("capture stdout", captureStdout, false); err != nil {
+			return err
+		}
+	}
+	if captureStderr != "" {
+		if err := preflightLocalOutputPath("capture stderr", captureStderr, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func rejectCaptureDownloadCollision(label, capturePath string, download runDownloadSpec) error {
+	if capturePath == "" {
 		return nil
 	}
-	return preflightLocalOutputPath("capture stdout", captureStdout, false)
+	same, err := sameLocalOutputPath(capturePath, download.Local)
+	if err != nil {
+		return err
+	}
+	if same {
+		return exit(2, "%s/download %s: paths must be different", label, download.Remote)
+	}
+	return nil
+}
+
+func sameLocalOutputPath(left, right string) (bool, error) {
+	leftAbs, err := filepath.Abs(filepath.Clean(left))
+	if err != nil {
+		return false, exit(2, "capture stdout/stderr: %v", err)
+	}
+	rightAbs, err := filepath.Abs(filepath.Clean(right))
+	if err != nil {
+		return false, exit(2, "capture stdout/stderr: %v", err)
+	}
+	return leftAbs == rightAbs, nil
 }
 
 func preflightLocalOutputPath(label, path string, allowMissingDirs bool) error {

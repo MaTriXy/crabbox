@@ -221,6 +221,9 @@ type RunRequest struct {
 	ChecksumSync   bool
 	ForceSyncLarge bool
 	CaptureStdout  string
+	CaptureStderr  string
+	CaptureOnFail  bool
+	Preflight      bool
 	Downloads      []string
 	Command        []string
 	TimingJSON     bool
@@ -444,6 +447,12 @@ func rejectDelegatedSyncOptions(provider string, req RunRequest) error {
 	}
 	if req.CaptureStdout != "" {
 		return exit(2, "%s delegates run execution; --capture-stdout is not supported", provider)
+	}
+	if req.CaptureStderr != "" {
+		return exit(2, "%s delegates run execution; --capture-stderr is not supported", provider)
+	}
+	if req.CaptureOnFail {
+		return exit(2, "%s delegates run execution; --capture-on-fail is not supported", provider)
 	}
 	if len(req.Downloads) > 0 {
 		return exit(2, "%s delegates run execution; --download is not supported", provider)
