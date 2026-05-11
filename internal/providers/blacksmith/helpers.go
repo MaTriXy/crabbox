@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ const blacksmithTestboxProvider = "blacksmith-testbox"
 
 var (
 	blacksmithIDPattern       = regexp.MustCompile(`\btbx_[A-Za-z0-9_-]+\b`)
+	blacksmithPostSyncPattern = regexp.MustCompile(`(?i)\b(running|executing|command|pnpm|npm|yarn|bun)\b`)
 	blacksmithCleanupAttempts = 36
 	blacksmithCleanupDelay    = 5 * time.Second
 	blacksmithCleanupQuiet    = 12
@@ -189,6 +191,20 @@ func durationMinutesCeil(duration time.Duration) int {
 
 func parseBlacksmithID(output string) string {
 	return blacksmithIDPattern.FindString(output)
+}
+
+func blacksmithSyncTimeout(env func(string) string) time.Duration {
+	for _, key := range []string{"CRABBOX_BLACKSMITH_SYNC_TIMEOUT_MS", "OPENCLAW_TESTBOX_SYNC_TIMEOUT_MS"} {
+		raw := strings.TrimSpace(env(key))
+		if raw == "" {
+			continue
+		}
+		parsed, err := strconv.Atoi(raw)
+		if err == nil && parsed >= 0 {
+			return time.Duration(parsed) * time.Millisecond
+		}
+	}
+	return 5 * time.Minute
 }
 
 func resolveBlacksmithLeaseID(identifier, repoRoot string, reclaim bool) (string, error) {
