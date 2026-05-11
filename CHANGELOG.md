@@ -15,6 +15,10 @@
 
 ### Fixed
 
+- Fixed repo-local `env.allow: ["*"]` so it no longer forwards every local environment variable to remote commands. Thanks @Hinotoi-agent.
+- Fixed Sprites list pagination so missing or repeated continuation tokens fail instead of spinning or accepting malformed pages. Thanks @stainlu.
+- Fixed Sprites and Namespace Devbox work-root validation so broad roots are rejected before create/prepare flows. Thanks @stainlu.
+- Fixed Namespace Devbox prepare error reporting so prepare failures are not hidden behind earlier SSH config fallback errors. Thanks @stainlu.
 - Fixed shared-token coordinator auth so caller-supplied `X-Crabbox-Owner` and `X-Crabbox-Org` headers cannot select the authenticated owner/org. Thanks @Hinotoi-agent.
 - Fixed Code, WebVNC, and Egress bridge ticket creation so `use`-shared lease users cannot mint lease-side bridge-agent tickets without manage access. Thanks @Hinotoi-agent.
 - Fixed Windows SSH sync by disabling unsupported OpenSSH ControlMaster multiplexing and preferring WSL rsync/path conversion when available. Thanks @galiniliev.
