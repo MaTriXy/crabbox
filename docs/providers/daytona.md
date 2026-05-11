@@ -107,6 +107,11 @@ Provider flags:
 - Snapshot contents own CPU, memory, disk, and installed tooling in this mode.
 - Daytona `run` is delegated to toolbox APIs; it is not the same as core-over-SSH
   execution.
+- `--script`, `--script-stdin`, `--fresh-pr`, local stdout/stderr captures,
+  `--capture-on-fail`, and `--download` are rejected for Daytona `run` because
+  command transport is delegated to toolbox APIs.
+- `--keep-on-failure` keeps a newly created failed sandbox until Daytona
+  auto-stop or explicit `crabbox stop`.
 - `--actions-runner` is rejected because it needs a normal SSH lease host.
 
 Related docs:

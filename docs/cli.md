@@ -34,7 +34,7 @@ crabbox config show [--json]
 crabbox config path
 crabbox config set-broker --url <url> --token-stdin [--provider hetzner|aws|azure]
 crabbox warmup [--provider hetzner|aws|azure|ssh|blacksmith-testbox|namespace-devbox|semaphore|sprites|daytona|islo|e2b] [--target linux|macos|windows] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--profile <name>] [--idle-timeout <duration>] [--timing-json]
-crabbox run [--id <lease-id-or-slug>] [--provider hetzner|aws|azure|ssh|blacksmith-testbox|namespace-devbox|semaphore|sprites|daytona|islo|e2b] [--target linux|macos|windows] [--windows-mode normal|wsl2] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--shell] [--checksum] [--debug] [--force-sync-large] [--preflight] [--capture-stdout <path>] [--capture-stderr <path>] [--capture-on-fail] [--download remote=local] [--timing-json] [--blacksmith-workflow <workflow>] -- <command...>
+crabbox run [--id <lease-id-or-slug>] [--provider hetzner|aws|azure|ssh|blacksmith-testbox|namespace-devbox|semaphore|sprites|daytona|islo|e2b] [--target linux|macos|windows] [--windows-mode normal|wsl2] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--keep-on-failure] [--shell] [--script <file>|--script-stdin] [--fresh-pr <owner/repo#number>] [--allow-env <name>] [--env-from-profile <file>] [--checksum] [--debug] [--force-sync-large] [--preflight] [--capture-stdout <path>] [--capture-stderr <path>] [--capture-on-fail] [--download remote=local] [--timing-json] [--blacksmith-workflow <workflow>] -- <command...>
 crabbox job list
 crabbox job run [--id <lease-id-or-slug>] [--dry-run] [--no-hydrate] [--stop auto|always|success|failure|never] <name>
 crabbox desktop launch --id <lease-id-or-slug> [--browser] [--url <url>] [--egress <profile>] [--webvnc] [--open] [-- <command...>]
@@ -321,14 +321,21 @@ Flags:
 --sync-only             sync and exit
 --force-sync-large      allow a sync candidate above configured fail thresholds
 --keep                  keep lease after command exits
+--keep-on-failure       keep a newly acquired failed lease for SSH/debug until idle/TTL expiry
 --shell                 run the command string through bash -lc
+--script <file>         upload a local script file and run it remotely
+--script-stdin          read a script from stdin, upload it, and run it remotely
+--fresh-pr <spec>       clone and checkout a GitHub PR remotely instead of syncing the local tree
+--apply-local-patch     apply the local git diff on top of --fresh-pr checkout
+--allow-env <name>      allow an environment variable for this run; repeatable or comma-separated
+--env-from-profile <file> load allowed environment values from a local profile file; repeatable
 --checksum              use checksum rsync instead of size/time
 --debug                 print sync timing and itemized rsync output
 --junit <paths>         comma-separated remote JUnit XML paths to attach to run history
 --preflight             print remote capability preflight before running the command
 --capture-stdout <path> write remote stdout to a local file, skipping stdout run-log capture
 --capture-stderr <path> write remote stderr to a local file, skipping stderr run-log capture
---capture-on-fail       download a local-only failure debug tarball on non-zero exit
+--capture-on-fail       compatibility alias; failure bundles are saved by default on non-zero exit
 --download remote=local copy a remote file back after a successful command; repeatable
 --reclaim              claim an existing lease for the current repo
 --timing-json          print a final JSON timing record

@@ -12,16 +12,25 @@ It syncs the Git-managed working set, not the whole directory tree:
 - tracked files from `git ls-files --cached`;
 - nonignored untracked files from `git ls-files --others --exclude-standard`;
 - root `.crabboxignore` patterns, repo-local `sync.exclude` patterns, and
-  Crabbox's default cache/build excludes.
+  Crabbox's default cache/generated-output excludes.
 
-Ignored build output, dependency folders, `.git`, and common local caches stay out of the transfer. This keeps first syncs close to the code that CI would see while still letting agents test uncommitted edits.
+Ignored output, dependency folders, `.git`, and common local caches stay out of
+the transfer. This keeps first syncs close to the code that CI would see while
+still letting agents test uncommitted edits.
+
+Default generated-output excludes cover common local churn such as `.ignored`,
+`.vite`, `playwright-report`, `test-results`, and local `.crabbox` log/capture
+directories. They are intentionally conservative: Crabbox does not globally
+drop tracked source files just because a path segment is named `build` or
+`out`. Put project-specific generated directories in `.crabboxignore` or
+`sync.exclude`.
 
 Sync flow:
 
 1. pick the local repository root;
 2. seed remote Git from the configured origin/base ref when possible;
 3. build a NUL-delimited sync manifest from Git's tracked and nonignored file list;
-4. print a file/byte estimate and enforce configured large-sync guardrails;
+4. print a full candidate estimate plus a dirty-delta estimate when local changes exist, then enforce configured large-sync guardrails;
 5. compute or reuse a sync fingerprint from the commit, dirty metadata, and manifest;
 6. skip rsync when the fingerprint matches;
 7. feed the manifest to rsync with `--files-from=- --from0`;
@@ -64,7 +73,23 @@ sync:
 
 `crabbox run --force-sync-large` bypasses the fail thresholds for one run. `--debug` adds rsync progress/stat output; normal syncs still print a heartbeat when rsync is quiet for a while.
 
-Use `crabbox sync-plan` to inspect the local manifest before leasing a box. It prints the candidate file count, total bytes, and the largest files/directories using the same excludes as `run`.
+When the checkout has local changes, guardrails count the dirty delta instead
+of the full manifest. Output still includes the full candidate size so first
+sync cost remains visible:
+
+```text
+sync candidate: 299 files, 14.2 MiB dirty_delta=7 files, 92.4 KiB
+```
+
+For noisy worktrees, `crabbox run --fresh-pr owner/repo#123 --apply-local-patch`
+is usually faster and clearer than syncing the whole local checkout. The remote
+starts from the PR head, then Crabbox applies the local patch on top.
+
+Use `crabbox sync-plan` to inspect the local manifest before leasing a box. It
+prints the candidate file count, total bytes, and the largest files/directories
+using the same excludes as `run`. Large sync warnings from `run` also include
+the top source directories by file count so accidental dependency repair or
+generated churn is easier to spot before forcing a huge transfer.
 
 Repo-local config should hold project-specific excludes and env allowlists. Secrets must not be passed as command-line arguments or broad env globs.
 

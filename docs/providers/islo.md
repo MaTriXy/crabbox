@@ -114,6 +114,11 @@ need to be plumbed into Crabbox.
 - `--sync-only` and `--checksum` are rejected because the `provider: islo`
   backend does not yet expose a Crabbox-managed SSH/rsync target, even though
   the sandbox is independently reachable with `ssh <sandbox-name>.islo`.
+- `--script`, `--script-stdin`, `--fresh-pr`, local stdout/stderr captures,
+  `--capture-on-fail`, and `--download` are rejected because Islo owns command
+  transport in `provider: islo` mode.
+- `--keep-on-failure` keeps a newly created failed sandbox until explicit stop
+  or provider-side expiry.
 - Large-sync guardrails still apply. Use `--force-sync-large` when a large Islo
   archive sync is intentional.
 - `--shell` passes the raw shell string to the remote shell path.

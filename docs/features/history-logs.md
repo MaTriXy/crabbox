@@ -51,9 +51,9 @@ For local, uncapped debug artifacts, `crabbox run` can mirror streams with
 `--capture-stdout <path>` and `--capture-stderr <path>`. These captures are
 local-only and bypass coordinator run-log storage. Use distinct local paths for
 stdout, stderr, and `--download remote=local` artifacts; Crabbox rejects
-collisions before command execution. `--capture-on-fail` writes a local
-`.crabbox/captures/*.tar.gz` bundle after a non-zero exit. Treat captured logs
-and bundles as secret-bearing files unless the caller redacts them.
+collisions before command execution. Failed SSH-backed and Blacksmith delegated
+runs write local `.crabbox/captures/*.tar.gz` bundles by default. Treat captured
+logs and bundles as secret-bearing files unless the caller redacts them.
 
 Commands can add timing detail by printing `CRABBOX_PHASE:<name>` on stdout or
 stderr. Phase markers appear in `--timing-json` as `commandPhases`; the marker

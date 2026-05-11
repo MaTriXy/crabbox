@@ -132,6 +132,11 @@ Provider flags:
   honored for intentional large archive syncs.
 - Use `--sync-only` when you want to pre-upload the archive into a kept sandbox
   before a later command.
+- `--script`, `--script-stdin`, `--fresh-pr`, local stdout/stderr captures,
+  `--capture-on-fail`, and `--download` are rejected because E2B owns command
+  transport and Crabbox has no SSH target for those paths.
+- `--keep-on-failure` keeps a newly created failed sandbox instead of deleting
+  it after the command, subject to the sandbox timeout.
 - If a live smoke should prove cleanup, run `crabbox list --provider e2b --json`
   after `stop` or a non-kept run and verify no Crabbox-owned sandbox remains.
 

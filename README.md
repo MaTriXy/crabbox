@@ -331,12 +331,23 @@ through an approved tailnet exit node. See [Tailscale](docs/features/tailscale.m
 
 Forwarded environment is intentionally narrow: `NODE_OPTIONS` and `CI`. Do not pass secrets as command-line arguments. Full env-var reference and per-command flags are in [docs/cli.md](docs/cli.md) and [docs/commands/](docs/commands/README.md).
 
+For live-secret smoke tests, use `crabbox run --env-from-profile <file>
+--allow-env NAME` so Crabbox forwards only selected names and prints redacted
+presence/length metadata. For larger commands, use `--script <file>` or
+`--script-stdin` so the remote runner executes an uploaded file instead of a
+giant quoted shell string.
+Delegated providers may own their command transport. Blacksmith Testbox cannot
+forward CLI-side env values; Crabbox prints an explicit unsupported warning and
+the workflow should provide required secrets.
+
 For binary or terminal-hostile output, use `crabbox run --capture-stdout <path>`
 or `--capture-stderr <path>` so remote streams are written directly to local
 files and omitted from retained run-log previews. Add `--preflight` for a
-remote capability snapshot, `--capture-on-fail` for a local-only debug tarball
-after non-zero exits, or `--download remote=local` to copy a successful-run
-artifact back. Captured files are not redacted by Crabbox.
+remote capability snapshot, `--keep-on-failure` to SSH into the exact failed
+one-shot lease, or `--download remote=local` to copy a successful-run artifact
+back. Failed SSH-backed and Blacksmith delegated runs save local
+`.crabbox/captures/*.tar.gz` bundles by default. Captured files are not redacted
+by Crabbox.
 
 ## OpenClaw plugin
 

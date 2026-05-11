@@ -68,9 +68,15 @@ phase and output chunks for reconnect/inspection, and `attach` can follow those
 events while the original CLI is still alive. Logs are bounded retained remote
 stdout/stderr captures. `run --capture-stdout <path>` stores stdout only in the
 local file and leaves coordinator logs/events to stderr plus lifecycle events.
-`run --capture-stderr <path>` does the same for remote stderr. `run
---capture-on-fail` writes a local `.crabbox/captures/*.tar.gz` bundle after a
-non-zero exit; Crabbox does not redact captured files, so treat them as
+`run --capture-stderr <path>` does the same for remote stderr. Failed runs write
+a local `.crabbox/captures/*.tar.gz` bundle by default. SSH-backed runs include
+the uploaded script, redacted env/config summaries, timing JSON, command
+stdout/stderr, common test/report/log paths, and a generic gateway log tail when
+present. Blacksmith delegated runs include stdout/stderr plus timing and
+redacted env/config metadata. Implicit stdout/stderr files inside automatic
+failure bundles are capped; use `--capture-stdout` / `--capture-stderr` when a
+full local stream file is required. `--capture-on-fail` remains accepted for
+older scripts. Crabbox does not redact captured files, so treat them as
 secret-bearing until reviewed.
 `run --download remote=local` copies successful-run artifacts back to the local
 machine without adding file bytes to coordinator logs.
@@ -95,6 +101,52 @@ and their value length. Values are never printed. Delegated Testbox providers
 print that this forwarding is unsupported and that secrets belong in the
 provider workflow.
 
+For one-off live secrets, avoid hand-written `source` boilerplate:
+
+```sh
+crabbox run \
+  --env-from-profile ~/.project-live.profile \
+  --allow-env API_TOKEN \
+  --preflight \
+  -- ./scripts/live-smoke.sh
+```
+
+Crabbox parses simple `export NAME=value` and `NAME=value` profile lines without
+executing the profile. Only names selected by `--allow-env`, `env.allow`, or
+`CRABBOX_ENV_ALLOW` are forwarded, and summaries show presence/length metadata
+for secret-looking names rather than values.
+
+Use `--script <file>` or `--script-stdin` when the remote command is more than a
+small argv:
+
+```sh
+crabbox run \
+  --script ./scripts/provider-smoke.sh \
+  --env-from-profile ~/.project-live.profile \
+  --allow-env API_TOKEN \
+  --timing-json
+```
+
+The script is uploaded under `.crabbox/scripts/` in the remote workdir and is
+included in failure bundles. POSIX SSH providers support this path; delegated
+providers reject it before reading stdin because they own command transport.
+Native Windows targets reject scripts too; use `--shell` for PowerShell
+snippets there.
+
+For PR debugging that should not inherit local dependency churn, use a fresh
+remote checkout:
+
+```sh
+crabbox run \
+  --fresh-pr acme/app#123 \
+  --script ./scripts/e2e-smoke.sh
+```
+
+Add `--apply-local-patch` only when the local diff should be applied on top of
+the PR checkout. PR URLs must be on `github.com`; non-GitHub and GitHub
+Enterprise PR URLs are rejected instead of being rewritten to a public clone.
+Numeric shorthand uses the current repository's GitHub origin.
+
 ## Remote Debugging
 
 Use SSH for live process and filesystem inspection:
@@ -114,7 +166,7 @@ free -h
 ps aux --sort=-%cpu | head
 ```
 
-If a lease was created with `--keep`, SSH remains available until `crabbox stop`, idle expiry, or the TTL cap removes it.
+If a lease was created with `--keep`, SSH remains available until `crabbox stop`, idle expiry, or the TTL cap removes it. For one-shot E2E debugging, add `--keep-on-failure`; Crabbox releases successful runs normally, but on failure it prints inspect, SSH, and stop commands for the exact failed lease and lets idle/TTL expiry clean it up later.
 
 For a concise pre-command capability snapshot, add `--preflight`:
 
@@ -157,7 +209,7 @@ CRABBOX_ENV_ALLOW=OPENAI_API_KEY,OPENAI_BASE_URL \
   --timing-json \
   --capture-stdout .crabbox/logs/live-provider.stdout.log \
   --capture-stderr .crabbox/logs/live-provider.stderr.log \
-  --capture-on-fail \
+  --keep-on-failure \
   --shell 'echo CRABBOX_PHASE:install; pnpm install --frozen-lockfile; echo CRABBOX_PHASE:test; pnpm test:live'
 ```
 

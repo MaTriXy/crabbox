@@ -62,6 +62,11 @@ crabbox stop --provider e2b <slug>
   `/`, `/home`, and `/tmp` are rejected before sandbox creation or sync touches
   the sandbox filesystem.
 - `--checksum` is rejected because E2B does not expose a Crabbox SSH target.
+- `--script`, `--script-stdin`, `--fresh-pr`, local captures,
+  `--capture-on-fail`, and `--download` are rejected because E2B owns command
+  transport.
+- `--keep-on-failure` keeps a newly created failed sandbox until its timeout
+  instead of deleting it immediately.
 - `list`, `status`, and `stop` operate only on Crabbox-owned E2B sandboxes.
 
 E2B is not an SSH lease backend today. Commands that require a Crabbox SSH

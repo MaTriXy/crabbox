@@ -1,13 +1,13 @@
 ---
 name: crabbox
-description: Use Crabbox for remote Linux validation, warmed reusable boxes, GitHub Actions hydration, sync timing, logs, results, caches, and lease cleanup.
+description: Use Crabbox for remote validation, warmed reusable boxes, GitHub Actions hydration, fresh PR checkouts, secret-safe env forwarding, scripts, timing, logs, results, captures, caches, and lease cleanup.
 ---
 
 # Crabbox
 
-Use Crabbox when a project needs remote Linux proof, larger cloud capacity,
-warm reusable runner state, GitHub Actions hydration, or fast sync from a dirty
-local checkout.
+Use Crabbox when a project needs remote proof, larger cloud capacity, warm
+reusable runner state, GitHub Actions hydration, fresh PR checkouts, live-secret
+smoke tests, durable logs/results, or fast sync from a dirty local checkout.
 
 ## Before Running
 
@@ -16,21 +16,41 @@ local checkout.
 - Check repo-local `crabbox.yaml` or `.crabbox.yaml` before adding flags.
 - Sanity-check the selected binary before remote work:
   `command -v crabbox && crabbox --version && crabbox --help | sed -n '1,80p'`.
-- Install with `brew install openclaw/tap/crabbox`.
+- Install from the repository release docs or use `bin/crabbox` after a local
+  build.
 - Auth is required for brokered operation. Normal users run `crabbox login`.
 - Trusted operator automation can store the shared token with:
-  `printf '%s' "$CRABBOX_COORDINATOR_TOKEN" | crabbox login --url https://crabbox.openclaw.ai --provider aws --token-stdin`.
+  `printf '%s' "$CRABBOX_COORDINATOR_TOKEN" | crabbox login --url <broker-url> --provider aws --token-stdin`.
 - User config lives at `~/Library/Application Support/crabbox/config.yaml` on
   macOS or the platform user config dir elsewhere. It should contain:
 
 ```yaml
 broker:
-  url: https://crabbox.openclaw.ai
+  url: <broker-url>
   token: <token>
 provider: aws
 ```
 
+## Pick The Proof
+
+- Small/narrow tests, docs link checks, formatting, and focused unit tests:
+  run locally first.
+- Broad suites, package-heavy checks, Docker/E2E/live-provider proof, or
+  cross-OS behavior: run on Crabbox.
+- If a local command starts fanning out or bogs down the Mac, stop it and move
+  the proof remote.
+- Before shipping a user-visible behavior fix, prefer one remote command that
+  starts from the user-facing entrypoint.
+- If remote proof is blocked, say exactly which capability is missing:
+  auth, capacity, provider support, target OS, hydration, or secret access.
+
 ## Common Flow
+
+One-shot command:
+
+```sh
+crabbox run --timing-json --preflight -- pnpm test
+```
 
 Warm a reusable box:
 
@@ -63,6 +83,81 @@ Stop boxes you created before handoff:
 crabbox stop <cbx_id-or-slug>
 ```
 
+## Scripts, Secrets, And Fresh PRs
+
+Prefer uploaded scripts for multi-line commands. This avoids giant quoted shell
+strings and preserves the script in failure bundles:
+
+```sh
+crabbox run --script ./scripts/e2e-smoke.sh --timing-json
+printf '%s\n' 'echo CRABBOX_PHASE:test' 'pnpm test' | crabbox run --script-stdin
+```
+
+For live-secret smoke tests, use explicit allowlists. Never print values:
+
+```sh
+crabbox run \
+  --env-from-profile ~/.project-live.profile \
+  --allow-env API_TOKEN \
+  --preflight \
+  --script ./scripts/live-smoke.sh
+```
+
+Crabbox parses simple `export NAME=value` and `NAME=value` profile lines
+without executing the profile. It prints names plus redacted presence/length
+metadata only.
+
+Use fresh PR checkout when local dependency churn or dirty sync would confuse
+the result:
+
+```sh
+crabbox run --fresh-pr owner/repo#123 --script ./scripts/e2e-smoke.sh
+crabbox run --fresh-pr 123 --apply-local-patch -- pnpm test
+```
+
+`--fresh-pr` accepts `owner/repo#number`, `github.com` PR URLs, or a numeric PR
+from the current GitHub origin. Non-GitHub hosts are rejected.
+
+When sync guardrails look high because the checkout is noisy, prefer
+`--fresh-pr ... --apply-local-patch`. Normal sync output prints both the full
+candidate and the dirty delta; guardrails use the dirty delta when present.
+
+## Observability And Captures
+
+Add `--preflight` for remote user/cwd/runtime capability checks before the
+command. Add `--timing-json` when comparing providers, sync behavior, or flaky
+latency.
+
+Commands can create subphases by printing markers:
+
+```sh
+echo CRABBOX_PHASE:install
+pnpm install --frozen-lockfile
+echo CRABBOX_PHASE:test
+pnpm test
+```
+
+For terminal-hostile or large output:
+
+```sh
+mkdir -p .crabbox/logs
+crabbox run \
+  --capture-stdout .crabbox/logs/run.stdout.log \
+  --capture-stderr .crabbox/logs/run.stderr.log \
+  --keep-on-failure \
+  --download test-results/report.json=.crabbox/logs/report.json \
+  -- pnpm test:e2e
+```
+
+Failed SSH runs save `.crabbox/captures/*.tar.gz` automatically. Add
+`--keep-on-failure` for live debugging when you want the exact failed lease left
+alive for SSH inspection until idle/TTL expiry. Captured files and failure
+bundles are local-only and not redacted by Crabbox; review before sharing.
+
+Use `crabbox sync-plan` before large runs. Unexpected counts usually mean
+generated churn; add project-specific excludes to `.crabboxignore` or
+`sync.exclude`.
+
 ## Useful Commands
 
 ```sh
@@ -76,8 +171,8 @@ crabbox webvnc status --id <id-or-slug>
 crabbox webvnc reset --id <id-or-slug> --open
 crabbox desktop doctor --id <id-or-slug>
 crabbox desktop click --id <id-or-slug> --x 640 --y 420
-crabbox desktop paste --id <id-or-slug> --text "peter@example.com"
-crabbox desktop type --id <id-or-slug> --text "peter+qa@example.com"
+crabbox desktop paste --id <id-or-slug> --text "user@example.com"
+crabbox desktop type --id <id-or-slug> --text "user+qa@example.com"
 crabbox desktop key --id <id-or-slug> ctrl+l
 crabbox artifacts collect --id <id-or-slug> --all --output artifacts/<slug>
 crabbox artifacts publish --dir artifacts/<slug> --pr <number>
@@ -90,7 +185,6 @@ crabbox results <run_id>
 crabbox cache stats --id <id-or-slug>
 crabbox ssh --id <id-or-slug>
 crabbox usage --scope org
-CRABBOX_LIVE=1 CRABBOX_LIVE_REPO=/path/to/openclaw scripts/live-smoke.sh
 ```
 
 For human desktop demos, prefer WebVNC over native VNC because
@@ -116,8 +210,7 @@ the configured coordinator artifact backend. Use explicit `--storage s3`,
 
 ## Run Inspection Workflow
 
-Use the CLI for durable run inspection; do not expect extra OpenClaw plugin
-tools for this surface.
+Use the CLI for durable run inspection.
 
 Find recent runs:
 
@@ -153,6 +246,23 @@ machine-readable timing record is needed.
 Use `--market spot|on-demand` on AWS `warmup` or one-shot `run` when account
 quota or capacity testing needs a temporary market override.
 
+## Provider Boundaries
+
+SSH-backed providers support core sync/run features such as scripts, fresh PR
+checkouts, captures, downloads, Actions hydration, SSH, and WebVNC when the
+target supports them.
+
+Delegated run providers own command transport. Expect them to reject SSH-run
+features such as `--script`, `--script-stdin`, `--fresh-pr`, local stdout/stderr
+captures, `--capture-on-fail`, and `--download`, unless that provider doc says
+otherwise. `--keep-on-failure` is still useful for one-shot delegated providers
+that Crabbox would otherwise stop after a failed command.
+
+Native Windows targets use PowerShell and tar-based manifest sync. Prefer
+plain argv for one executable and `--shell` for multi-statement PowerShell.
+Scripts and fresh PR checkout are POSIX SSH-run features, not native Windows
+features.
+
 ## Run Handles
 
 Coordinator-backed `crabbox run` prints `recording run run_...` before leasing
@@ -172,6 +282,22 @@ the ready marker, and keepalive.
 Crabbox owns runner registration, workflow dispatch, SSH sync, command
 execution, logs/results, local lease claims, and idle cleanup. Do not add
 project-specific setup to the Crabbox binary.
+
+## Failure Triage
+
+- Provider missing or old CLI: verify `crabbox --help` lists the provider and
+  rebuild or install a current binary before falling back.
+- Bad local config: pass `--provider ...` explicitly and compare
+  `crabbox config show`.
+- Sync surprise: run `crabbox sync-plan`, then `crabbox run --debug
+  --timing-json`.
+- Raw box missing Node/pnpm/Docker: use `--preflight`; hydrate first if the repo
+  has an Actions workflow.
+- Command failed: rerun the focused failing shard/file before a full suite.
+- Cleanup uncertain: `crabbox list`, `crabbox inspect --json`, then stop only
+  leases or provider resources you created.
+- Broker/auth confusion: use `crabbox doctor`, `crabbox whoami`, and
+  `crabbox config show` before asking for cloud credentials.
 
 ## Cleanup
 

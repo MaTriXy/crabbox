@@ -176,9 +176,12 @@ Do not store:
 
 Coordinator run records keep bounded stdout/stderr captures and optional
 structured JUnit summaries for debugging. For binary or sensitive-by-format
-stdout, use `crabbox run --capture-stdout <path>` so stdout is written to a
-local file and skipped by coordinator log/event capture. Use `run --download
-remote=local` for binary proof files that should stay local.
+stdout/stderr, use `crabbox run --capture-stdout <path>` or
+`--capture-stderr <path>` so the stream is written to a local file and skipped
+by coordinator log/event capture. Failed SSH-backed and Blacksmith delegated
+runs write local failure bundles by default, and `run --download remote=local`
+keeps successful binary proof files local. Crabbox does not redact those local
+files; review before sharing.
 
 ## Future Audit Trail
 

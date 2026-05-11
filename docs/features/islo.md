@@ -62,6 +62,11 @@ crabbox stop --provider islo <slug>
   islo` backend does not yet drive a Crabbox-managed SSH/rsync target. Large-sync
   guardrails still apply, and `--force-sync-large` is honored for intentional
   large archive syncs.
+- `--script`, `--script-stdin`, `--fresh-pr`, local captures,
+  `--capture-on-fail`, and `--download` are rejected because Islo owns command
+  transport.
+- `--keep-on-failure` keeps a newly created failed sandbox until explicit stop
+  or provider-side expiry.
 - `list`, `status`, and `stop` use the Islo SDK and return core-rendered
   Crabbox views for Crabbox-created sandboxes only.
 

@@ -124,7 +124,15 @@ Auth stays with Blacksmith. Run `blacksmith auth login` before using this provid
 - Blacksmith owns provisioning, workflow hydration, remote workspace setup, sync, command transport, logs emitted by its CLI, and idle expiry.
 - Crabbox owns local YAML/env config, per-Testbox SSH keys, friendly slugs, repo claims, provider selection, command quoting, and final timing summaries.
 
-Because Blacksmith owns sync in this mode, Crabbox sync flags such as `--sync-only`, `--checksum`, `--force-sync-large`, and sync guardrails do not apply. `crabbox run` prints `sync=delegated` in the final summary.
+Because Blacksmith owns sync in this mode, Crabbox sync flags such as
+`--sync-only`, `--checksum`, `--force-sync-large`, and sync guardrails do not
+apply. Crabbox also rejects SSH-run-only features such as `--script`,
+`--script-stdin`, `--fresh-pr`, local stdout/stderr captures,
+`--capture-on-fail`, and `--download`. `crabbox run` prints `sync=delegated` in
+the final summary. Failed delegated runs still save a local bundle with
+stdout/stderr, timing, and redacted env/config metadata. `--keep-on-failure` is
+supported for one-shot Testbox runs so failed boxes can remain inspectable until
+the Testbox idle timeout or explicit `crabbox stop`.
 
 `blacksmith.workflow` is required only when Crabbox needs to warm or acquire a Testbox. Reusing an existing `tbx_...` ID or slug does not need workflow config.
 

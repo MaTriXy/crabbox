@@ -78,6 +78,12 @@ CRABBOX_BLACKSMITH_REF
 Blacksmith authentication stays in the Blacksmith CLI. Run
 `blacksmith auth login` before using this provider.
 
+`--env-from-profile`, `--allow-env`, and `CRABBOX_ENV_ALLOW` are useful for
+direct SSH-backed Crabbox runs, but Blacksmith delegated runs cannot inject
+CLI-side environment values into the remote Testbox command. Crabbox prints an
+explicit `env forwarding ... behavior=unsupported` summary when those knobs are
+present; put live secrets in the Blacksmith workflow instead.
+
 ## Lifecycle
 
 Crabbox forwards:
@@ -98,7 +104,13 @@ Daytona until Blacksmith service, billing, or org limits are healthy again.
 Crabbox stores a per-Testbox SSH key locally, claims the Testbox for the current
 repo, maps IDs to friendly slugs, and prints a normal Crabbox timing summary.
 One-shot runs clean up the local claim/key and stop the Testbox after command
-completion unless `--keep` is set.
+completion unless `--keep` is set. Add `--keep-on-failure` when debugging live
+failures; successful runs still stop normally, while failed one-shot Testboxes
+remain available until idle timeout or explicit `crabbox stop`.
+Failed runs save a local failure bundle with stdout/stderr, timing, and
+redacted env/config metadata even though remote file capture is delegated to
+Blacksmith. These implicit stream logs are capped so a verbose successful run
+does not fill local temp storage.
 
 Crabbox terminates a local Blacksmith CLI invocation that remains in the sync
 phase for five minutes without post-sync output. Set
@@ -125,6 +137,9 @@ visibility-only detail page for the row.
 
 - `--sync-only`, `--checksum`, and `--force-sync-large` do not apply because
   Blacksmith owns sync.
+- `--script`, `--script-stdin`, `--fresh-pr`, local captures, and
+  `--download` are rejected because Blacksmith owns command transport and
+  artifact handling.
 - `list` and `status` are core-rendered from parsed Blacksmith CLI output.
 - `blacksmith.workflow` is required only when Crabbox needs to create a Testbox.
   Reusing an existing ID or slug does not need workflow config.

@@ -37,13 +37,16 @@ Warm leases avoid waiting for a fresh VM and preserve package caches outside the
 
 ## Sync Size
 
-The CLI syncs a Git-derived manifest: tracked files plus nonignored untracked files. Ignored build output, dependency folders, `.git`, and common local caches are excluded before rsync sees the tree. Each run prints the candidate file count and byte estimate, then warns or fails if the manifest crosses configured guardrails.
+The CLI syncs a Git-derived manifest: tracked files plus nonignored untracked files. Ignored build output, dependency folders, `.git`, and common local caches are excluded before rsync sees the tree. Default excludes also cover common generated churn such as `.ignored`, `.vite`, `playwright-report`, `test-results`, and local `.crabbox` log/capture directories. Each run prints the full candidate file count plus the dirty-delta count when the checkout has local changes. Large-sync guardrails use that dirty delta when present, so a dirty worktree with a small intended patch is not blocked just because the complete source manifest is larger.
+
+Large sync warnings include the top source directories by file count, which makes accidental dependency or build-output syncs easier to spot before retrying.
 
 Good habits:
 
 - keep generated artifacts and dependency folders out of the synced tree;
 - tune repo-local excludes in `.crabbox.yaml`;
 - keep `.gitignore` current so local build junk never enters the manifest;
+- use `crabbox run --fresh-pr <owner/repo#number> --apply-local-patch` when a dirty local worktree has unrelated dependency repair or generated churn;
 - raise `sync.failFiles` or `sync.failBytes` only for projects that intentionally sync very large source trees.
 
 ## Sync Fingerprints
@@ -69,6 +72,14 @@ git diff --name-only origin/main...
 
 When a box is already Actions-hydrated and the remote checkout already has the configured base ref at the same SHA as the local `origin/<baseRef>`, Crabbox skips the extra Git hydration fetch and records the skip reason in the sync summary. This keeps dirty-overlay reruns focused on rsync plus the command instead of repeatedly fetching base history.
 
+For PR iteration from a noisy local checkout, prefer:
+
+```sh
+bin/crabbox run --fresh-pr owner/repo#123 --apply-local-patch -- pnpm test:changed
+```
+
+That creates a clean remote PR checkout, applies only the local diff as a small patch, and avoids syncing unrelated local dependency or build-output churn.
+
 ## Package And Tool Caches
 
 Runner bootstrap prepares shared cache directories, but does not install project runtimes. Package-manager and Docker caches are best-effort speedups once the repository setup installs those tools; they must not be treated as source of truth.
@@ -89,6 +100,17 @@ bin/crabbox run --id blue-lobster -- pnpm test:changed:max
 ```
 
 The workflow owns dependency installation, cache/service setup, and secret-backed environment hydration. Crabbox attaches later commands to the hydrated workspace.
+
+For live/provider E2E loops, keep two lanes:
+
+- Source-backed PR iteration: use `--fresh-pr ... --apply-local-patch` plus the
+  smallest smoke command that proves the changed source path.
+- Package-backed release proof: reuse a built package tarball or prebuilt
+  functional image across repeated Testbox runs, and rebuild it only when the
+  live-image inputs changed.
+
+That split keeps fast debugging source-based while preserving one slower
+package-backed lane for release confidence.
 
 ## Machine Classes
 

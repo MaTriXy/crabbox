@@ -93,7 +93,8 @@ Delegated backends return normalized `StatusView` values. Rendering remains
 core-owned, so provider packages should not print their own `status` or `list`
 tables unless a compatibility interface explicitly asks for native output.
 
-A delegated backend must reject sync-only options that Crabbox cannot honor:
+A delegated backend must reject run/sync options that Crabbox cannot honor
+without a Crabbox-managed SSH target:
 
 ```go
 if err := cli.RejectDelegatedSyncOptions(providerName, req); err != nil {
@@ -101,9 +102,11 @@ if err := cli.RejectDelegatedSyncOptions(providerName, req); err != nil {
 }
 ```
 
-Do not pretend a delegated provider is SSH-like unless the provider has a stable
-SSH contract. If Crabbox cannot run rsync and remote commands itself, use
-`DelegatedRunBackend`.
+That helper rejects sync-only options, checksum sync, forced large sync,
+local stdout/stderr captures, failure bundles, downloads, uploaded scripts, and
+fresh PR checkouts. Do not pretend a delegated provider is SSH-like unless the
+provider has a stable SSH contract. If Crabbox cannot run rsync and remote
+commands itself, use `DelegatedRunBackend`.
 
 ### Optional Interfaces
 
