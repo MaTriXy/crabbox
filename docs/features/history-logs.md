@@ -47,7 +47,20 @@ coordinator and reassembled by `crabbox logs`. Event output capture is also
 bounded; use `crabbox attach` for active run previews and `crabbox logs` for the
 retained command output.
 
-Direct-provider mode does not have central history. Use shell output or local terminal logs there.
+For local, uncapped debug artifacts, `crabbox run` can mirror streams with
+`--capture-stdout <path>` and `--capture-stderr <path>`. These captures are
+local-only and bypass coordinator run-log storage. Use distinct local paths for
+stdout, stderr, and `--download remote=local` artifacts; Crabbox rejects
+collisions before command execution. `--capture-on-fail` writes a local
+`.crabbox/captures/*.tar.gz` bundle after a non-zero exit. Treat captured logs
+and bundles as secret-bearing files unless the caller redacts them.
+
+Commands can add timing detail by printing `CRABBOX_PHASE:<name>` on stdout or
+stderr. Phase markers appear in `--timing-json` as `commandPhases`; the marker
+line remains in normal output so scripts and humans see the same stream.
+
+Direct-provider mode does not have central history. Use shell output or local
+terminal logs there.
 
 Related docs:
 

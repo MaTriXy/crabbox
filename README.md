@@ -332,9 +332,11 @@ through an approved tailnet exit node. See [Tailscale](docs/features/tailscale.m
 Forwarded environment is intentionally narrow: `NODE_OPTIONS` and `CI`. Do not pass secrets as command-line arguments. Full env-var reference and per-command flags are in [docs/cli.md](docs/cli.md) and [docs/commands/](docs/commands/README.md).
 
 For binary or terminal-hostile output, use `crabbox run --capture-stdout <path>`
-so stdout is written directly to a local file and omitted from retained run-log
-previews. If the command writes a remote artifact, add `--download remote=local`
-to copy it back after a successful run.
+or `--capture-stderr <path>` so remote streams are written directly to local
+files and omitted from retained run-log previews. Add `--preflight` for a
+remote capability snapshot, `--capture-on-fail` for a local-only debug tarball
+after non-zero exits, or `--download remote=local` to copy a successful-run
+artifact back. Captured files are not redacted by Crabbox.
 
 ## OpenClaw plugin
 

@@ -1,10 +1,25 @@
 # Architecture
 
+Crabbox is a generic remote execution layer for software testing. It gives a
+local CLI a short-lived machine, syncs the current checkout, runs commands, and
+returns logs, timing, and artifacts without making project-specific setup part
+of the base image. The core boundary is simple: Crabbox owns leasing,
+connectivity, sync, run recording, and cleanup; the repository under test owns
+language runtimes, dependencies, services, and secrets through its own setup,
+hydration workflow, devcontainer, Nix/mise/asdf config, or shell scripts.
+
+The architecture deliberately separates the control plane from command
+execution. The coordinator serializes leases and provider state, while the CLI
+keeps SSH keys local and streams command I/O directly between the developer
+machine and the leased runner. That keeps provider credentials out of the
+runner, keeps user secrets out of coordinator state, and leaves enough room for
+both plain SSH providers and delegated runner systems.
+
 ## System Overview
 
 Crabbox has three main parts:
 
-- CLI: local Go binary used by maintainers and agents.
+- CLI: local Go binary used by developers, CI operators, and agents.
 - Coordinator: Cloudflare Worker plus Durable Object state.
 - Workers: managed cloud or SSH-accessible machines that run commands.
 

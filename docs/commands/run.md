@@ -95,6 +95,15 @@ commands that need PowerShell expression syntax.
 
 Before rsync starts, Crabbox prints the candidate file count and byte estimate. Large syncs warn or fail according to `sync.warnFiles`, `sync.warnBytes`, `sync.failFiles`, and `sync.failBytes`; use `--force-sync-large` or `sync.allowLarge: true` only when the transfer size is intentional. Quiet rsync runs print a heartbeat, and `sync.timeout` kills stalled syncs.
 
+Before sync, `run` prints a compact context block with run ID, portal/log URLs,
+lease ID, slug, provider, SSH target, remote workdir, and whether the workspace
+is raw or Actions-hydrated. Add `--preflight` to print remote user, current
+directory, sudo/apt availability, Node, pnpm, Docker, and bubblewrap versions
+before the command runs. The probe runs from the command workdir and sources the
+Actions handoff env file when present. Raw workspaces with Actions hydration
+configured also print the exact `crabbox actions hydrate ...` suggestion and
+whether the selected provider/target supports it.
+
 At the end of every command, `run` prints a one-line summary with sync duration, command duration, total duration, whether sync was skipped by fingerprint, and the remote exit code.
 
 Use `--capture-stdout <path>` when stdout is binary or terminal-hostile. Crabbox
@@ -102,12 +111,22 @@ writes the remote stdout bytes directly to the local file, leaves stderr on the
 terminal, and skips stdout run-log/event capture. This is useful for Windows
 native probes that emit images, Sixel frames, ZIPs, or other byte streams.
 
+Use `--capture-stderr <path>` the same way for remote stderr. Crabbox diagnostics
+still print to the terminal; only the remote command's stderr stream is mirrored
+to the local file and omitted from retained run-log/event capture.
+
+Use `--capture-on-fail` to download a local-only `.crabbox/captures/*.tar.gz`
+bundle when the remote command exits non-zero. The bundle includes common debug
+paths such as `test-results`, `playwright-report`, `coverage`, JUnit XML files,
+and nearby `*.log` files when present. Crabbox does not redact these local files;
+the caller owns redaction before sharing them.
+
 Use repeatable `--download remote=local` when the command writes proof files on
 the box. Downloads run only after a successful remote command, paths are
 resolved relative to the remote workdir unless absolute, and Windows paths use
 `=` instead of `:` so drive letters remain unambiguous.
 
-Use `--timing-json` to emit a final JSON timing record with provider, lease ID, sync phases, command duration, total duration, exit code, and Actions run URL when available. In `blacksmith-testbox` mode, sync is reported as delegated in the same schema.
+Use `--timing-json` to emit a final JSON timing record with provider, lease ID, sync phases, command phases, command duration, total duration, exit code, and Actions run URL when available. Commands can emit phase markers on stdout or stderr as `CRABBOX_PHASE:<name>`; Crabbox records those as `commandPhases` without removing the marker line from output. In `blacksmith-testbox` mode, sync is reported as delegated in the same schema.
 
 Before the first rsync into a Git checkout, Crabbox tries to seed the remote worktree from the local `origin` remote so the first sync is a dirty-tree overlay instead of a full source upload. Project-specific excludes can live in `.crabboxignore` or `sync.exclude` in `crabbox.yaml` / `.crabbox.yaml`; env forwarding and base ref belong in config.
 
@@ -154,7 +173,10 @@ Flags:
 --checksum
 --debug
 --junit <comma-separated remote XML paths>
+--preflight
 --capture-stdout <local path>
+--capture-stderr <local path>
+--capture-on-fail
 --download <remote=local>
 --reclaim
 --timing-json

@@ -38,8 +38,8 @@ Use `usage` for monthly summaries:
 
 ```sh
 bin/crabbox usage
-bin/crabbox usage --scope user --user steipete@gmail.com
-bin/crabbox usage --scope org --org openclaw
+bin/crabbox usage --scope user --user alice@example.com
+bin/crabbox usage --scope org --org example-org
 bin/crabbox usage --scope all --json
 ```
 
@@ -56,7 +56,7 @@ Use:
 ```sh
 bin/crabbox history
 bin/crabbox history --lease cbx_...
-bin/crabbox history --owner steipete@gmail.com --json
+bin/crabbox history --owner alice@example.com --json
 bin/crabbox events run_...
 bin/crabbox attach run_...
 bin/crabbox logs run_...
@@ -68,10 +68,32 @@ phase and output chunks for reconnect/inspection, and `attach` can follow those
 events while the original CLI is still alive. Logs are bounded retained remote
 stdout/stderr captures. `run --capture-stdout <path>` stores stdout only in the
 local file and leaves coordinator logs/events to stderr plus lifecycle events.
+`run --capture-stderr <path>` does the same for remote stderr. `run
+--capture-on-fail` writes a local `.crabbox/captures/*.tar.gz` bundle after a
+non-zero exit; Crabbox does not redact captured files, so treat them as
+secret-bearing until reviewed.
 `run --download remote=local` copies successful-run artifacts back to the local
 machine without adding file bytes to coordinator logs.
 Test results are stored as structured summaries when `--junit` or
 `results.junit` is configured.
+
+`--timing-json` includes sync phases and command phases. Commands can add
+user-defined phases by printing marker lines to stdout or stderr:
+
+```sh
+echo CRABBOX_PHASE:install
+pnpm install --frozen-lockfile
+echo CRABBOX_PHASE:build
+pnpm build
+echo CRABBOX_PHASE:test
+pnpm test
+```
+
+When local `CRABBOX_ENV_ALLOW` is set, `run` prints the variable names selected
+for forwarding plus safe metadata such as whether secret-looking names are set
+and their value length. Values are never printed. Delegated Testbox providers
+print that this forwarding is unsupported and that secrets belong in the
+provider workflow.
 
 ## Remote Debugging
 
@@ -94,6 +116,19 @@ ps aux --sort=-%cpu | head
 
 If a lease was created with `--keep`, SSH remains available until `crabbox stop`, idle expiry, or the TTL cap removes it.
 
+For a concise pre-command capability snapshot, add `--preflight`:
+
+```sh
+bin/crabbox run --id blue-lobster --preflight -- pnpm test:changed
+```
+
+The preflight prints the remote user, remote cwd, sudo and apt availability,
+Node, pnpm, Docker, and bubblewrap from the same command workdir. It sources the
+Actions handoff env file when present, and marks the workspace as raw or
+Actions-hydrated. Raw workspaces with Actions hydration configured print the
+exact hydrate command suggestion and whether the selected provider/target
+supports hydration.
+
 ## Actions Hydration
 
 `crabbox actions hydrate` dispatches the configured workflow and waits for a ready marker. The workflow run URL and marker path are the key correlation points.
@@ -106,6 +141,38 @@ bin/crabbox inspect --id blue-lobster --json
 ```
 
 The hydrated run writes non-secret handoff data for later `crabbox run --id blue-lobster` commands. Secrets and OIDC tokens remain workflow-step scoped unless the workflow intentionally writes its own short-lived handoff.
+
+## Live Provider Debugging
+
+For live provider or end-to-end test runs, prefer an Actions-hydrated lease
+when tests need Node, pnpm, Docker services, repository secrets, or GitHub OIDC:
+
+```sh
+crabbox warmup --provider aws --class beast --keep
+crabbox actions hydrate --id blue-lobster --workflow .github/workflows/hydrate.yml
+mkdir -p .crabbox/logs
+CRABBOX_ENV_ALLOW=OPENAI_API_KEY,OPENAI_BASE_URL \
+  crabbox run --id blue-lobster \
+  --preflight \
+  --timing-json \
+  --capture-stdout .crabbox/logs/live-provider.stdout.log \
+  --capture-stderr .crabbox/logs/live-provider.stderr.log \
+  --capture-on-fail \
+  --shell 'echo CRABBOX_PHASE:install; pnpm install --frozen-lockfile; echo CRABBOX_PHASE:test; pnpm test:live'
+```
+
+For Blacksmith Testbox comparison runs, keep secrets in the Testbox workflow
+environment. Crabbox will show that `CRABBOX_ENV_ALLOW` forwarding is
+unsupported because Blacksmith owns command execution:
+
+```sh
+CRABBOX_ENV_ALLOW=OPENAI_API_KEY \
+  crabbox run --provider blacksmith-testbox \
+  --blacksmith-workflow .github/workflows/ci-check-testbox.yml \
+  --blacksmith-job test \
+  --preflight \
+  -- pnpm test:live:providers
+```
 
 ## Worker Logs
 
