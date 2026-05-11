@@ -478,6 +478,50 @@ func TestSSHPortCandidatesUseConfiguredFallbacks(t *testing.T) {
 	}
 }
 
+func TestRsyncLocalPathConvertsWindowsDrivePath(t *testing.T) {
+	t.Parallel()
+	tests := map[string]string{
+		"C:/OpenClaw/crabbox": "/c/OpenClaw/crabbox",
+		"D:\\Users\\test":     "/d/Users/test",
+		"/already/posix":      "/already/posix",
+		"relative/path":       "relative/path",
+	}
+	for in, want := range tests {
+		got := rsyncLocalPathForGOOS("windows", in)
+		if got != want {
+			t.Errorf("rsyncLocalPath(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestRsyncLocalPathPassesThroughNonWindowsPath(t *testing.T) {
+	t.Parallel()
+	if got := rsyncLocalPathForGOOS("linux", "C:/OpenClaw/crabbox"); got != "C:/OpenClaw/crabbox" {
+		t.Fatalf("non-Windows rsyncLocalPath = %q", got)
+	}
+}
+
+func TestWindowsToWSLPath(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		in, want string
+	}{
+		{"C:/Users/test", "/mnt/c/Users/test"},
+		{`D:\Users\test`, "/mnt/d/Users/test"},
+		{"/c/OpenClaw/crabbox", "/mnt/c/OpenClaw/crabbox"},
+		{"'ssh' '-i' 'C:/Users/galini/key' '-o' 'UserKnownHostsFile=C:/Users/galini/known_hosts'",
+			"'ssh' '-i' '/mnt/c/Users/galini/key' '-o' 'UserKnownHostsFile=/mnt/c/Users/galini/known_hosts'"},
+		{"/work/crabbox", "/work/crabbox"},
+		{"crabbox@10.0.0.1:/work/", "crabbox@10.0.0.1:/work/"},
+	}
+	for _, tc := range tests {
+		got := windowsToWSLPath(tc.in)
+		if got != tc.want {
+			t.Errorf("windowsToWSLPath(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestRemotePruneSyncManifestDeletesOnlyManagedPaths(t *testing.T) {
 	got := remotePruneSyncManifest("/work/repo")
 	for _, want := range []string{

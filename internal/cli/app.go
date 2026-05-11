@@ -169,6 +169,7 @@ Commands:
   inspect     Print lease/provider details; add --json for scripts
   stop        Release a lease or delete a direct-provider machine
   cleanup     Sweep expired direct-provider machines or local provider state
+  azure       Azure provider setup and login
   config      Show or update user config
 
 Common Flows:
@@ -213,6 +214,7 @@ Global:
 Config:
   crabbox login [--url <url>] [--provider aws|azure|hetzner] [--no-browser]
   crabbox login --url <url> --token-stdin [--provider aws|azure|hetzner]
+  crabbox azure login [--subscription <id>] [--location <loc>] [--json]
   crabbox config path
   crabbox config show [--json]
   crabbox config set-broker --url <url> --token-stdin [--provider aws|azure|hetzner]
