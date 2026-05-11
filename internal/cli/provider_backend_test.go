@@ -3,6 +3,8 @@ package cli
 import (
 	"context"
 	"io"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -22,7 +24,7 @@ func testRuntimeWithRunner(r CommandRunner) Runtime {
 }
 
 func TestProviderRegistryCanonicalAndAliases(t *testing.T) {
-	for _, name := range []string{"hetzner", "aws", "azure", "gcp", "google", "google-cloud", "ssh", "static", "static-ssh", "blacksmith", "blacksmith-testbox", "namespace", "namespace-devbox", "daytona", "islo", "e2b", "sprites"} {
+	for _, name := range []string{"hetzner", "aws", "azure", "gcp", "google", "google-cloud", "proxmox", "ssh", "static", "static-ssh", "blacksmith", "blacksmith-testbox", "namespace", "namespace-devbox", "daytona", "islo", "e2b", "sprites"} {
 		if _, err := ProviderFor(name); err != nil {
 			t.Fatalf("ProviderFor(%q): %v", name, err)
 		}
@@ -71,6 +73,15 @@ func TestLoadBackendWrapsCoordinatorOnlyForSupportedSSHProviders(t *testing.T) {
 		t.Fatalf("backend=%T, want ssh lease backend", backend)
 	}
 
+	cfg.Provider = "proxmox"
+	backend, err = loadBackend(cfg, testRuntimeWithRunner(&recordingCommandRunner{}))
+	if err != nil {
+		t.Fatalf("load proxmox backend: %v", err)
+	}
+	if _, ok := backend.(SSHLeaseBackend); !ok {
+		t.Fatalf("backend=%T, want ssh lease backend", backend)
+	}
+
 	cfg.Provider = "e2b"
 	backend, err = loadBackend(cfg, testRuntimeWithRunner(&recordingCommandRunner{}))
 	if err != nil {
@@ -113,6 +124,35 @@ func TestProviderFlagsApplyNamespaceWithoutCoreEdits(t *testing.T) {
 	}
 }
 
+func TestProviderFlagsApplyProxmoxWithoutSecrets(t *testing.T) {
+	defaults := baseConfig()
+	fs := newFlagSet("test", io.Discard)
+	provider := fs.String("provider", defaults.Provider, "")
+	values := registerProviderFlags(fs, defaults)
+	if err := parseFlags(fs, []string{
+		"--provider", "proxmox",
+		"--proxmox-api-url", "https://pve.example.test:8006",
+		"--proxmox-node", "pve1",
+		"--proxmox-template-id", "9000",
+		"--proxmox-user", "runner",
+		"--proxmox-work-root", "/work/test",
+		"--proxmox-insecure-tls",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := defaults
+	cfg.Provider = *provider
+	if err := applyProviderFlags(&cfg, fs, values); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Proxmox.APIURL != "https://pve.example.test:8006" || cfg.Proxmox.Node != "pve1" || cfg.Proxmox.TemplateID != 9000 || cfg.Proxmox.User != "runner" || cfg.SSHUser != "runner" || cfg.WorkRoot != "/work/test" || !cfg.Proxmox.InsecureTLS {
+		t.Fatalf("proxmox flags not applied: %#v", cfg.Proxmox)
+	}
+	if cfg.ServerType != "template-9000" {
+		t.Fatalf("server type=%q want template-9000", cfg.ServerType)
+	}
+}
+
 func TestLeaseCreateFlagsApplySelectedProviderFlags(t *testing.T) {
 	defaults := baseConfig()
 	fs := newFlagSet("test", io.Discard)
@@ -135,6 +175,34 @@ func TestLeaseCreateFlagsApplySelectedProviderFlags(t *testing.T) {
 	}
 }
 
+func TestLeaseCreateFlagsReapplyProxmoxDefaultsAfterProviderOverride(t *testing.T) {
+	defaults := baseConfig()
+	defaults.Provider = "hetzner"
+	defaults.Proxmox.TemplateID = 9000
+	defaults.Proxmox.User = "runner"
+	defaults.Proxmox.WorkRoot = "/work/proxmox"
+	defaults.ServerType = serverTypeForConfig(defaults)
+
+	fs := newFlagSet("test", io.Discard)
+	values := registerLeaseCreateFlags(fs, defaults)
+	if err := parseFlags(fs, []string{"--provider", "proxmox"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := defaults
+	if err := applyLeaseCreateFlags(&cfg, fs, values); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SSHUser != "runner" {
+		t.Fatalf("ssh user=%q want proxmox default", cfg.SSHUser)
+	}
+	if cfg.WorkRoot != "/work/proxmox" {
+		t.Fatalf("work root=%q want proxmox default", cfg.WorkRoot)
+	}
+	if cfg.ServerType != "template-9000" {
+		t.Fatalf("server type=%q want template-9000", cfg.ServerType)
+	}
+}
+
 func TestLeaseCreateFlagsDeriveGCPTypeForAlias(t *testing.T) {
 	defaults := baseConfig()
 	fs := newFlagSet("test", io.Discard)
@@ -151,6 +219,40 @@ func TestLeaseCreateFlagsDeriveGCPTypeForAlias(t *testing.T) {
 	}
 	if cfg.ServerType != "c4-standard-32" {
 		t.Fatalf("server type=%q want gcp default", cfg.ServerType)
+	}
+}
+
+func TestLoadLeaseTargetConfigReappliesProxmoxDefaultsAfterProviderOverride(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "crabbox.yaml")
+	t.Setenv("CRABBOX_CONFIG", configPath)
+	if err := os.WriteFile(configPath, []byte(`provider: hetzner
+proxmox:
+  templateId: 9000
+  user: runner
+  workRoot: /work/proxmox
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	defaults := defaultConfig()
+	fs := newFlagSet("test", io.Discard)
+	targetFlags := registerTargetFlags(fs, defaults)
+	networkFlags := registerNetworkModeFlag(fs, defaults)
+	if err := parseFlags(fs, nil); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := loadLeaseTargetConfig(fs, "proxmox", targetFlags, networkFlags, leaseTargetConfigOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SSHUser != "runner" {
+		t.Fatalf("ssh user=%q want proxmox default", cfg.SSHUser)
+	}
+	if cfg.WorkRoot != "/work/proxmox" {
+		t.Fatalf("work root=%q want proxmox default", cfg.WorkRoot)
+	}
+	if cfg.ServerType != "template-9000" {
+		t.Fatalf("server type=%q want template-9000", cfg.ServerType)
 	}
 }
 
