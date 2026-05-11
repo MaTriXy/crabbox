@@ -36,6 +36,7 @@ Read when:
 - [Authoring a provider](provider-authoring.md): step-by-step guide to writing a new provider.
 - [AWS](aws.md): EC2 Linux, Windows, WSL2, EC2 Mac, capacity, AMIs, and security groups.
 - [Azure](azure.md): Azure Linux/native Windows, shared infra, capacity, and cleanup.
+- [Google Cloud](../providers/gcp.md): GCP Compute Engine Linux SSH leases.
 - [Hetzner](hetzner.md): Linux-only managed Hetzner behavior, classes, and cleanup.
 - [Blacksmith Testbox](blacksmith-testbox.md): delegated Testbox backend behavior.
 - [Namespace Devbox](namespace-devbox.md): Namespace Devbox SSH leases with Crabbox sync/run.
