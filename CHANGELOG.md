@@ -6,7 +6,12 @@
 
 ### Changed
 
+- Documented Islo's `islo ssh --setup` host-alias flow for ad-hoc SSH access to Islo sandboxes. Thanks @zozo123.
+
 ### Fixed
+
+- Fixed shared-token coordinator auth so caller-supplied `X-Crabbox-Owner` and `X-Crabbox-Org` headers cannot select the authenticated owner/org. Thanks @Hinotoi-agent.
+- Fixed Code, WebVNC, and Egress bridge ticket creation so `use`-shared lease users cannot mint lease-side bridge-agent tickets without manage access. Thanks @Hinotoi-agent.
 
 ## 0.11.0 - 2026-05-11
 
