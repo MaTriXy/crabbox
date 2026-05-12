@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	core "github.com/openclaw/crabbox/internal/cli"
 )
@@ -178,6 +179,23 @@ func TestResolveLeaseIDRejectsLeasePrefixWithoutClaim(t *testing.T) {
 	_, _, err := resolveLeaseID("tlsbx_unknown123", "", false, 0)
 	if err == nil || !strings.Contains(err.Error(), "not claimed by Crabbox") {
 		t.Fatalf("err=%v, want rejection without local claim", err)
+	}
+}
+
+func TestResolveLeaseIDUsesTensorlakeClaimWhenSlugCollides(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	if err := claimLeaseForRepoProvider("tbx_abc123", "Blue Lobster", "blacksmith-testbox", "/repo-a", time.Minute, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := claimLeaseForRepoProvider("tlsbx_tensorlake123456", "Blue Lobster", providerName, "/repo-b", time.Minute, false); err != nil {
+		t.Fatal(err)
+	}
+	leaseID, sandboxID, err := resolveLeaseID("blue-lobster", "", false, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if leaseID != "tlsbx_tensorlake123456" || sandboxID != "tensorlake123456" {
+		t.Fatalf("lease=%q sandbox=%q", leaseID, sandboxID)
 	}
 }
 

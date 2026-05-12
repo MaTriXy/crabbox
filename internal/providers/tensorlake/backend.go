@@ -298,11 +298,11 @@ func resolveLeaseID(id, repoRoot string, reclaim bool, idleTimeout time.Duration
 		probes = append(probes, leasePrefix+id)
 	}
 	for _, probe := range probes {
-		claim, ok, err := resolveLeaseClaim(probe)
+		claim, ok, err := resolveLeaseClaimForProvider(probe, providerName)
 		if err != nil {
 			return "", "", err
 		}
-		if !ok || claim.Provider != providerName {
+		if !ok {
 			continue
 		}
 		if repoRoot != "" {

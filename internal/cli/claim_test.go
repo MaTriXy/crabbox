@@ -145,6 +145,23 @@ func TestResolveLeaseClaimFindsSlug(t *testing.T) {
 	}
 }
 
+func TestResolveLeaseClaimForProviderSkipsSlugCollision(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	if err := claimLeaseForRepoProvider("tbx_abc123", "Blue Lobster", "blacksmith-testbox", "/repo-a", time.Minute, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := claimLeaseForRepoProvider("tlsbx_def456", "Blue Lobster", "tensorlake", "/repo-b", time.Minute, false); err != nil {
+		t.Fatal(err)
+	}
+	claim, ok, err := resolveLeaseClaimForProvider("blue-lobster", "tensorlake")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || claim.LeaseID != "tlsbx_def456" || claim.Provider != "tensorlake" {
+		t.Fatalf("unexpected provider-scoped claim ok=%t claim=%#v", ok, claim)
+	}
+}
+
 func TestResolveLeaseClaimFallbacks(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	if claim, ok, err := resolveLeaseClaim(""); err != nil || ok || claim.LeaseID != "" {

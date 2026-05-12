@@ -111,6 +111,58 @@ func resolveLeaseClaim(identifier string) (leaseClaim, bool, error) {
 	return leaseClaim{}, false, nil
 }
 
+func resolveLeaseClaimForProvider(identifier, provider string) (leaseClaim, bool, error) {
+	if provider == "" {
+		return resolveLeaseClaim(identifier)
+	}
+	claim, ok, err := resolveLeaseClaim(identifier)
+	if err != nil || !ok {
+		return claim, ok, err
+	}
+	if claim.Provider == provider {
+		return claim, true, nil
+	}
+	claim, ok, err = findLeaseClaim(identifier, func(candidate leaseClaim) bool {
+		return candidate.Provider == provider
+	})
+	if err != nil || !ok {
+		return leaseClaim{}, false, err
+	}
+	return claim, true, nil
+}
+
+func findLeaseClaim(identifier string, match func(leaseClaim) bool) (leaseClaim, bool, error) {
+	if identifier == "" {
+		return leaseClaim{}, false, nil
+	}
+	dir, err := crabboxStateDir()
+	if err != nil {
+		return leaseClaim{}, false, err
+	}
+	entries, err := os.ReadDir(filepath.Join(dir, "claims"))
+	if errors.Is(err, os.ErrNotExist) {
+		return leaseClaim{}, false, nil
+	}
+	if err != nil {
+		return leaseClaim{}, false, exit(2, "read claims directory: %v", err)
+	}
+	slug := normalizeLeaseSlug(identifier)
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		leaseID := strings.TrimSuffix(entry.Name(), ".json")
+		claim, err := readLeaseClaim(leaseID)
+		if err != nil {
+			return leaseClaim{}, false, err
+		}
+		if (claim.LeaseID == identifier || (slug != "" && normalizeLeaseSlug(claim.Slug) == slug)) && match(claim) {
+			return claim, true, nil
+		}
+	}
+	return leaseClaim{}, false, nil
+}
+
 func removeLeaseClaim(leaseID string) {
 	path, err := leaseClaimPath(leaseID)
 	if err == nil {

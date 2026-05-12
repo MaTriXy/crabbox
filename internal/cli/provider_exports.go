@@ -28,6 +28,10 @@ func ResolveLeaseClaim(identifier string) (LeaseClaim, bool, error) {
 	return resolveLeaseClaim(identifier)
 }
 
+func ResolveLeaseClaimForProvider(identifier, provider string) (LeaseClaim, bool, error) {
+	return resolveLeaseClaimForProvider(identifier, provider)
+}
+
 func RemoveLeaseClaim(leaseID string) {
 	removeLeaseClaim(leaseID)
 }

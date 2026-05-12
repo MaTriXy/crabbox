@@ -86,6 +86,10 @@ func resolveLeaseClaim(identifier string) (core.LeaseClaim, bool, error) {
 	return core.ResolveLeaseClaim(identifier)
 }
 
+func resolveLeaseClaimForProvider(identifier, provider string) (core.LeaseClaim, bool, error) {
+	return core.ResolveLeaseClaimForProvider(identifier, provider)
+}
+
 func removeLeaseClaim(leaseID string) {
 	core.RemoveLeaseClaim(leaseID)
 }
