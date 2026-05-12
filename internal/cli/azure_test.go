@@ -105,8 +105,8 @@ func TestAzureVMSizeCandidatesForTargetModeClass(t *testing.T) {
 		t.Fatalf("windows target got %v want %v", windows, want)
 	}
 	wsl2 := azureVMSizeCandidatesForTargetModeClass(targetWindows, windowsModeWSL2, "standard")
-	if !reflect.DeepEqual(wsl2, []string{"standard"}) {
-		t.Fatalf("wsl2 target got %v want explicit fallback", wsl2)
+	if want := azureWindowsVMSizeCandidatesForClass("standard"); !reflect.DeepEqual(wsl2, want) {
+		t.Fatalf("wsl2 target got %v want %v", wsl2, want)
 	}
 }
 

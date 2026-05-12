@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"time"
 
 	core "github.com/openclaw/crabbox/internal/cli"
 	"github.com/openclaw/crabbox/internal/providers/shared"
@@ -75,7 +74,7 @@ func (b *azureLeaseBackend) acquireOnce(ctx context.Context, keep bool) (LeaseTa
 		return LeaseTarget{}, err
 	}
 	target := sshTargetFromConfig(cfg, azureServerHost(server, cfg.AzureNetwork))
-	if err := waitForSSHReady(ctx, &target, b.RT.Stderr, "bootstrap", bootstrapWaitTimeout(cfg)); err != nil {
+	if err := bootstrapManagedWindowsDesktop(ctx, cfg, &target, publicKey, b.RT.Stderr); err != nil {
 		_ = client.DeleteServer(context.Background(), server.CloudID)
 		return LeaseTarget{}, err
 	}
@@ -183,10 +182,9 @@ func providerKeyForLease(leaseID string) string { return core.ProviderKeyForLeas
 func sshTargetFromConfig(cfg Config, host string) SSHTarget {
 	return core.SSHTargetFromConfig(cfg, host)
 }
-func waitForSSHReady(ctx context.Context, target *SSHTarget, stderr io.Writer, phase string, timeout time.Duration) error {
-	return core.WaitForSSHReady(ctx, target, stderr, phase, timeout)
+func bootstrapManagedWindowsDesktop(ctx context.Context, cfg Config, target *SSHTarget, publicKey string, stderr io.Writer) error {
+	return core.BootstrapManagedWindowsDesktop(ctx, cfg, target, publicKey, stderr)
 }
-func bootstrapWaitTimeout(cfg Config) time.Duration { return core.BootstrapWaitTimeout(cfg) }
 func deleteServer(ctx context.Context, cfg Config, server Server) error {
 	return core.DeleteServer(ctx, cfg, server)
 }

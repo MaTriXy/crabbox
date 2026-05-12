@@ -9,7 +9,7 @@ Read when:
 Actions hydration lets a repository reuse its existing GitHub Actions setup without putting repository-specific setup code in the Crabbox binary.
 
 Runner registration supports POSIX targets: brokered Hetzner/AWS/Azure/GCP
-Linux, direct Proxmox Linux, and AWS Windows WSL2. Static macOS and native Windows targets are for direct
+Linux, direct Proxmox Linux, and AWS/Azure Windows WSL2. Static macOS and native Windows targets are for direct
 `crabbox run` loops until platform-specific runner installation is added.
 
 The flow:

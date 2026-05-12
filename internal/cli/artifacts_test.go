@@ -149,6 +149,22 @@ func TestArtifactStorageURLs(t *testing.T) {
 	}
 }
 
+func TestArtifactCollectNeedsDesktop(t *testing.T) {
+	if artifactCollectNeedsDesktop(false, false, false, false) {
+		t.Fatal("log-only artifact collection should not require desktop")
+	}
+	for name, args := range map[string][4]bool{
+		"screenshot":    {true, false, false, false},
+		"video":         {false, true, false, false},
+		"doctor":        {false, false, true, false},
+		"webvnc status": {false, false, false, true},
+	} {
+		if !artifactCollectNeedsDesktop(args[0], args[1], args[2], args[3]) {
+			t.Fatalf("%s artifact collection should require desktop", name)
+		}
+	}
+}
+
 func TestArtifactCloudflareEnvUsesGenericCredentials(t *testing.T) {
 	t.Setenv("CLOUDFLARE_API_TOKEN", "generic-token")
 	t.Setenv("CLOUDFLARE_ACCOUNT_ID", "generic-account")

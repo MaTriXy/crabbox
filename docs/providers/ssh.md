@@ -18,7 +18,7 @@ Use Static SSH when:
 - you need a local Mac Studio, LAN host, VM, or persistent Windows box;
 - cloud provider cleanup and cost accounting do not apply.
 
-Use AWS or Hetzner when you want Crabbox to create and delete the machine.
+Use AWS, Azure, or Hetzner when you want Crabbox to create and delete the machine.
 
 ## Commands
 

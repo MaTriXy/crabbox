@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   AzureClient,
   azureLabelsFromTags,
+  azureLROPollIntervalMS,
   azureSupportsEphemeralOS,
   azureTagsFromLabels,
   isRetryableDeleteError,
@@ -403,6 +404,12 @@ describe("azure provider", () => {
     await client.listCrabboxServers();
     await client.listCrabboxServers();
     expect(tokenMints).toBe(1);
+  });
+
+  it("uses a conservative Azure LRO polling floor to stay under Worker subrequest limits", () => {
+    expect(azureLROPollIntervalMS(null)).toBe(15_000);
+    expect(azureLROPollIntervalMS("3")).toBe(15_000);
+    expect(azureLROPollIntervalMS("30")).toBe(30_000);
   });
 
   it("drops crabbox-ssh-* rules and preserves operator rules", () => {

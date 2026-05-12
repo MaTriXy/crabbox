@@ -7,18 +7,39 @@ import (
 	"time"
 )
 
-func bootstrapAWSWindowsDesktop(ctx context.Context, cfg Config, target *SSHTarget, publicKey string, stderr io.Writer) error {
-	if cfg.Provider != "aws" || cfg.TargetOS != targetWindows {
+func bootstrapManagedWindowsDesktop(ctx context.Context, cfg Config, target *SSHTarget, publicKey string, stderr io.Writer) error {
+	if cfg.TargetOS != targetWindows {
+		return waitForSSHReady(ctx, target, stderr, "bootstrap", bootstrapWaitTimeout(cfg))
+	}
+	if cfg.WindowsMode == windowsModeWSL2 {
+		bootstrapTarget := *target
+		bootstrapTarget.WindowsMode = windowsModeNormal
+		bootstrapTarget.ReadyCheck = powershellCommand(`$PSVersionTable.PSVersion | Out-Null`)
+		if cfg.Provider == "aws" {
+			bootstrapTarget.User = "Administrator"
+			target.User = "Administrator"
+		}
+		return bootstrapManagedWindowsWSL2(ctx, cfg, target, bootstrapTarget, publicKey, stderr)
+	}
+	if cfg.Provider == "azure" && cfg.WindowsMode == windowsModeNormal && cfg.Desktop {
+		bootstrapTarget := *target
+		return runWindowsDesktopBootstrapOverSSH(ctx, cfg, target, bootstrapTarget, publicKey, stderr)
+	}
+	if cfg.Provider != "aws" {
 		return waitForSSHReady(ctx, target, stderr, "bootstrap", bootstrapWaitTimeout(cfg))
 	}
 	bootstrapTarget := *target
 	bootstrapTarget.User = "Administrator"
 	bootstrapTarget.WindowsMode = windowsModeNormal
 	bootstrapTarget.ReadyCheck = powershellCommand(`$PSVersionTable.PSVersion | Out-Null`)
-	if cfg.WindowsMode == windowsModeWSL2 {
-		target.User = "Administrator"
-		return bootstrapAWSWindowsWSL2(ctx, cfg, target, bootstrapTarget, publicKey, stderr)
-	}
+	return runWindowsDesktopBootstrapOverSSH(ctx, cfg, target, bootstrapTarget, publicKey, stderr)
+}
+
+func bootstrapAWSWindowsDesktop(ctx context.Context, cfg Config, target *SSHTarget, publicKey string, stderr io.Writer) error {
+	return bootstrapManagedWindowsDesktop(ctx, cfg, target, publicKey, stderr)
+}
+
+func runWindowsDesktopBootstrapOverSSH(ctx context.Context, cfg Config, target *SSHTarget, bootstrapTarget SSHTarget, publicKey string, stderr io.Writer) error {
 	if err := waitForSSHReady(ctx, &bootstrapTarget, stderr, "windows openssh", 20*time.Minute); err != nil {
 		return err
 	}
@@ -33,14 +54,47 @@ exit $LASTEXITCODE`)
 	if err != nil {
 		fmt.Fprintf(stderr, "warning: Windows bootstrap SSH command ended before completion; waiting for reboot/ready state: %v\n", err)
 	}
-	return waitForSSHReady(ctx, target, stderr, "bootstrap", bootstrapWaitTimeout(cfg))
+	if err := waitForSSHReady(ctx, target, stderr, "bootstrap", bootstrapWaitTimeout(cfg)); err != nil {
+		return err
+	}
+	if cfg.Desktop && cfg.WindowsMode == windowsModeNormal {
+		return waitForManagedWindowsLoopbackVNC(ctx, target, stderr, 5*time.Minute)
+	}
+	return nil
+}
+
+func waitForManagedWindowsLoopbackVNC(ctx context.Context, target *SSHTarget, stderr io.Writer, timeout time.Duration) error {
+	fmt.Fprintln(stderr, "waiting for Windows desktop VNC on 127.0.0.1:5900")
+	deadline := time.Now().Add(timeout)
+	for {
+		if ctx.Err() != nil {
+			return context.Cause(ctx)
+		}
+		for _, port := range sshPortCandidates(target.Port, target.FallbackPorts) {
+			probe := *target
+			probe.Port = port
+			if err := probeLoopbackVNC(ctx, probe, "5", "1"); err == nil {
+				target.Port = port
+				fmt.Fprintln(stderr, "Windows desktop VNC ready")
+				return nil
+			}
+		}
+		if time.Now().After(deadline) {
+			return exit(5, "managed Windows desktop did not expose VNC on 127.0.0.1:5900")
+		}
+		time.Sleep(5 * time.Second)
+	}
 }
 
 func BootstrapAWSWindowsDesktop(ctx context.Context, cfg Config, target *SSHTarget, publicKey string, stderr io.Writer) error {
 	return bootstrapAWSWindowsDesktop(ctx, cfg, target, publicKey, stderr)
 }
 
-func bootstrapAWSWindowsWSL2(ctx context.Context, cfg Config, target *SSHTarget, bootstrapTarget SSHTarget, publicKey string, stderr io.Writer) error {
+func BootstrapManagedWindowsDesktop(ctx context.Context, cfg Config, target *SSHTarget, publicKey string, stderr io.Writer) error {
+	return bootstrapManagedWindowsDesktop(ctx, cfg, target, publicKey, stderr)
+}
+
+func bootstrapManagedWindowsWSL2(ctx context.Context, cfg Config, target *SSHTarget, bootstrapTarget SSHTarget, publicKey string, stderr io.Writer) error {
 	for attempt := 1; attempt <= 5; attempt++ {
 		if err := waitForSSHReady(ctx, &bootstrapTarget, stderr, "windows openssh", 20*time.Minute); err != nil {
 			return err

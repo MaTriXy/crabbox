@@ -15,7 +15,7 @@ desktop tunnels, and cleanup.
 
 Use AWS when you need:
 
-- managed Windows or WSL2 test machines;
+- managed Windows or WSL2 test machines on EC2 capacity;
 - EC2 Mac desktops through a configured Dedicated Host;
 - broad Linux capacity with Spot and On-Demand fallback;
 - coordinator-owned cloud credentials and cost accounting.

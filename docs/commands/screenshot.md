@@ -18,7 +18,7 @@ non-interactive SSH sessions cannot capture the visible desktop. macOS uses
 `screencapture`.
 
 For Windows, the screenshot reflects the active console session in the
-Crabbox-created instance. Managed AWS Windows desktop leases enable auto-logon
+Crabbox-created instance. Managed AWS and Azure Windows desktop leases enable auto-logon
 for the generated `crabbox` user, store that password under
 `C:\ProgramData\crabbox`, and use it only on the instance to run the scheduled
 capture task.
@@ -31,7 +31,7 @@ crabbox-<slug-or-id>-screenshot.png
 
 Static macOS and Windows targets are existing host machines, not Crabbox-created
 desktops, so `screenshot` rejects those targets instead of capturing your local
-or home-host desktop by accident. Managed AWS Windows and AWS macOS desktop
+or home-host desktop by accident. Managed AWS/Azure Windows and AWS macOS desktop
 leases are Crabbox-created boxes and can be captured by lease id or slug.
 
 Flags:

@@ -2,7 +2,7 @@
 
 Read when:
 
-- using managed AWS Windows desktop leases;
+- using managed AWS or Azure Windows desktop leases;
 - choosing between native Windows and WSL2;
 - preparing a static Windows host for Crabbox VNC.
 
@@ -12,8 +12,7 @@ Crabbox has two Windows execution contracts:
 - WSL2: POSIX commands through WSL, Linux-style sync, no separate managed VNC
   contract beyond the underlying Windows host.
 
-Managed Windows desktop support is AWS-only. Direct CLI provisioning and
-brokered coordinator provisioning use the same bootstrap contract.
+Managed native Windows desktop support is available on AWS and Azure.
 
 ## Managed AWS Windows
 
@@ -29,13 +28,35 @@ Bootstrap flow:
 - Crabbox installs Git for Windows and TightVNC.
 - Crabbox creates a local `crabbox` administrator.
 - Windows auto-logon starts a visible console session for that user.
-- TightVNC runs in that logged-in user session, with its HKCU password values
-  copied from the service configuration during startup.
-- The TightVNC service is also left startable and running as a fallback so
-  screenshots and WebVNC can connect even if the user-session startup task is
-  delayed.
+- TightVNC runs in that logged-in user session through the `CrabboxUserVNC`
+  logon scheduled task, with its HKCU password values copied from the service
+  configuration during startup.
+- The TightVNC service is disabled after seeding the per-user configuration, so
+  screenshots and WebVNC target the visible console session instead of the
+  service session.
 - The Windows first-network-discovery flyout is disabled during bootstrap so it
   does not cover screenshots.
+- The generated password is stored at
+  `C:\ProgramData\crabbox\vnc.password`.
+- VNC remains reachable only through the SSH tunnel.
+
+## Managed Azure Windows
+
+```sh
+crabbox warmup --provider azure --target windows --desktop
+crabbox vnc --id blue-lobster --open
+crabbox screenshot --id blue-lobster --output windows.png
+```
+
+Bootstrap flow:
+
+- Azure creates the VM, public IP, NIC, and OS disk.
+- Azure Custom Script Extension runs a minimal non-rebooting Crabbox SSH
+  bootstrap from `C:\AzureData\CustomData.bin`.
+- After SSH is reachable, Crabbox runs the shared Windows desktop bootstrap
+  over SSH as the `crabbox` administrator.
+- Crabbox installs Git for Windows and TightVNC, configures auto-logon, reboots
+  once, and waits for SSH/VNC readiness.
 - The generated password is stored at
   `C:\ProgramData\crabbox\vnc.password`.
 - VNC remains reachable only through the SSH tunnel.
@@ -53,18 +74,19 @@ Windows account and is not stored in coordinator history.
 
 ## WSL2
 
-Managed AWS WSL2 leases are Windows instances with nested virtualization
-enabled and an Ubuntu rootfs imported into WSL. Commands and sync use the POSIX
-WSL contract:
+Managed AWS and Azure WSL2 leases are Windows instances with nested
+virtualization enabled and an Ubuntu rootfs imported into WSL. Commands and
+sync use the POSIX WSL contract:
 
 ```sh
 crabbox warmup --provider aws --target windows --windows-mode wsl2
+crabbox warmup --provider azure --target windows --windows-mode wsl2
 crabbox actions hydrate --id blue-lobster
 crabbox run --id blue-lobster -- pnpm test
 ```
 
 Use native Windows mode when you need the Windows desktop. Use WSL2 when you
-need Linux tooling on Windows-capable AWS instance families.
+need Linux tooling on Windows-capable nested-virtualization VM families.
 
 OpenClaw maintainers can run the full OpenClaw test suite on a fresh WSL2 box
 with:

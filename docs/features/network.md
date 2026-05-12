@@ -8,10 +8,10 @@ Read when:
 - adjusting SSH port fallbacks for restrictive operator networks.
 
 A Crabbox lease can be reachable through more than one network plane.
-Brokered Linux leases can join a Tailscale tailnet, brokered AWS Windows and
-EC2 Mac leases stay public, and static SSH targets can be on either depending
-on how the operator configured them. The CLI picks one plane per command and
-prints which it picked.
+Brokered Linux leases can join a Tailscale tailnet, brokered AWS/Azure Windows
+and EC2 Mac leases stay public, and static SSH targets can be on either
+depending on how the operator configured them. The CLI picks one plane per
+command and prints which it picked.
 
 ## Modes
 

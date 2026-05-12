@@ -12,7 +12,7 @@ static SSH provider for existing machines.
 | Provider | Backend kind | Targets | Best for |
 | --- | --- | --- | --- |
 | [AWS](aws.md) | SSH lease | Linux, Windows, macOS | broad managed capacity, Windows, EC2 Mac |
-| [Azure](azure.md) | SSH lease | Linux, Windows | Azure-backed Linux and native Windows capacity |
+| [Azure](azure.md) | SSH lease | Linux, Windows | Azure-backed Linux and Windows capacity |
 | [Google Cloud](gcp.md) | SSH lease | Linux | GCP-backed Linux Compute Engine capacity |
 | [Hetzner](hetzner.md) | SSH lease | Linux | fast Linux capacity at low cost |
 | [Proxmox](proxmox.md) | SSH lease | Linux | private Proxmox VE QEMU VM templates |
@@ -73,7 +73,7 @@ through the Sprites API and reaches SSH through `sprite proxy`.
 | Provider | `run` | `warmup` | `ssh` | VNC/code | Crabbox sync | Provider sync |
 | --- | --- | --- | --- | --- | --- | --- |
 | AWS | yes | yes | yes | yes | yes | no |
-| Azure | yes | yes | yes | Linux VNC/code | yes | no |
+| Azure | yes | yes | yes | Linux/Windows VNC; Linux code | yes | no |
 | Google Cloud | yes | yes | yes | no | yes | no |
 | Hetzner | yes | yes | yes | Linux VNC/code | yes | no |
 | Proxmox | yes | yes | yes | no | yes | no |

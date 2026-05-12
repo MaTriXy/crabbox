@@ -151,14 +151,11 @@ func unsupportedManagedTargetMessage(provider, target string) string {
 
 func unsupportedManagedTargetMessageForConfig(provider string, cfg Config) string {
 	target := cfg.TargetOS
-	if provider == "azure" && target == targetWindows && cfg.WindowsMode == windowsModeWSL2 {
-		return "provider=azure supports native Windows only; use provider=aws for managed Windows WSL2 or provider=ssh for existing Windows WSL2 hosts"
-	}
 	if provider == "azure" {
 		if target == targetMacOS {
-			return "provider=azure managed provisioning supports target=linux and native Windows only; use provider=aws with an EC2 Mac Dedicated Host or provider=ssh for existing macOS hosts"
+			return "provider=azure managed provisioning supports target=linux and Windows only; use provider=aws with an EC2 Mac Dedicated Host or provider=ssh for existing macOS hosts"
 		}
-		return "provider=azure managed provisioning supports target=linux and native Windows only"
+		return "provider=azure managed provisioning supports target=linux and Windows only"
 	}
 	switch target {
 	case targetWindows:

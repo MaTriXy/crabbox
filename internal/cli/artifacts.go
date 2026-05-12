@@ -135,7 +135,8 @@ func (a App) artifactsCollect(ctx context.Context, args []string) error {
 	if *noContactSheet {
 		*contactSheet = false
 	}
-	cfg, err := loadLeaseTargetConfig(fs, *provider, targetFlags, networkFlags, leaseTargetConfigOptions{Desktop: true})
+	needsDesktop := artifactCollectNeedsDesktop(*screenshot, *video, *doctor, *webvncStatus)
+	cfg, err := loadLeaseTargetConfig(fs, *provider, targetFlags, networkFlags, leaseTargetConfigOptions{Desktop: needsDesktop})
 	if err != nil {
 		return err
 	}
@@ -315,6 +316,10 @@ func (a App) artifactsCollect(ctx context.Context, args []string) error {
 	}
 	fmt.Fprintf(a.Stdout, "publish: crabbox artifacts publish --dir %s --pr <n>\n", strings.Join(readableShellWords([]string{dir}), " "))
 	return nil
+}
+
+func artifactCollectNeedsDesktop(screenshot, video, doctor, webvncStatus bool) bool {
+	return screenshot || video || doctor || webvncStatus
 }
 
 func (a App) finishArtifactCollectFailure(result *artifactCollectResult, jsonOut bool, err error, warning artifactWarning) error {

@@ -132,6 +132,7 @@ $openSSHZip = "$env:TEMP\OpenSSH-Win64.zip"
 $gitInstaller = "$env:TEMP\Git-2.52.0-64-bit.exe"
 New-Item -ItemType Directory -Force -Path $base, $workRoot | Out-Null
 New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Network\NewNetworkWindowOff" -Force | Out-Null
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\ServerManager" -Name DoNotOpenServerManagerAtLogon -Type DWord -Value 1 -ErrorAction SilentlyContinue
 `
 }
 
@@ -388,6 +389,7 @@ New-ItemProperty -Force -Path $serverKey -Name AllowLoopback -PropertyType DWord
 New-ItemProperty -Force -Path $serverKey -Name AcceptHttpConnections -PropertyType DWord -Value 0 | Out-Null
 $exe = "C:\Program Files\TightVNC\tvnserver.exe"
 Get-Process tvnserver -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq (Get-Process -Id $PID).SessionId } | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 500
 Start-Process -FilePath $exe -ArgumentList "-run" -WindowStyle Minimized
 '@
 Set-Content -Encoding UTF8 -LiteralPath $userVNCStartupPath -Value $userVNCStartup
@@ -395,9 +397,9 @@ New-Item -ItemType Directory -Force -Path (Split-Path -Parent $userVNCStartupCom
 Set-Content -Encoding ASCII -LiteralPath $userVNCStartupCommandPath -Value ('@echo off' + [Environment]::NewLine + 'powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $userVNCStartupPath + '"' + [Environment]::NewLine)
 $startupTask = "CrabboxUserVNC"
 cmd.exe /c "schtasks.exe /Delete /TN $startupTask /F 2>NUL" | Out-Null
-schtasks.exe /Create /TN $startupTask /SC ONCE /ST ((Get-Date).AddMinutes(1).ToString("HH:mm")) /TR "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File $userVNCStartupPath" /RU $user /IT /F | Out-Null
-Get-Service -Name tvnserver -ErrorAction SilentlyContinue | Set-Service -StartupType Manual
-Start-Service -Name tvnserver -ErrorAction SilentlyContinue
+schtasks.exe /Create /TN $startupTask /SC ONLOGON /TR "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File $userVNCStartupPath" /RU $user /IT /F | Out-Null
+Get-Service -Name tvnserver -ErrorAction SilentlyContinue | Set-Service -StartupType Disabled
+Stop-Service -Name tvnserver -Force -ErrorAction SilentlyContinue
 $winlogon = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
 Set-ItemProperty -Path $winlogon -Name AutoAdminLogon -Value "1" -Type String
 Set-ItemProperty -Path $winlogon -Name ForceAutoLogon -Value "1" -Type String
@@ -416,6 +418,10 @@ func azureWindowsBootstrapPowerShell(cfg Config, publicKey string) string {
 	if workRoot == "" {
 		workRoot = defaultWindowsWorkRoot
 	}
+	setupComplete := `Set-Content -NoNewline -Encoding ASCII -Path $setupCompletePath -Value (Get-Date).ToString("o")`
+	if cfg.Desktop {
+		setupComplete = ""
+	}
 	return windowsBootstrapHeaderPowerShell(cfg, publicKey, workRoot) + `
 $passwordPath = Join-Path $base "windows.password"
 $usernamePath = Join-Path $base "windows.username"
@@ -425,7 +431,7 @@ $enforceKeyAuth = $true
 Restart-Service sshd -Force
 git --version | Out-Null
 tar --version | Out-Null
-Set-Content -NoNewline -Encoding ASCII -Path $setupCompletePath -Value (Get-Date).ToString("o")
+` + setupComplete + `
 `
 }
 

@@ -55,6 +55,7 @@ func TestProviderSpec(t *testing.T) {
 	wantTargets := []core.TargetSpec{
 		{OS: core.TargetLinux},
 		{OS: core.TargetWindows, WindowsMode: "normal"},
+		{OS: core.TargetWindows, WindowsMode: "wsl2"},
 	}
 	if len(spec.Targets) != len(wantTargets) {
 		t.Fatalf("spec.Targets = %+v, want %+v", spec.Targets, wantTargets)

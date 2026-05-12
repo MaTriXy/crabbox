@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -90,6 +91,21 @@ func TestEgressClientBinaryRejectsNonLinuxTargets(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "only supports Linux lease targets") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestSCPBaseArgsUseLegacyProtocolForNativeWindows(t *testing.T) {
+	native := scpBaseArgs(SSHTarget{TargetOS: targetWindows, WindowsMode: windowsModeNormal})
+	if !slices.Contains(native, "-O") {
+		t.Fatalf("native Windows scp args should include -O for OpenSSH servers without SFTP subsystem: %v", native)
+	}
+	wsl2 := scpBaseArgs(SSHTarget{TargetOS: targetWindows, WindowsMode: windowsModeWSL2})
+	if slices.Contains(wsl2, "-O") {
+		t.Fatalf("WSL2 scp args should not force legacy protocol: %v", wsl2)
+	}
+	linux := scpBaseArgs(SSHTarget{TargetOS: targetLinux})
+	if slices.Contains(linux, "-O") {
+		t.Fatalf("Linux scp args should not force legacy protocol: %v", linux)
 	}
 }
 

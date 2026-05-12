@@ -63,10 +63,9 @@ the updated PATH.
 
 With `--provider hetzner`, managed provisioning supports Linux only. Hetzner can
 run Windows through ISO/snapshot installation flows, but Crabbox does not manage
-that path today. Use `--provider aws --target windows` for managed Windows
-desktop or WSL2, `--provider azure --target windows` for native Windows
-SSH/sync/run, or `--provider ssh --target windows` for an existing Hetzner
-Windows host.
+that path today. Use `--provider aws --target windows` or
+`--provider azure --target windows` for managed Windows desktop or WSL2, or
+`--provider ssh --target windows` for an existing Hetzner Windows host.
 
 With `--provider aws --target windows --windows-mode normal --desktop`, Crabbox
 creates a real AWS Windows Server lease. EC2Launch user data installs OpenSSH
@@ -84,7 +83,11 @@ families for this mode. Commands and sync then use the POSIX WSL contract.
 With `--provider azure --target windows`, Crabbox creates a native Windows
 Server lease, uses the Azure VM Agent Custom Script Extension to install
 OpenSSH Server and Git for Windows, and configures the `crabbox` user for
-SSH/sync/run. Azure Windows does not provision VNC/browser/WSL2.
+SSH/sync/run. Add `--desktop` to run the shared Windows desktop bootstrap over
+SSH, install TightVNC, configure auto-logon, and expose VNC through the normal
+SSH tunnel. With `--windows-mode wsl2`, Crabbox enables WSL2 over SSH and then
+uses the POSIX WSL sync/run/actions contract. Azure Windows does not provision
+browser/code.
 
 With `--provider aws --target macos --desktop`, Crabbox launches an EC2 Mac
 instance on an already allocated Dedicated Host. Set `CRABBOX_AWS_MAC_HOST_ID`

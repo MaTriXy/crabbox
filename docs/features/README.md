@@ -35,7 +35,7 @@ Read when:
 - [Provider backends](../provider-backends.md): contract reference for backend interfaces and registration.
 - [Authoring a provider](provider-authoring.md): step-by-step guide to writing a new provider.
 - [AWS](aws.md): EC2 Linux, Windows, WSL2, EC2 Mac, capacity, AMIs, and security groups.
-- [Azure](azure.md): Azure Linux/native Windows, shared infra, capacity, and cleanup.
+- [Azure](azure.md): Azure Linux, Windows, WSL2, shared infra, capacity, and cleanup.
 - [Google Cloud](../providers/gcp.md): GCP Compute Engine Linux SSH leases.
 - [Hetzner](hetzner.md): Linux-only managed Hetzner behavior, classes, and cleanup.
 - [Proxmox](../providers/proxmox.md): direct Proxmox VE Linux QEMU VM clones.

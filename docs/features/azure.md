@@ -6,19 +6,22 @@ Read when:
 - debugging Azure VM capacity, quotas, images, or SSH readiness;
 - changing Azure provisioning code in the CLI.
 
-Azure is a managed provider for Linux and native Windows SSH leases. It
+Azure is a managed provider for Linux, native Windows, and Windows WSL2 leases. It
 creates VMs in a shared resource group, tags them with Crabbox lease
 metadata, and bootstraps the normal SSH/sync contract through cloud-init
-on Linux or Custom Script Extension on Windows. It works in direct mode with
-local Azure auth and in brokered mode through Worker-owned service principal
-secrets.
+on Linux or Custom Script Extension on Windows. Native Windows can also run
+the shared desktop/VNC bootstrap after SSH is reachable; WSL2 runs the shared
+Windows WSL2 bootstrap and then uses the POSIX sync/run contract through WSL.
+It works in direct mode with local Azure auth and in brokered mode through
+Worker-owned service principal secrets.
 
 ## Targets
 
 | Target | Managed | Notes |
 | --- | --- | --- |
 | Linux | Yes | Cloud-init bootstrap, SSH, rsync, optional desktop/browser/code. |
-| Windows | Yes | Native Windows SSH/sync/run only. No Azure desktop/browser/WSL2. |
+| Windows native | Yes | Native Windows SSH/sync/run and optional desktop/VNC. No Azure browser/code. |
+| Windows WSL2 | Yes | Nested-virtualization VM sizes; POSIX sync/run/actions hydration through WSL. |
 | macOS | No | Azure does not offer managed macOS; use AWS EC2 Mac or static SSH. |
 
 Examples:
@@ -27,6 +30,8 @@ Examples:
 crabbox warmup --provider azure --class beast
 crabbox run --provider azure --class standard -- pnpm test
 crabbox warmup --provider azure --target windows --class standard
+crabbox warmup --provider azure --target windows --desktop --class standard
+crabbox warmup --provider azure --target windows --windows-mode wsl2 --class standard
 crabbox warmup --provider azure --desktop --browser
 crabbox vnc --id blue-lobster --open
 ```
@@ -40,7 +45,8 @@ large     Standard_D96ads_v6, Standard_D96ds_v6, then D/F 64-vCPU and 48-vCPU fa
 beast     Standard_D192ds_v6, Standard_D128ds_v6, then D/F 96-vCPU and 64-vCPU fallbacks
 ```
 
-Native Windows uses the smaller AWS Windows class scale:
+Native Windows and WSL2 use the smaller AWS Windows class scale. The default
+candidate families support Azure nested virtualization for WSL2:
 
 ```text
 standard  Standard_D2ads_v6, Standard_D2ds_v6, Standard_D2ads_v5, Standard_D2ds_v5, then Standard_D2as_v6
@@ -55,8 +61,8 @@ SKU cannot be created. Spot leases fall back to on-demand when
 `capacity.fallback` starts with `on-demand`.
 
 Default Azure Linux class candidates mirror the vCPU scale of the AWS Linux
-class table. Default Azure native Windows candidates mirror the AWS native
-Windows class table. Crabbox asks Azure Resource SKUs whether the selected VM
+class table. Default Azure Windows candidates mirror the AWS native Windows
+class table. Crabbox asks Azure Resource SKUs whether the selected VM
 supports ephemeral OS disks; ephemeral-capable sizes use local OS disks,
 while exact `--type` requests for non-ephemeral sizes use managed
 `StandardSSD_LRS` OS disks.
@@ -154,10 +160,15 @@ back to the public IP. The default is `public`.
 
 ## Desktop
 
-Azure desktop leases use the standard Linux VNC path: Xvfb, a lightweight
+Azure Linux desktop leases use the standard VNC path: Xvfb, a lightweight
 desktop session, x11vnc bound to `127.0.0.1:5900`, and an SSH local tunnel
-created by `crabbox vnc`. Azure native Windows currently supports SSH, sync,
-and run only. Use AWS for managed Windows desktop or Windows WSL2.
+created by `crabbox vnc`. Azure native Windows desktop leases use the shared
+managed Windows bootstrap to install TightVNC, create the local `crabbox`
+administrator, enable auto-logon, and expose VNC only through an SSH tunnel.
+Azure WSL2 leases enable WSL, VirtualMachinePlatform, and HypervisorPlatform,
+update the WSL kernel, import the Ubuntu rootfs, and prepare the Linux-side
+`crabbox-ready` toolchain. Azure Windows still does not provision browser/code
+targets.
 
 ## Cleanup
 

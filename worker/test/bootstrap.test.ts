@@ -208,18 +208,22 @@ describe("cloud-init bootstrap", () => {
     expect(got).toContain("crabbox-sshd-$port");
     expect(got).toContain("tightvnc-2.8.85-gpl-setup-64bit.msi");
     expect(got).toContain("NewNetworkWindowOff");
+    expect(got).toContain("DoNotOpenServerManagerAtLogon");
     expect(got).toContain("VALUE_OF_PASSWORD=$vncPassword");
     expect(got).toContain("VALUE_OF_ALLOWLOOPBACK=1");
     expect(got).toContain("CrabboxUserVNC");
     expect(got).toContain("crabbox-user-vnc.cmd");
+    expect(got).toContain("AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup");
     expect(got).toContain("start-user-vnc.ps1");
     expect(got).toContain("Set-TightVNCBinaryValue");
     expect(got).toContain('reg.exe add "HKCU\\Software\\TightVNC\\Server"');
     expect(got).toContain('$hex = -join ($bytes | ForEach-Object { $_.ToString("X2") })');
-    expect(got).toContain("Set-Service -StartupType Manual");
-    expect(got).toContain("Start-Service -Name tvnserver");
-    expect(got).not.toContain("Set-Service -StartupType Disabled");
-    expect(got).not.toContain("Stop-Service -Name tvnserver");
+    expect(got).toContain("/SC ONLOGON");
+    expect(got).toContain("Set-Service -StartupType Disabled");
+    expect(got).toContain("Stop-Service -Name tvnserver");
+    expect(got).not.toContain("/SC ONCE");
+    expect(got).not.toContain("Set-Service -StartupType Manual");
+    expect(got).not.toContain("Start-Service -Name tvnserver");
     expect(got).toContain("New-CrabboxPassword");
     expect(got).toContain("${userSID}:F");
     expect(got).toContain("C:\\ProgramData\\crabbox\\windows.username");
@@ -244,6 +248,22 @@ describe("cloud-init bootstrap", () => {
     expect(got).toContain("PasswordAuthentication no");
     expect(got).toContain("Restart-Service sshd -Force");
     expect(got).toContain("Set-Content -NoNewline -Encoding ASCII -Path $setupCompletePath");
+    expect(got).not.toContain("Restart-Computer");
+    expect(got).not.toContain("tightvnc");
+  });
+
+  it("leaves Azure Windows desktop restart to the SSH bootstrap", () => {
+    const input = {
+      ...config,
+      provider: "azure",
+      target: "windows",
+      desktop: true,
+      workRoot: "C:\\crabbox",
+      sshPublicKey: "ssh-rsa test",
+    } as const;
+    const got = azureWindowsBootstrapPowerShell(input);
+    expect(got).toContain("PasswordAuthentication no");
+    expect(got).not.toContain("Set-Content -NoNewline -Encoding ASCII -Path $setupCompletePath");
     expect(got).not.toContain("Restart-Computer");
     expect(got).not.toContain("tightvnc");
   });

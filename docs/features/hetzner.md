@@ -15,7 +15,7 @@ contract, and optionally adds Linux desktop/browser capability.
 | Target | Managed | Notes |
 | --- | --- | --- |
 | Linux | Yes | Cloud-init bootstrap, SSH, rsync, optional desktop/browser. |
-| Windows | No | Use AWS for managed Windows or `provider: ssh` for an existing Windows host. |
+| Windows | No | Use AWS or Azure for managed Windows or `provider: ssh` for an existing Windows host. |
 | macOS | No | Use AWS EC2 Mac or `provider: ssh` for an existing Mac. |
 
 Examples:

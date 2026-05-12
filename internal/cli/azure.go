@@ -155,7 +155,7 @@ func azureVMSizeCandidatesForTargetModeClass(target, windowsMode, class string) 
 	case targetLinux:
 		return azureVMSizeCandidatesForClass(class)
 	case targetWindows:
-		if windowsMode == windowsModeNormal {
+		if windowsMode == windowsModeNormal || windowsMode == windowsModeWSL2 {
 			return azureWindowsVMSizeCandidatesForClass(class)
 		}
 		return []string{class}

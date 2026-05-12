@@ -124,6 +124,7 @@ $openSSHZip = "$env:TEMP\\OpenSSH-Win64.zip"
 $gitInstaller = "$env:TEMP\\Git-2.52.0-64-bit.exe"
 New-Item -ItemType Directory -Force -Path $base, $workRoot | Out-Null
 New-Item -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Network\\NewNetworkWindowOff" -Force | Out-Null
+Set-ItemProperty -Path "HKLM:\\SOFTWARE\\Microsoft\\ServerManager" -Name DoNotOpenServerManagerAtLogon -Type DWord -Value 1 -ErrorAction SilentlyContinue
 `;
 }
 
@@ -280,9 +281,9 @@ New-Item -ItemType Directory -Force -Path (Split-Path -Parent $userVNCStartupCom
 Set-Content -Encoding ASCII -LiteralPath $userVNCStartupCommandPath -Value ('@echo off' + [Environment]::NewLine + 'powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $userVNCStartupPath + '"' + [Environment]::NewLine)
 $startupTask = "CrabboxUserVNC"
 cmd.exe /c "schtasks.exe /Delete /TN $startupTask /F 2>NUL" | Out-Null
-schtasks.exe /Create /TN $startupTask /SC ONCE /ST ((Get-Date).AddMinutes(1).ToString("HH:mm")) /TR "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File $userVNCStartupPath" /RU $user /IT /F | Out-Null
-Get-Service -Name tvnserver -ErrorAction SilentlyContinue | Set-Service -StartupType Manual
-Start-Service -Name tvnserver -ErrorAction SilentlyContinue
+schtasks.exe /Create /TN $startupTask /SC ONLOGON /TR "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File $userVNCStartupPath" /RU $user /IT /F | Out-Null
+Get-Service -Name tvnserver -ErrorAction SilentlyContinue | Set-Service -StartupType Disabled
+Stop-Service -Name tvnserver -Force -ErrorAction SilentlyContinue
 $winlogon = "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon"
 Set-ItemProperty -Path $winlogon -Name AutoAdminLogon -Value "1" -Type String
 Set-ItemProperty -Path $winlogon -Name ForceAutoLogon -Value "1" -Type String
@@ -298,6 +299,9 @@ if (-not (Test-Path -LiteralPath $setupCompletePath)) {
 }
 
 export function azureWindowsBootstrapPowerShell(config: LeaseConfig): string {
+  const setupComplete = config.desktop
+    ? ""
+    : `Set-Content -NoNewline -Encoding ASCII -Path $setupCompletePath -Value (Get-Date).ToString("o")`;
   return (
     windowsBootstrapHeaderPowerShell(config) +
     `
@@ -311,7 +315,7 @@ $enforceKeyAuth = $true
 Restart-Service sshd -Force
 git --version | Out-Null
 tar --version | Out-Null
-Set-Content -NoNewline -Encoding ASCII -Path $setupCompletePath -Value (Get-Date).ToString("o")
+${setupComplete}
 `
   );
 }

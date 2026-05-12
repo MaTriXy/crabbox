@@ -121,7 +121,7 @@ Owned backends:
 - `hetzner-static`: pre-created warm machines.
 - `hetzner-ephemeral`: created per lease or overflow.
 - `aws`: one-time EC2 instances for burst capacity, managed Windows/WSL2, and EC2 Mac.
-- `azure`: one-time Azure VMs for Linux and native Windows SSH/sync/run.
+- `azure`: one-time Azure VMs for Linux and managed Windows/WSL2, including optional native Windows desktop/VNC.
 - `ssh-static`: manually managed machines reachable by SSH.
 
 Brokered backends, later:

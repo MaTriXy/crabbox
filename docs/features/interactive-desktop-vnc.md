@@ -72,7 +72,7 @@ Scenario systems such as Mantis own:
 | Linux on Azure | Yes | Xvfb/XFCE/x11vnc over SSH tunnel | [Linux VNC](vnc-linux.md) |
 | AWS Windows | Yes | TightVNC over SSH tunnel | [Windows VNC](vnc-windows.md) |
 | AWS EC2 Mac | Yes | Screen Sharing/VNC over SSH tunnel | [macOS VNC](vnc-macos.md) |
-| Azure Windows | No | SSH/sync/run only | [Azure](azure.md) |
+| Azure Windows | Yes | TightVNC over SSH tunnel | [Windows VNC](vnc-windows.md) |
 | Static Linux | Host-managed | Existing loopback VNC service | [Linux VNC](vnc-linux.md) |
 | Static macOS | Host-managed | Existing Screen Sharing/VNC | [macOS VNC](vnc-macos.md) |
 | Static Windows | Host-managed | Existing VNC service | [Windows VNC](vnc-windows.md) |
@@ -237,7 +237,7 @@ often machine- and user-encrypted.
 ## Where To Go Next
 
 - [Linux VNC](vnc-linux.md): Hetzner/AWS/Azure Linux desktop services and static Linux.
-- [Windows VNC](vnc-windows.md): AWS Windows, native Windows static hosts, and WSL2 boundaries.
+- [Windows VNC](vnc-windows.md): AWS/Azure managed Windows, native Windows static hosts, and WSL2 boundaries.
 - [macOS VNC](vnc-macos.md): AWS EC2 Mac and static Mac Screen Sharing.
 - [AWS](aws.md): AWS target matrix, capacity, AMIs, and EC2 Mac host requirements.
 - [Hetzner](hetzner.md): Linux-only managed Hetzner behavior.

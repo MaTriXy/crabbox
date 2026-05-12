@@ -68,7 +68,7 @@ func (b *coordinatorLeaseBackend) acquireOnce(ctx context.Context, keep bool) (L
 	stopLeaseWatch := startCoordinatorLeaseWatch(waitCtx, b.coord, leaseID, cancelWait, b.rt.Stderr)
 	defer stopLeaseWatch()
 	bootstrapTarget := bootstrapNetworkTarget(cfg, server, target)
-	if err := bootstrapAWSWindowsDesktop(waitCtx, cfg, &bootstrapTarget, publicKey, b.rt.Stderr); err != nil {
+	if err := bootstrapManagedWindowsDesktop(waitCtx, cfg, &bootstrapTarget, publicKey, b.rt.Stderr); err != nil {
 		if releaseErr := releaseCoordinatorLease(context.Background(), b.coord, leaseID); releaseErr != nil {
 			fmt.Fprintf(b.rt.Stderr, "warning: release failed after bootstrap error for %s: %v\n", leaseID, releaseErr)
 		}

@@ -33,7 +33,7 @@ crabbox init [--force]
 crabbox config show [--json]
 crabbox config path
 crabbox config set-broker --url <url> --token-stdin [--provider hetzner|aws|azure|gcp]
-crabbox warmup [--provider hetzner|aws|azure|gcp|proxmox|ssh|blacksmith-testbox|namespace-devbox|semaphore|sprites|daytona|islo|e2b] [--target linux|macos|windows] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--profile <name>] [--idle-timeout <duration>] [--timing-json]
+crabbox warmup [--provider hetzner|aws|azure|gcp|proxmox|ssh|blacksmith-testbox|namespace-devbox|semaphore|sprites|daytona|islo|e2b] [--target linux|macos|windows] [--windows-mode normal|wsl2] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--profile <name>] [--idle-timeout <duration>] [--timing-json]
 crabbox run [--id <lease-id-or-slug>] [--provider hetzner|aws|azure|gcp|proxmox|ssh|blacksmith-testbox|namespace-devbox|semaphore|sprites|daytona|islo|e2b] [--target linux|macos|windows] [--windows-mode normal|wsl2] [--desktop] [--browser] [--code] [--tailscale] [--network auto|tailscale|public] [--keep-on-failure] [--shell] [--script <file>|--script-stdin] [--fresh-pr <owner/repo#number>] [--allow-env <name>] [--env-from-profile <file>] [--checksum] [--debug] [--force-sync-large] [--preflight] [--capture-stdout <path>] [--capture-stderr <path>] [--capture-on-fail] [--download remote=local] [--timing-json] [--blacksmith-workflow <workflow>] -- <command...>
 crabbox job list
 crabbox job run [--id <lease-id-or-slug>] [--dry-run] [--no-hydrate] [--stop auto|always|success|failure|never] <name>
@@ -167,10 +167,13 @@ crabbox run --provider ssh --target windows --windows-mode normal --static-host 
 crabbox run --provider ssh --target windows --windows-mode wsl2 --static-host win-dev.local -- pnpm test
 ```
 
-Create managed AWS desktop boxes:
+Create managed cloud Windows boxes:
 
 ```sh
 crabbox warmup --provider aws --target windows --desktop
+crabbox warmup --provider azure --target windows --desktop
+crabbox warmup --provider aws --target windows --windows-mode wsl2
+crabbox warmup --provider azure --target windows --windows-mode wsl2
 CRABBOX_AWS_MAC_HOST_ID=h-... crabbox warmup --provider aws --target macos --desktop --market on-demand
 crabbox vnc --id blue-lobster
 crabbox screenshot --id blue-lobster --output desktop.png
@@ -179,12 +182,13 @@ crabbox screenshot --id blue-lobster --output desktop.png
 Managed provider targets are intentionally narrow:
 
 - Hetzner managed provisioning supports Linux only.
-- AWS supports Linux, native Windows (`--target windows --windows-mode normal`),
-  Windows WSL2 (`--target windows --windows-mode wsl2`), and EC2 Mac
-  (`--target macos`) when the Mac Dedicated Host is provided.
-- Azure supports Linux and native Windows (`--target windows --windows-mode
-  normal`). Azure Windows does not provide managed desktop, browser, WSL2, or
-  macOS targets.
+- AWS and Azure both support Linux, native Windows (`--target windows
+  --windows-mode normal`) with managed desktop/VNC, and Windows WSL2
+  (`--target windows --windows-mode wsl2`) for POSIX sync, run, and Actions
+  hydration. Use native Windows for desktop/VNC; use WSL2 for Linux tooling on
+  a Windows host.
+- AWS also supports EC2 Mac (`--target macos`) when the Mac Dedicated Host is
+  provided. Azure does not have a managed macOS target.
 - Existing macOS and Windows machines belong on `provider=ssh`.
 
 Use Tailscale as an optional network plane:

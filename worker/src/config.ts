@@ -70,20 +70,25 @@ export function leaseConfig(input: LeaseRequest): LeaseConfig {
     target !== "linux" &&
     !(provider === "aws" && target === "windows") &&
     !(provider === "aws" && target === "macos") &&
-    !(provider === "azure" && target === "windows" && windowsMode === "normal")
+    !(provider === "azure" && target === "windows")
   ) {
     if (provider === "hetzner" || provider === "azure" || provider === "gcp") {
-      throw new Error(unsupportedManagedTargetMessage(provider, target, windowsMode));
+      throw new Error(unsupportedManagedTargetMessage(provider, target));
     }
     throw new Error(`unsupported target for brokered ${provider}: ${target}`);
   }
   if (
     provider === "azure" &&
     target === "windows" &&
-    (input.desktop || input.browser || input.code || input.tailscale)
+    (input.browser || input.code || input.tailscale)
   ) {
     throw new Error(
-      "brokered azure target=windows currently supports SSH, sync, and run; desktop/browser/code/tailscale require Linux or AWS Windows where supported",
+      "brokered azure target=windows currently supports SSH, sync, run, and desktop/VNC; browser/code/tailscale require Linux or AWS Windows where supported",
+    );
+  }
+  if (target === "windows" && windowsMode === "wsl2" && input.desktop) {
+    throw new Error(
+      "brokered target=windows windowsMode=wsl2 does not support desktop/VNC; use windowsMode=normal for desktop/VNC or omit desktop for WSL2",
     );
   }
   if (target === "macos") {
@@ -185,19 +190,12 @@ function defaultSSHUser(provider: Provider, target: TargetOS, windowsMode: Windo
   return "crabbox";
 }
 
-function unsupportedManagedTargetMessage(
-  provider: Provider,
-  target: TargetOS,
-  windowsMode: WindowsMode,
-): string {
-  if (provider === "azure" && target === "windows" && windowsMode === "wsl2") {
-    return "brokered azure supports native Windows only; use brokered aws for managed Windows WSL2 or provider=ssh for existing Windows WSL2 hosts";
-  }
+function unsupportedManagedTargetMessage(provider: Provider, target: TargetOS): string {
   if (provider === "azure") {
     if (target === "macos") {
-      return "brokered azure managed provisioning supports target=linux and native Windows only; use brokered aws with an EC2 Mac Dedicated Host or provider=ssh for existing macOS hosts";
+      return "brokered azure managed provisioning supports target=linux and Windows only; use brokered aws with an EC2 Mac Dedicated Host or provider=ssh for existing macOS hosts";
     }
-    return "brokered azure managed provisioning supports target=linux and native Windows only";
+    return "brokered azure managed provisioning supports target=linux and Windows only";
   }
   if (provider === "gcp") {
     if (target === "macos") {
@@ -370,7 +368,7 @@ export function azureVMSizeCandidatesForTargetClass(
   if (target === "linux") {
     return azureVMSizeCandidatesForClass(machineClass);
   }
-  if (target === "windows" && windowsMode === "normal") {
+  if (target === "windows" && (windowsMode === "normal" || windowsMode === "wsl2")) {
     return azureWindowsVMSizeCandidatesForClass(machineClass);
   }
   return [machineClass];

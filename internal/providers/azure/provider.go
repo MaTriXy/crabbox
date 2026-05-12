@@ -21,6 +21,7 @@ func (Provider) Spec() core.ProviderSpec {
 		Targets: []core.TargetSpec{
 			{OS: core.TargetLinux},
 			{OS: core.TargetWindows, WindowsMode: "normal"},
+			{OS: core.TargetWindows, WindowsMode: "wsl2"},
 		},
 		Features:    core.FeatureSet{core.FeatureSSH, core.FeatureCrabboxSync, core.FeatureCleanup, core.FeatureDesktop, core.FeatureBrowser, core.FeatureCode, core.FeatureTailscale},
 		Coordinator: core.CoordinatorSupported,

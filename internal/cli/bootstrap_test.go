@@ -232,14 +232,17 @@ func TestAWSUserDataWindowsProfile(t *testing.T) {
 		"VALUE_OF_ALLOWLOOPBACK=1",
 		"CrabboxUserVNC",
 		"crabbox-user-vnc.cmd",
+		`AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup`,
 		"start-user-vnc.ps1",
 		"Set-TightVNCBinaryValue",
 		`reg.exe add "HKCU\Software\TightVNC\Server"`,
 		`$hex = -join ($bytes | ForEach-Object { $_.ToString("X2") })`,
 		"-run",
 		"NewNetworkWindowOff",
-		"Set-Service -StartupType Manual",
-		"Start-Service -Name tvnserver",
+		"DoNotOpenServerManagerAtLogon",
+		"/SC ONLOGON",
+		"Set-Service -StartupType Disabled",
+		"Stop-Service -Name tvnserver",
 		"New-CrabboxPassword",
 		"${userSID}:F",
 		`C:\ProgramData\crabbox\vnc.password`,
@@ -250,6 +253,15 @@ func TestAWSUserDataWindowsProfile(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("windows user data missing %q", want)
 		}
+	}
+	if strings.Contains(got, "/SC ONCE") {
+		t.Fatalf("windows user data should not schedule user VNC as a one-shot task")
+	}
+	if strings.Contains(got, "Set-Service -StartupType Manual") {
+		t.Fatalf("windows user data should not keep the service VNC fallback enabled")
+	}
+	if strings.Contains(got, "Start-Service -Name tvnserver") {
+		t.Fatalf("windows user data should not start service-session VNC")
 	}
 }
 
@@ -288,6 +300,28 @@ func TestAWSUserDataWindowsWSL2Profile(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("windows WSL2 bootstrap missing %q", want)
 		}
+	}
+}
+
+func TestAzureWindowsDesktopExtensionBootstrapLeavesRebootToSSHBootstrap(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Provider = "azure"
+	cfg.TargetOS = targetWindows
+	cfg.WindowsMode = windowsModeNormal
+	cfg.Desktop = true
+	cfg.WorkRoot = `C:\crabbox`
+	got := azureWindowsBootstrapPowerShell(cfg, "ssh-rsa test")
+	if !strings.Contains(got, "PasswordAuthentication no") {
+		t.Fatalf("azure windows extension bootstrap should enforce key auth")
+	}
+	if strings.Contains(got, "Set-Content -NoNewline -Encoding ASCII -Path $setupCompletePath") {
+		t.Fatalf("azure desktop extension bootstrap should not mark setup complete before desktop SSH bootstrap")
+	}
+	if strings.Contains(got, "Restart-Computer") {
+		t.Fatalf("azure extension bootstrap must not reboot")
+	}
+	if strings.Contains(got, "tightvnc") {
+		t.Fatalf("azure extension bootstrap should not install VNC")
 	}
 }
 

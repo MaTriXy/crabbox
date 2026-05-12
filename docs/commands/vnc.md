@@ -16,10 +16,11 @@ crabbox vnc --id blue-lobster --network tailscale
 crabbox vnc --id blue-lobster --open
 ```
 
-Managed AWS Windows and EC2 Mac desktop leases use the same command:
+Managed Windows and EC2 Mac desktop leases use the same command:
 
 ```sh
 crabbox warmup --provider aws --target windows --desktop
+crabbox warmup --provider azure --target windows --desktop
 crabbox vnc --id crimson-crab
 
 CRABBOX_AWS_MAC_HOST_ID=h-... \
@@ -85,7 +86,7 @@ Password locations:
 | Windows | `C:\ProgramData\crabbox\vnc.password` |
 | macOS | `/var/db/crabbox/vnc.password` |
 
-Managed AWS Windows leases also print the generated Windows console login:
+Managed AWS and Azure Windows leases also print the generated Windows console login:
 
 ```text
 password: Cb1!...
@@ -150,6 +151,7 @@ host's VNC or Screen Sharing prompt.
 | AWS Linux | Yes | Requires `--desktop`; same Linux desktop profile. |
 | Azure Linux | Yes | Requires `--desktop`; same Linux desktop profile. |
 | AWS Windows | Yes | Requires `--target windows --desktop`; installs Git for Windows and TightVNC after EC2Launch enables OpenSSH. Spot or On-Demand follows the AWS capacity config. |
+| Azure Windows | Yes | Requires `--target windows --desktop`; installs Git for Windows and TightVNC after Custom Script Extension enables OpenSSH. Capacity follows the Azure class/SKU config. |
 | AWS macOS | Yes | Requires `--target macos --desktop --market on-demand` plus `CRABBOX_AWS_MAC_HOST_ID` or `aws.macHostId`. |
 | Static Linux | Host-managed | Requires an existing loopback VNC service on the host. |
 | Static macOS | Host-managed | Uses existing Screen Sharing or VNC. |

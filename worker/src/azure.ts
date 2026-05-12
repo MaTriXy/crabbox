@@ -19,6 +19,7 @@ const API_VERSIONS = {
 };
 const DELETE_RETRY_ATTEMPTS = 13;
 const DELETE_RETRY_DELAY_MS = 15_000;
+const MIN_LRO_POLL_INTERVAL_MS = 15_000;
 const DEFAULT_AZURE_LINUX_IMAGE = "Canonical:0001-com-ubuntu-server-jammy:22_04-lts-gen2:latest";
 const DEFAULT_AZURE_WINDOWS_IMAGE =
   "MicrosoftWindowsServer:windowsserver2022:2022-datacenter-smalldisk-g2:latest";
@@ -603,8 +604,7 @@ export class AzureClient {
     const asyncURL =
       response.headers.get("azure-asyncoperation") ?? response.headers.get("location");
     if (!asyncURL) return;
-    const retryAfter = Number.parseInt(response.headers.get("retry-after") ?? "", 10);
-    const interval = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 3_000;
+    const interval = azureLROPollIntervalMS(response.headers.get("retry-after"));
     const deadline = Date.now() + 20 * 60_000;
     while (Date.now() < deadline) {
       // oxlint-disable-next-line eslint/no-await-in-loop -- LRO must wait between status reads.
@@ -778,6 +778,12 @@ function nextNSGPriority(used: Set<number>): number {
     }
   }
   throw new Error("azure nsg: no available security rule priorities");
+}
+
+export function azureLROPollIntervalMS(retryAfter: string | null): number {
+  const seconds = Number.parseInt(retryAfter ?? "", 10);
+  if (!Number.isFinite(seconds) || seconds <= 0) return MIN_LRO_POLL_INTERVAL_MS;
+  return Math.max(seconds * 1000, MIN_LRO_POLL_INTERVAL_MS);
 }
 
 export function azureSupportsEphemeralOS(vmSize: string): boolean {

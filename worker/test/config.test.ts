@@ -66,9 +66,9 @@ describe("machine class config", () => {
     expect(azureVMSizeCandidatesForTargetClass("windows", "standard")).toEqual(
       azureWindowsVMSizeCandidatesForClass("standard"),
     );
-    expect(azureVMSizeCandidatesForTargetClass("windows", "standard", "wsl2")).toEqual([
-      "standard",
-    ]);
+    expect(azureVMSizeCandidatesForTargetClass("windows", "standard", "wsl2")).toEqual(
+      azureWindowsVMSizeCandidatesForClass("standard"),
+    );
   });
 
   it("maps known classes to preferred GCP candidates", () => {
@@ -118,6 +118,9 @@ describe("machine class config", () => {
       expect(azureVMSizeCandidatesForClass(name)).toEqual(azureLinux[name]);
       expect(azureWindowsVMSizeCandidatesForClass(name)).toEqual(azureWindows[name]);
       expect(azureVMSizeCandidatesForTargetClass("windows", name)).toEqual(azureWindows[name]);
+      expect(azureVMSizeCandidatesForTargetClass("windows", name, "wsl2")).toEqual(
+        azureWindows[name],
+      );
       expect(awsInstanceTypeCandidatesForTargetClass("windows", name)).toEqual(awsWindows[name]);
       expect(awsInstanceTypeCandidatesForTargetClass("windows", name, "wsl2")).toEqual(
         awsWSL2[name],
@@ -299,21 +302,15 @@ describe("lease config", () => {
     const config = leaseConfig({
       provider: "azure",
       target: "windows",
+      desktop: true,
       sshPublicKey: "ssh-rsa test",
     });
     expect(config.serverType).toBe("Standard_D16ads_v6");
     expect(config.workRoot).toBe("C:\\crabbox");
     expect(config.windowsMode).toBe("normal");
     expect(config.sshUser).toBe("crabbox");
-    expect(() =>
-      leaseConfig({
-        provider: "azure",
-        target: "windows",
-        windowsMode: "wsl2",
-        sshPublicKey: "ssh-rsa test",
-      }),
-    ).toThrow("native Windows only");
-    for (const capability of ["desktop", "browser", "code", "tailscale"] as const) {
+    expect(config.desktop).toBe(true);
+    for (const capability of ["browser", "code", "tailscale"] as const) {
       expect(() =>
         leaseConfig({
           provider: "azure",
@@ -321,7 +318,7 @@ describe("lease config", () => {
           [capability]: true,
           sshPublicKey: "ssh-rsa test",
         }),
-      ).toThrow("SSH, sync, and run");
+      ).toThrow("browser/code/tailscale");
     }
   });
 
@@ -357,6 +354,37 @@ describe("lease config", () => {
     expect(wsl2.workRoot).toBe("/work/crabbox");
     expect(wsl2.windowsMode).toBe("wsl2");
     expect(wsl2.sshUser).toBe("Administrator");
+    expect(() =>
+      leaseConfig({
+        provider: "aws",
+        target: "windows",
+        windowsMode: "wsl2",
+        desktop: true,
+        sshPublicKey: "ssh-ed25519 test",
+      }),
+    ).toThrow("does not support desktop/VNC");
+  });
+
+  it("allows Azure Windows WSL2 leases", () => {
+    const wsl2 = leaseConfig({
+      provider: "azure",
+      target: "windows",
+      windowsMode: "wsl2",
+      sshPublicKey: "ssh-ed25519 test",
+    });
+    expect(wsl2.serverType).toBe("Standard_D16ads_v6");
+    expect(wsl2.workRoot).toBe("/work/crabbox");
+    expect(wsl2.windowsMode).toBe("wsl2");
+    expect(wsl2.sshUser).toBe("crabbox");
+    expect(() =>
+      leaseConfig({
+        provider: "azure",
+        target: "windows",
+        windowsMode: "wsl2",
+        desktop: true,
+        sshPublicKey: "ssh-ed25519 test",
+      }),
+    ).toThrow("does not support desktop/VNC");
   });
 
   it("allows AWS macOS leases only with on-demand capacity", () => {

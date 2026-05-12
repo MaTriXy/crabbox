@@ -27,7 +27,7 @@ crabbox CLI    -- HTTPS --> Fleet Durable Object  -->   Hetzner / AWS / Azure / 
    +------------ SSH + rsync to leased runner <--------------+
 ```
 
-The CLI is a Go binary. The broker is a Cloudflare Worker plus a single Durable Object. Brokered Linux runners are vanilla Ubuntu boxes prepared by cloud-init with SSH, Git, rsync, curl, jq, and `/work/crabbox`; AWS can also broker managed Windows/WSL2 and EC2 Mac desktop targets, while Azure can broker native Windows SSH/sync/run targets. Static hosts are existing SSH machines selected with `provider: ssh`. Project runtimes come from Actions hydration or repo-owned setup. Runners hold no broker credentials - they are leaf nodes.
+The CLI is a Go binary. The broker is a Cloudflare Worker plus a single Durable Object. Brokered Linux runners are vanilla Ubuntu boxes prepared by cloud-init with SSH, Git, rsync, curl, jq, and `/work/crabbox`; AWS can also broker managed Windows/WSL2 and EC2 Mac desktop targets, while Azure can broker native Windows SSH/sync/run, desktop/VNC, and Windows WSL2 targets. Static hosts are existing SSH machines selected with `provider: ssh`. Project runtimes come from Actions hydration or repo-owned setup. Runners hold no broker credentials - they are leaf nodes.
 
 ## A run, end to end
 
